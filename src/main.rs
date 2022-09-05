@@ -22,6 +22,7 @@ impl World {
         let mut world = World {
             chunks: Default::default()
         };
+        world.add_chunk(Chunk::new(Position(0, 0)));
         world
     }
 
@@ -45,11 +46,23 @@ struct Chunk {
     position: Position,
     mines: ChunkBool,
 }
+impl Chunk {
+    fn new(position: Position) -> Chunk {
+        Chunk {
+            position: position.chunk_position(),
+            mines: ChunkBool::empty(),
+        }
+    }
+}
 
 // A boolean value for each tile in a 16x16 chunk
 struct ChunkBool([u16; 16]);
 
 impl ChunkBool {
+    fn empty() -> ChunkBool {
+        ChunkBool([0; 16])
+    }
+
     fn set(&mut self, position: Position, value: bool) {
         // Making sure that x and y are between 0 and 15 so we can get unchecked
         let Position(x, y) = position.position_in_chunk();
