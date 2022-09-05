@@ -27,7 +27,7 @@ impl ChunkBool {
             self.0.get_unchecked_mut(x)
         };
         match value {
-            true =>  *col |= 1 << y,
+            true  => *col |= 1 << y,
             false => *col &= !(1 << y)
         };
     }
