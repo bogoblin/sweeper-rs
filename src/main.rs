@@ -5,8 +5,9 @@ use rand::{Error, Rng, SeedableRng};
 use rand::prelude::IteratorRandom;
 
 fn main() {
-    let world = World::new();
-    let chunk = world.chunks.get(&Position(0, 0)).unwrap();
+    let mut world = World::new();
+    world.fill_adjacent_mines(Position(0, 0));
+    let chunk = world.get_or_generate_chunk(Position(0, 0));
     println!("{}", &chunk);
 }
 
@@ -40,6 +41,15 @@ impl World {
             self.chunks.get(key).expect("Got existing chunk")
         } else {
             self.generate_chunk(position).expect("Generated new chunk")
+        }
+    }
+    fn fill_adjacent_mines(&mut self, position: Position) {
+        let adj = AdjacentMines::for_chunk(position.chunk_position(), self);
+        match self.chunks.get_mut(&position.chunk_position()) {
+            None => {}
+            Some(chunk) => {
+                chunk.adjacent = Some(adj);
+            }
         }
     }
 }
@@ -108,24 +118,29 @@ impl Chunk {
 struct AdjacentMines([[u8; 16]; 16]);
 
 impl AdjacentMines {
-    fn for_chunk(chunk: &Chunk, world: &mut World) -> AdjacentMines {
-        let top_left = world.get_or_generate_chunk(&chunk.position + &Vector(-16, -16))
+    fn for_chunk(position: Position, world: &mut World) -> AdjacentMines {
+        let top_left = world.get_or_generate_chunk(&position + &Vector(-16, -16))
             .mines.get(Position(15, 15));
-        let top_right = world.get_or_generate_chunk(&chunk.position + &Vector(16, -16))
+        let top_right = world.get_or_generate_chunk(&position + &Vector(16, -16))
             .mines.get(Position(0, 15));
-        let bottom_left = world.get_or_generate_chunk(&chunk.position + &Vector(-16, 16))
+        let bottom_left = world.get_or_generate_chunk(&position + &Vector(-16, 16))
             .mines.get(Position(15, 0));
-        let bottom_right = world.get_or_generate_chunk(&chunk.position + &Vector(16, 16))
+        let bottom_right = world.get_or_generate_chunk(&position + &Vector(16, 16))
             .mines.get(Position(0, 0));
 
-        let top = &world.get_or_generate_chunk(&chunk.position + &Vector(0, -16)).mines;
-        let bottom = &world.get_or_generate_chunk(&chunk.position + &Vector(0, 16)).mines;
-        let right = &world.get_or_generate_chunk(&chunk.position + &Vector(16, 0)).mines;
-        let left = &world.get_or_generate_chunk(&chunk.position + &Vector(-16, 0)).mines;
+        let _ = &world.get_or_generate_chunk(&position + &Vector(0, -16));
+        let _ = &world.get_or_generate_chunk(&position + &Vector(0, 16));
+        let _ = &world.get_or_generate_chunk(&position + &Vector(16, 0));
+        let _ = &world.get_or_generate_chunk(&position + &Vector(-16, 0));
+        let _ = &world.get_or_generate_chunk(position.chunk_position());
 
-        let this = &chunk.mines;
+        let top = &world.get_chunk(&position + &Vector(0, -16)).unwrap().mines;
+        let bottom = &world.get_chunk(&position + &Vector(0, 16)).unwrap().mines;
+        let right = &world.get_chunk(&position + &Vector(16, 0)).unwrap().mines;
+        let left = &world.get_chunk(&position + &Vector(-16, 0)).unwrap().mines;
+        let this = &world.get_chunk(position.chunk_position()).unwrap().mines;
 
-        let is_mine = |position| {
+        let is_mine = |position: Position| {
             if position.0 < 0 {
                 if position.1 < 0 {
                     return top_left
@@ -153,11 +168,14 @@ impl AdjacentMines {
 
         let mut adj = AdjacentMines([[0; 16]; 16]);
 
-        for x in 1..16-1 {
-            for y in 1..16-1 {
+        for x in 0..16 {
+            for y in 0..16 {
                 for xo in -1..=1 {
                     for yo in -1..=1 {
-                        adj[x][y] += is_mine(Position(x+xo, y+yo));
+                        adj.0[x as usize][y as usize] += match is_mine(Position(x+xo, y+yo)) {
+                            true => 1,
+                            false => 0
+                        }
                     }
                 }
             }
@@ -204,7 +222,14 @@ impl Display for Chunk {
             for x in 0..16 {
                 match self.mines.get(Position(x, y)) {
                     true  => {output.write_char('*')?}
-                    false => {output.write_char('_')?}
+                    false => {
+                        match &self.adjacent {
+                            None => {output.write_char('_')?}
+                            Some(adj) => {
+                                output.write_str(&*format!("{}", adj.0[x as usize][y as usize]))?
+                            }
+                        }
+                    }
                 }
             }
             output.write_char('\n')?;
