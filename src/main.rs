@@ -40,6 +40,7 @@ impl Position {
 struct Chunk {
     position: Position,
     mines: ChunkBool,
+    adjacent: Option<[[u8; 16]; 16]>
 }
 impl Chunk {
     fn new(position: Position, number_of_mines: u8, seed: u64) -> Chunk {
@@ -52,6 +53,7 @@ impl Chunk {
         Chunk {
             position: position.chunk_position(),
             mines,
+            adjacent: None
         }
     }
 }
