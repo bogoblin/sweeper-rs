@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write};
-use rand::{Error, Fill, Rng, SeedableRng};
+use rand::{Error, Rng, SeedableRng};
 use rand::prelude::IteratorRandom;
 
 fn main() {
@@ -100,11 +100,5 @@ impl Display for Chunk {
             output.write_char('\n')?;
         }
         f.write_str(output.as_str())
-    }
-}
-impl Fill for ChunkBool {
-    fn try_fill<R: Rng + ?Sized>(&mut self, rng: &mut R) -> Result<(), Error> {
-        rng.fill(&mut self.0);
-        Ok(())
     }
 }
