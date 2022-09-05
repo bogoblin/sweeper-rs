@@ -1,16 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write};
-use rand::{Error, Fill, Rng};
+use rand::{Error, Fill, Rng, SeedableRng};
+use rand::prelude::IteratorRandom;
 
 fn main() {
-    let mut mines = ChunkBool([0; 16]);
-    for i in 0..25 {
-        mines.set(Position(i, 2*i+1), true);
-    }
-    let chunk = Chunk{
-        position: Position(0, 0),
-        mines,
-    };
+    let world = World::new();
+    let chunk = world.chunks.get(&Position(0, 0)).unwrap();
     println!("{}", &chunk);
 }
 
@@ -22,7 +17,7 @@ impl World {
         let mut world = World {
             chunks: Default::default()
         };
-        world.add_chunk(Chunk::new(Position(0, 0)));
+        world.add_chunk(Chunk::new(Position(0, 0), 40, 123456));
         world
     }
 
@@ -47,10 +42,16 @@ struct Chunk {
     mines: ChunkBool,
 }
 impl Chunk {
-    fn new(position: Position) -> Chunk {
+    fn new(position: Position, number_of_mines: u8, seed: u64) -> Chunk {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let mine_indices = (0..255).choose_multiple(&mut rng, number_of_mines as usize);
+        let mut mines = ChunkBool::empty();
+        for i in mine_indices {
+            mines.set_index(i, true);
+        }
         Chunk {
             position: position.chunk_position(),
-            mines: ChunkBool::empty(),
+            mines,
         }
     }
 }
@@ -71,6 +72,13 @@ impl ChunkBool {
             true  => *col |= 1 << y,
             false => *col &= !(1 << y)
         };
+    }
+    fn set_index(&mut self, index: u8, value: bool) {
+        let position = Position(
+            (index & 0b1111) as usize,
+            (index >> 4) as usize,
+        );
+        self.set(position, value);
     }
     fn get(&self, position: Position) -> bool {
         // Making sure that x and y are between 0 and 15 so we can get unchecked
