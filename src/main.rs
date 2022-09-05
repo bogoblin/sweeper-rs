@@ -1,16 +1,48 @@
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write};
 use rand::{Error, Fill, Rng};
 
 fn main() {
     let mut mines = ChunkBool([0; 16]);
     for i in 0..25 {
-        mines.set(i, 2*i+1, true);
+        mines.set(Position(i, 2*i+1), true);
     }
-    let chunk = Chunk{mines};
+    let chunk = Chunk{
+        position: Position(0, 0),
+        mines,
+    };
     println!("{}", &chunk);
 }
 
+struct World {
+    chunks: HashMap<Position, Chunk>,
+}
+impl World {
+    fn new() -> World {
+        let mut world = World {
+            chunks: Default::default()
+        };
+        world
+    }
+
+    fn add_chunk(&mut self, chunk: Chunk) {
+        self.chunks.insert(chunk.position.chunk_position(), chunk);
+    }
+}
+
+#[derive(Eq, Hash, PartialEq)]
+struct Position(usize, usize);
+impl Position {
+    fn chunk_position(&self) -> Position {
+        Position(self.0 & !0b1111, self.1 & !0b1111)
+    }
+    fn position_in_chunk(&self) -> Position {
+        Position(self.0 & 0b1111, self.1 & 0b1111)
+    }
+}
+
 struct Chunk {
+    position: Position,
     mines: ChunkBool,
 }
 
@@ -18,24 +50,18 @@ struct Chunk {
 struct ChunkBool([u16; 16]);
 
 impl ChunkBool {
-    fn set(&mut self, x: usize, y: usize, value: bool) {
+    fn set(&mut self, position: Position, value: bool) {
         // Making sure that x and y are between 0 and 15 so we can get unchecked
-        let x = x & 0b1111;
-        let y = y & 0b1111;
-
-        let col = unsafe {
-            self.0.get_unchecked_mut(x)
-        };
+        let Position(x, y) = position.position_in_chunk();
+        let col = unsafe { self.0.get_unchecked_mut(x) };
         match value {
             true  => *col |= 1 << y,
             false => *col &= !(1 << y)
         };
     }
-    fn get(&self, x: usize, y: usize) -> bool {
+    fn get(&self, position: Position) -> bool {
         // Making sure that x and y are between 0 and 15 so we can get unchecked
-        let x = x & 0b1111;
-        let y = y & 0b1111;
-
+        let Position(x, y) = position.position_in_chunk();
         (self.0[x] & (1 << y)) != 0
     }
 }
@@ -45,7 +71,7 @@ impl Display for Chunk {
         let mut output = String::new();
         for y in 0..16 {
             for x in 0..16 {
-                match self.mines.get(x, y) {
+                match self.mines.get(Position(x, y)) {
                     true  => {output.write_char('*')?}
                     false => {output.write_char('_')?}
                 }
