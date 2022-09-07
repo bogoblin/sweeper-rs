@@ -62,33 +62,18 @@ impl Position {
         Position(self.0 & 0b1111, self.1 & 0b1111)
     }
 }
-struct Point(i32, i32);
-impl ops::Add<&Point> for &Position {
+impl ops::Add<(i32, i32)> for &Position {
     type Output = Position;
 
-    fn add(self, rhs: &Point) -> Position {
+    fn add(self, rhs: (i32, i32)) -> Position {
         Position(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
-impl ops::Mul<i32> for &Point {
-    type Output = Point;
-
-    fn mul(self, rhs: i32) -> Point {
-        Point(self.0*rhs, self.1*rhs)
-    }
-}
-impl ops::Mul<&Point> for i32 {
-    type Output = Point;
-
-    fn mul(self, rhs: &Point) -> Point {
-        rhs*self
-    }
-}
-impl ops::Sub<&Point> for &Position {
+impl ops::Sub<(i32, i32)> for &Position {
     type Output = Position;
 
-    fn sub(self, rhs: &Point) -> Position {
-        self + &(-1 * rhs)
+    fn sub(self, rhs: (i32, i32)) -> Position {
+        Position(self.0 - rhs.0, self.1 - rhs.1)
     }
 }
 
@@ -117,25 +102,25 @@ struct AdjacentMines([[u8; 16]; 16]);
 
 impl AdjacentMines {
     fn for_chunk(position: Position, world: &mut World) -> AdjacentMines {
-        let top_left = world.get_or_generate_chunk(&position + &Point(-16, -16))
+        let top_left = world.get_or_generate_chunk(&position + (-16, -16))
             .mines.get(Position(15, 15));
-        let top_right = world.get_or_generate_chunk(&position + &Point(16, -16))
+        let top_right = world.get_or_generate_chunk(&position + (16, -16))
             .mines.get(Position(0, 15));
-        let bottom_left = world.get_or_generate_chunk(&position + &Point(-16, 16))
+        let bottom_left = world.get_or_generate_chunk(&position + (-16, 16))
             .mines.get(Position(15, 0));
-        let bottom_right = world.get_or_generate_chunk(&position + &Point(16, 16))
+        let bottom_right = world.get_or_generate_chunk(&position + (16, 16))
             .mines.get(Position(0, 0));
 
-        let _ = &world.get_or_generate_chunk(&position + &Point(0, -16));
-        let _ = &world.get_or_generate_chunk(&position + &Point(0, 16));
-        let _ = &world.get_or_generate_chunk(&position + &Point(16, 0));
-        let _ = &world.get_or_generate_chunk(&position + &Point(-16, 0));
+        let _ = &world.get_or_generate_chunk(&position + (0, -16));
+        let _ = &world.get_or_generate_chunk(&position + (0, 16));
+        let _ = &world.get_or_generate_chunk(&position + (16, 0));
+        let _ = &world.get_or_generate_chunk(&position + (-16, 0));
         let _ = &world.get_or_generate_chunk(position.chunk_position());
 
-        let top = &world.get_chunk(&position + &Point(0, -16)).unwrap().mines;
-        let bottom = &world.get_chunk(&position + &Point(0, 16)).unwrap().mines;
-        let right = &world.get_chunk(&position + &Point(16, 0)).unwrap().mines;
-        let left = &world.get_chunk(&position + &Point(-16, 0)).unwrap().mines;
+        let top = &world.get_chunk(&position + (0, -16)).unwrap().mines;
+        let bottom = &world.get_chunk(&position + (0, 16)).unwrap().mines;
+        let right = &world.get_chunk(&position + (16, 0)).unwrap().mines;
+        let left = &world.get_chunk(&position + (-16, 0)).unwrap().mines;
         let this = &world.get_chunk(position.chunk_position()).unwrap().mines;
 
         let is_mine = |position: Position| {
