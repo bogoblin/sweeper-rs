@@ -1,3 +1,5 @@
+mod Events;
+
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Write};
 use std::ops;
@@ -26,11 +28,6 @@ impl World {
     fn add_chunk(&mut self, chunk: Chunk) {
         self.chunks.insert(chunk.position.chunk_position(), chunk);
     }
-    fn generate_chunk(&mut self, position: Position) -> Option<&Chunk> {
-        let chunk = Chunk::new(position.chunk_position(), 40, 23098723);
-        self.add_chunk(chunk);
-        self.get_chunk(position)
-    }
     fn get_chunk(&self, position: Position) -> Option<&Chunk> {
         let position = position.chunk_position();
         self.chunks.get(&position)
@@ -40,7 +37,10 @@ impl World {
         return if self.chunks.contains_key(key) {
             self.chunks.get(key).expect("Got existing chunk")
         } else {
-            self.generate_chunk(position).expect("Generated new chunk")
+            let chunk = Chunk::new(position.chunk_position(), 40, 23098723);
+            self.add_chunk(chunk);
+            self.get_chunk(position.chunk_position())
+                .expect("Generated chunk exists")
         }
     }
     fn fill_adjacent_mines(&mut self, position: Position) {
