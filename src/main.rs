@@ -31,15 +31,9 @@ impl World {
         self.chunks.get(&position)
     }
     fn get_or_generate_chunk(&mut self, position: Position) -> &Chunk {
-        let key = &position.chunk_position();
-        return if self.chunks.contains_key(key) {
-            self.chunks.get(key).expect("Got existing chunk")
-        } else {
-            let chunk = Chunk::new(position.chunk_position(), 40, 23098723);
-            self.add_chunk(chunk);
-            self.get_chunk(position.chunk_position())
-                .expect("Generated chunk exists")
-        }
+        self.chunks.entry(position.chunk_position()).or_insert(
+            Chunk::new(position.chunk_position(), 40, 123456)
+        )
     }
     fn fill_adjacent_mines(&mut self, position: Position) {
         let adj = AdjacentMines::for_chunk(position.chunk_position(), self);
