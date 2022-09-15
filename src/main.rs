@@ -101,7 +101,7 @@ impl Chunk {
         self.revealed.get(position)
     }
     fn adjacent_to(&self, position: Position) -> Option<u8> {
-        Some(self.adjacent?.get(position.position_in_chunk()))
+        Some(self.adjacent.as_ref()?.get(position.position_in_chunk()))
     }
 }
 
