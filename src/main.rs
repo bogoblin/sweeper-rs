@@ -101,13 +101,18 @@ impl Chunk {
         self.revealed.get(position)
     }
     fn adjacent_to(&self, position: Position) -> Option<u8> {
-        self.adjacent?.get(position.position_in_chunk())
+        Some(self.adjacent?.get(position.position_in_chunk()))
     }
 }
 
 struct AdjacentMines([[u8; 16]; 16]);
 
 impl AdjacentMines {
+    fn get(&self, position: Position) -> u8 {
+        let position = position.position_in_chunk();
+        (self.0[position.0 as usize][position.1 as usize])
+    }
+
     fn for_chunk(position: Position, world: &mut World) -> AdjacentMines {
         let top_left = world.get_or_generate_chunk(&position + (-16, -16))
             .mines.get(Position(15, 15));
