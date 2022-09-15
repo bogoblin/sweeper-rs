@@ -74,6 +74,7 @@ impl ops::Sub<(i32, i32)> for &Position {
 struct Chunk {
     position: Position,
     mines: ChunkBool,
+    revealed: ChunkBool,
     adjacent: Option<AdjacentMines>,
 }
 impl Chunk {
@@ -87,8 +88,20 @@ impl Chunk {
         Chunk {
             position: position.chunk_position(),
             mines,
+            revealed: ChunkBool::empty(),
             adjacent: None
         }
+    }
+    fn is_mine(&self, position: Position) -> bool {
+        let position = position.position_in_chunk();
+        self.mines.get(position)
+    }
+    fn is_revealed(&self, position: Position) -> bool {
+        let position = position.position_in_chunk();
+        self.revealed.get(position)
+    }
+    fn adjacent_to(&self, position: Position) -> Option<u8> {
+        self.adjacent?.get(position.position_in_chunk())
     }
 }
 
