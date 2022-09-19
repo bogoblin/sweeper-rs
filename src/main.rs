@@ -181,12 +181,51 @@ impl World {
             RevealResult::Nothing => {}
         };
     }
+
+    fn flag(&mut self, position: Position) -> FlagResult {
+        if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+            if !self.flags[chunk_id].get(position) {
+                return FlagResult::Flagged(position);
+            }
+        }
+        FlagResult::Nothing
+    }
+
+    fn unflag(&mut self, position: Position) -> FlagResult {
+        if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+            if self.flags[chunk_id].get(position) {
+                return FlagResult::Unflagged(position);
+            }
+        }
+        FlagResult::Nothing
+    }
+
+    fn apply_flag_result(&mut self, flag_result: FlagResult) {
+        match flag_result {
+            FlagResult::Flagged(position) => {
+                if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+                    self.flags[chunk_id].set(position, true);
+                }
+            }
+            FlagResult::Unflagged(position) => {
+                if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+                    self.flags[chunk_id].set(position, false);
+                }
+            }
+            FlagResult::Nothing => {}
+        }
+    }
 }
 
 enum RevealResult {
     Death(Position),
     Revealed(HashMap<usize, ChunkBool>),
     Nothing,
+}
+enum FlagResult {
+    Flagged(Position),
+    Unflagged(Position),
+    Nothing
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
