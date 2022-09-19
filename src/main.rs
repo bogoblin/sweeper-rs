@@ -35,6 +35,10 @@ impl World {
         world
     }
 
+    fn get_chunk_id(&self, position: Position) -> Option<&usize> {
+        self.chunk_ids.get(&position.chunk_position())
+    }
+
     fn generate_chunk(&mut self, position: Position) -> usize {
         let new_id = self.chunk_ids.len();
         let existing = self.chunk_ids.entry(position.chunk_position());
@@ -162,7 +166,7 @@ impl World {
     fn apply_reveal(&mut self, reveal_result: RevealResult) {
         match reveal_result {
             RevealResult::Death(position) => {
-                match self.chunk_ids.get(&position) {
+                match self.get_chunk_id(position) {
                     None => return,
                     Some(&chunk_id) => {
                         self.revealed[chunk_id].set(position, true);
@@ -183,7 +187,7 @@ impl World {
     }
 
     fn flag(&mut self, position: Position) -> FlagResult {
-        if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+        if let Some(&chunk_id) = self.get_chunk_id(position) {
             if !self.flags[chunk_id].get(position) {
                 return FlagResult::Flagged(position);
             }
@@ -192,7 +196,7 @@ impl World {
     }
 
     fn unflag(&mut self, position: Position) -> FlagResult {
-        if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+        if let Some(&chunk_id) = self.get_chunk_id(position) {
             if self.flags[chunk_id].get(position) {
                 return FlagResult::Unflagged(position);
             }
@@ -203,12 +207,12 @@ impl World {
     fn apply_flag_result(&mut self, flag_result: FlagResult) {
         match flag_result {
             FlagResult::Flagged(position) => {
-                if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+                if let Some(&chunk_id) = self.get_chunk_id(position) {
                     self.flags[chunk_id].set(position, true);
                 }
             }
             FlagResult::Unflagged(position) => {
-                if let Some(&chunk_id) = self.chunk_ids.get(&position) {
+                if let Some(&chunk_id) = self.get_chunk_id(position) {
                     self.flags[chunk_id].set(position, false);
                 }
             }
