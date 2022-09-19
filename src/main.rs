@@ -219,26 +219,3 @@ impl ChunkBool {
         (self.0[x as usize] & (1 << y as usize)) != 0
     }
 }
-
-// impl Display for Chunk {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         let mut output = String::new();
-//         for y in 0..16 {
-//             for x in 0..16 {
-//                 match self.mines.get(Position(x, y)) {
-//                     true  => {output.write_char('*')?}
-//                     false => {
-//                         match &self.adjacent {
-//                             None => {output.write_char('_')?}
-//                             Some(adj) => {
-//                                 output.write_str(&*format!("{}", adj.0[x as usize][y as usize]))?
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//             output.write_char('\n')?;
-//         }
-//         f.write_str(output.as_str())
-//     }
-// }
