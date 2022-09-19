@@ -1,5 +1,5 @@
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops;
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
@@ -7,7 +7,7 @@ use rand::prelude::IteratorRandom;
 fn main() {
     let mut world = World::new();
     let chunk_id = world.generate_chunk(Position(0, 0));
-    world.fill_adjacent_mines(Position(0, 0));
+    world.get_or_fill_adjacent_mines(Position(0, 0));
     println!("{}", world.display_chunk(chunk_id));
 }
 
@@ -73,11 +73,11 @@ impl World {
         ]
     }
 
-    fn fill_adjacent_mines(&mut self, position: Position) {
+    fn get_or_fill_adjacent_mines(&mut self, position: Position) -> &AdjacentMines {
         let surrounding_chunk_ids = self.generate_surrounding_chunks(position);
         let chunk_id = surrounding_chunk_ids[4];
-        let adjacent_mines = AdjacentMines::for_chunk(&self.mines, surrounding_chunk_ids);
-        self.adjacent_mines.insert(chunk_id, Some(adjacent_mines));
+        self.adjacent_mines[chunk_id].get_or_insert(
+            AdjacentMines::for_chunk(&self.mines, surrounding_chunk_ids))
     }
 
     fn display_chunk(&self, chunk_id: usize) -> String {
@@ -101,6 +101,55 @@ impl World {
         }
         output
     }
+
+    fn reveal(&mut self, position: Position) -> RevealResult {
+        let chunk_id = self.generate_chunk(position);
+
+        if self.revealed[chunk_id].get(position) == true {
+            return RevealResult::Nothing
+        }
+        if self.mines[chunk_id].get(position) == true {
+            return RevealResult::Death(position)
+        }
+
+        let mut to_reveal = HashMap::new();
+        let mut reveal_queue = VecDeque::new();
+        reveal_queue.push_back(position);
+
+        let mut current_chunk = position.chunk_position();
+        let mut current_chunk_id = chunk_id;
+        let mut current_chunk_adjacent = self.get_or_fill_adjacent_mines(position);
+        let mut current_chunk_to_reveal = to_reveal.entry(chunk_id).or_insert(ChunkBool::empty());
+        while let Some(position) = reveal_queue.pop_front() {
+            if position.chunk_position() != current_chunk {
+                current_chunk = position.chunk_position();
+                current_chunk_id = self.generate_chunk(position);
+                current_chunk_adjacent = self.get_or_fill_adjacent_mines(position);
+                current_chunk_to_reveal = to_reveal.entry(current_chunk_id).or_insert(ChunkBool::empty());
+            }
+            if current_chunk_to_reveal.get(position) {
+                continue;
+            }
+            current_chunk_to_reveal.set(position, true);
+            if current_chunk_adjacent.get(position) == 0 {
+                for x in -1..=1 {
+                    for y in -1..=1 {
+                        reveal_queue.push_back(&position + (x, y));
+                    }
+                }
+            }
+        }
+
+        let revealed_in_chunk = ChunkBool::with_true(&[position]);
+        to_reveal.insert(chunk_id, revealed_in_chunk);
+        RevealResult::Revealed(to_reveal)
+    }
+}
+
+enum RevealResult {
+    Death(Position),
+    Revealed(HashMap<usize, ChunkBool>),
+    Nothing,
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
@@ -195,6 +244,14 @@ struct ChunkBool([u16; 16]);
 impl ChunkBool {
     fn empty() -> ChunkBool {
         ChunkBool([0; 16])
+    }
+
+    fn with_true(positions: &[Position]) -> ChunkBool {
+        let mut result = ChunkBool::empty();
+        for position in positions {
+            result.set(position.position_in_chunk(), true);
+        }
+        result
     }
 
     fn set(&mut self, position: Position, value: bool) {
