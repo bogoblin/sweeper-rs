@@ -1,52 +1,109 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Write};
 use std::ops;
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 
 fn main() {
     let mut world = World::new();
+    let chunk_id = world.generate_chunk(Position(0, 0));
     world.fill_adjacent_mines(Position(0, 0));
-    let chunk = world.get_or_generate_chunk(Position(0, 0));
-    println!("{}", &chunk);
+    println!("{}", world.display_chunk(chunk_id));
 }
 
 struct World {
-    chunks: HashMap<Position, Chunk>,
+    chunk_ids: HashMap<Position, usize>,
+
+    mines: Vec<ChunkBool>,
+    flags: Vec<ChunkBool>,
+    revealed: Vec<ChunkBool>,
+    adjacent_mines: Vec<Option<AdjacentMines>>,
+
+    rng: rand::rngs::StdRng,
 }
 impl World {
     fn new() -> World {
         let mut world = World {
-            chunks: Default::default()
+            chunk_ids: Default::default(),
+            mines: Default::default(),
+            flags: Default::default(),
+            revealed: Default::default(),
+            adjacent_mines: Default::default(),
+            rng: rand::rngs::StdRng::seed_from_u64(0),
         };
-        world.add_chunk(Chunk::new(Position(0, 0), 40, 123456));
+        world.generate_chunk(Position(0, 0));
         world
     }
 
-    fn add_chunk(&mut self, chunk: Chunk) {
-        self.chunks.insert(chunk.position.chunk_position(), chunk);
-    }
-    fn get_chunk(&self, position: Position) -> Option<&Chunk> {
-        let position = position.chunk_position();
-        self.chunks.get(&position)
-    }
-    fn get_or_generate_chunk(&mut self, position: Position) -> &Chunk {
-        self.chunks.entry(position.chunk_position()).or_insert(
-            Chunk::new(position.chunk_position(), 40, 123456)
-        )
-    }
-    fn fill_adjacent_mines(&mut self, position: Position) {
-        let adj = AdjacentMines::for_chunk(position.chunk_position(), self);
-        match self.chunks.get_mut(&position.chunk_position()) {
-            None => {}
-            Some(chunk) => {
-                chunk.adjacent = Some(adj);
+    fn generate_chunk(&mut self, position: Position) -> usize {
+        let new_id = self.chunk_ids.len();
+        let existing = self.chunk_ids.entry(position.chunk_position());
+        match existing {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                entry.insert(new_id);
+
+                // Generate mines
+                let mut mines = ChunkBool::empty();
+                let number_of_mines = 40;
+                let mine_indices = (0..255).choose_multiple(&mut self.rng, number_of_mines as usize);
+                mine_indices.into_iter().for_each(|i| mines.set_index(i, true));
+                self.mines.push(mines);
+
+                self.flags.push(ChunkBool::empty());
+                self.revealed.push(ChunkBool::empty());
+                self.adjacent_mines.push(None);
+
+                new_id
             }
         }
     }
+
+    fn generate_surrounding_chunks(&mut self, position: Position) -> [usize; 9] {
+        [
+            self.generate_chunk(&position + (-1, -1)),
+            self.generate_chunk(&position + ( 0, -1)),
+            self.generate_chunk(&position + ( 1, -1)),
+            self.generate_chunk(&position + (-1,  0)),
+            self.generate_chunk(&position + ( 0,  0)),
+            self.generate_chunk(&position + ( 1,  0)),
+            self.generate_chunk(&position + (-1,  1)),
+            self.generate_chunk(&position + ( 0,  1)),
+            self.generate_chunk(&position + ( 1,  1)),
+        ]
+    }
+
+    fn fill_adjacent_mines(&mut self, position: Position) {
+        let surrounding_chunk_ids = self.generate_surrounding_chunks(position);
+        let chunk_id = surrounding_chunk_ids[4];
+        let adjacent_mines = AdjacentMines::for_chunk(&self.mines, surrounding_chunk_ids);
+        self.adjacent_mines.insert(chunk_id, Some(adjacent_mines));
+    }
+
+    fn display_chunk(&self, chunk_id: usize) -> String {
+        let mines = &self.mines[chunk_id];
+
+        let empty_adjacent = &AdjacentMines::empty();
+        let adjacent = self.adjacent_mines[chunk_id].as_ref().unwrap_or(empty_adjacent);
+
+        let mut output = String::new();
+        for y in 0..16 {
+            for x in 0..16 {
+                let position = Position(x, y);
+                let mine_string = match (mines.get(position), adjacent.get(position)) {
+                    (true, _) => String::from("*"),
+                    (false, 0) => String::from("_"),
+                    (false, adj) => format!("{}", adj),
+                };
+                output.push_str(&mine_string);
+            }
+            output.push('\n');
+        }
+        output
+    }
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone)]
 struct Position(i32, i32);
 impl Position {
     fn chunk_position(&self) -> Position {
@@ -71,97 +128,50 @@ impl ops::Sub<(i32, i32)> for &Position {
     }
 }
 
-struct Chunk {
-    position: Position,
-    mines: ChunkBool,
-    revealed: ChunkBool,
-    adjacent: Option<AdjacentMines>,
-}
-impl Chunk {
-    fn new(position: Position, number_of_mines: u8, seed: u64) -> Chunk {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        let mine_indices = (0..255).choose_multiple(&mut rng, number_of_mines as usize);
-        let mut mines = ChunkBool::empty();
-        for i in mine_indices {
-            mines.set_index(i, true);
-        }
-        Chunk {
-            position: position.chunk_position(),
-            mines,
-            revealed: ChunkBool::empty(),
-            adjacent: None
-        }
-    }
-    fn is_mine(&self, position: Position) -> bool {
-        let position = position.position_in_chunk();
-        self.mines.get(position)
-    }
-    fn is_revealed(&self, position: Position) -> bool {
-        let position = position.position_in_chunk();
-        self.revealed.get(position)
-    }
-    fn adjacent_to(&self, position: Position) -> Option<u8> {
-        Some(self.adjacent.as_ref()?.get(position.position_in_chunk()))
-    }
-}
-
 struct AdjacentMines([[u8; 16]; 16]);
 
 impl AdjacentMines {
     fn get(&self, position: Position) -> u8 {
         let position = position.position_in_chunk();
-        (self.0[position.0 as usize][position.1 as usize])
+        self.0[position.0 as usize][position.1 as usize]
     }
 
-    fn for_chunk(position: Position, world: &mut World) -> AdjacentMines {
-        let top_left = world.get_or_generate_chunk(&position + (-16, -16))
-            .mines.get(Position(15, 15));
-        let top_right = world.get_or_generate_chunk(&position + (16, -16))
-            .mines.get(Position(0, 15));
-        let bottom_left = world.get_or_generate_chunk(&position + (-16, 16))
-            .mines.get(Position(15, 0));
-        let bottom_right = world.get_or_generate_chunk(&position + (16, 16))
-            .mines.get(Position(0, 0));
+    fn empty() -> AdjacentMines { AdjacentMines([[0; 16]; 16]) }
 
-        let _ = &world.get_or_generate_chunk(&position + (0, -16));
-        let _ = &world.get_or_generate_chunk(&position + (0, 16));
-        let _ = &world.get_or_generate_chunk(&position + (16, 0));
-        let _ = &world.get_or_generate_chunk(&position + (-16, 0));
-        let _ = &world.get_or_generate_chunk(position.chunk_position());
-
-        let top = &world.get_chunk(&position + (0, -16)).unwrap().mines;
-        let bottom = &world.get_chunk(&position + (0, 16)).unwrap().mines;
-        let right = &world.get_chunk(&position + (16, 0)).unwrap().mines;
-        let left = &world.get_chunk(&position + (-16, 0)).unwrap().mines;
-        let this = &world.get_chunk(position.chunk_position()).unwrap().mines;
+    fn for_chunk(mines: &Vec<ChunkBool>, surrounding_chunk_ids: [usize; 9]) -> AdjacentMines {
+        let surrounding_chunks_mines: Vec<&ChunkBool> = surrounding_chunk_ids.into_iter().map(|id| &mines[id]).collect();
 
         let is_mine = |position: Position| {
-            if position.0 < 0 {
-                if position.1 < 0 {
-                    return top_left
-                } else if position.1 > 15 {
-                    return bottom_left
+            let (x, y) = (position.0, position.1);
+            // 0 1 2
+            // 3 4 5
+            // 6 7 8
+            if x < 0 {
+                if y < 0 {
+                    return surrounding_chunks_mines[0].get(position);
+                } else if y > 15 {
+                    return surrounding_chunks_mines[6].get(position);
                 }
-                return left.get(position);
+                return surrounding_chunks_mines[3].get(position);
             }
-            else if position.0 > 15 {
-                if position.1 < 0 {
-                    return top_right
-                } else if position.1 > 15 {
-                    return bottom_right
+            else if x > 15 {
+                if y < 0 {
+                    return surrounding_chunks_mines[2].get(position);
+                } else if y > 15 {
+                    return surrounding_chunks_mines[8].get(position);
                 }
-                return right.get(position);
+                return surrounding_chunks_mines[5].get(position);
             }
-            else if position.1 < 0 {
-                return top.get(position);
+            else if y < 0 {
+                return surrounding_chunks_mines[1].get(position);
             }
-            else if position.1 > 15 {
-                return bottom.get(position);
+            else if y > 15 {
+                return surrounding_chunks_mines[7].get(position);
             }
-            return this.get(position);
+            return surrounding_chunks_mines[4].get(position);
         };
 
-        let mut adj = AdjacentMines([[0; 16]; 16]);
+        let mut adj = AdjacentMines::empty();
 
         for x in 0..16 {
             for y in 0..16 {
@@ -210,25 +220,25 @@ impl ChunkBool {
     }
 }
 
-impl Display for Chunk {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut output = String::new();
-        for y in 0..16 {
-            for x in 0..16 {
-                match self.mines.get(Position(x, y)) {
-                    true  => {output.write_char('*')?}
-                    false => {
-                        match &self.adjacent {
-                            None => {output.write_char('_')?}
-                            Some(adj) => {
-                                output.write_str(&*format!("{}", adj.0[x as usize][y as usize]))?
-                            }
-                        }
-                    }
-                }
-            }
-            output.write_char('\n')?;
-        }
-        f.write_str(output.as_str())
-    }
-}
+// impl Display for Chunk {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         let mut output = String::new();
+//         for y in 0..16 {
+//             for x in 0..16 {
+//                 match self.mines.get(Position(x, y)) {
+//                     true  => {output.write_char('*')?}
+//                     false => {
+//                         match &self.adjacent {
+//                             None => {output.write_char('_')?}
+//                             Some(adj) => {
+//                                 output.write_str(&*format!("{}", adj.0[x as usize][y as usize]))?
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//             output.write_char('\n')?;
+//         }
+//         f.write_str(output.as_str())
+//     }
+// }
