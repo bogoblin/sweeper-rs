@@ -1,5 +1,5 @@
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap};
 use std::ops;
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
@@ -61,15 +61,15 @@ impl World {
 
     fn generate_surrounding_chunks(&mut self, position: Position) -> [usize; 9] {
         [
-            self.generate_chunk(&position + (-1, -1)),
-            self.generate_chunk(&position + ( 0, -1)),
-            self.generate_chunk(&position + ( 1, -1)),
-            self.generate_chunk(&position + (-1,  0)),
-            self.generate_chunk(&position + ( 0,  0)),
-            self.generate_chunk(&position + ( 1,  0)),
-            self.generate_chunk(&position + (-1,  1)),
-            self.generate_chunk(&position + ( 0,  1)),
-            self.generate_chunk(&position + ( 1,  1)),
+            self.generate_chunk(&position + (-16, -16)),
+            self.generate_chunk(&position + (  0, -16)),
+            self.generate_chunk(&position + ( 16, -16)),
+            self.generate_chunk(&position + (-16,   0)),
+            self.generate_chunk(&position + (  0,   0)),
+            self.generate_chunk(&position + ( 16,   0)),
+            self.generate_chunk(&position + (-16,  16)),
+            self.generate_chunk(&position + (  0,  16)),
+            self.generate_chunk(&position + ( 16,  16)),
         ]
     }
 
@@ -113,14 +113,14 @@ impl World {
         }
 
         let mut to_reveal = HashMap::new();
-        let mut reveal_queue = VecDeque::new();
-        reveal_queue.push_back(position);
+        let mut reveal_stack = Vec::new();
+        reveal_stack.push(position);
 
         let mut current_chunk = position.chunk_position();
         let mut current_chunk_id = chunk_id;
         let mut current_chunk_adjacent = self.get_or_fill_adjacent_mines(position);
-        let mut current_chunk_to_reveal = to_reveal.entry(chunk_id).or_insert(ChunkBool::empty());
-        while let Some(position) = reveal_queue.pop_front() {
+        let mut current_chunk_to_reveal = to_reveal.entry(current_chunk_id).or_insert(ChunkBool::empty());
+        while let Some(position) = reveal_stack.pop() {
             if position.chunk_position() != current_chunk {
                 current_chunk = position.chunk_position();
                 current_chunk_id = self.generate_chunk(position);
@@ -132,9 +132,23 @@ impl World {
             }
             current_chunk_to_reveal.set(position, true);
             if current_chunk_adjacent.get(position) == 0 {
+                // First push positions in other chunks:
                 for x in -1..=1 {
                     for y in -1..=1 {
-                        reveal_queue.push_back(&position + (x, y));
+                        let pos = &position + (x, y);
+                        if pos.chunk_position() != current_chunk {
+                            reveal_stack.push(pos);
+                        }
+                    }
+                }
+                // Then push positions in this chunk:
+                for x in -1..=1 {
+                    for y in -1..=1 {
+                        let pos = &position + (x, y);
+                        if pos.chunk_position() == current_chunk
+                            && !current_chunk_to_reveal.get(pos) {
+                            reveal_stack.push(pos);
+                        }
                     }
                 }
             }
@@ -143,6 +157,29 @@ impl World {
         let revealed_in_chunk = ChunkBool::with_true(&[position]);
         to_reveal.insert(chunk_id, revealed_in_chunk);
         RevealResult::Revealed(to_reveal)
+    }
+
+    fn apply_reveal(&mut self, reveal_result: RevealResult) {
+        match reveal_result {
+            RevealResult::Death(position) => {
+                match self.chunk_ids.get(&position) {
+                    None => return,
+                    Some(&chunk_id) => {
+                        self.revealed[chunk_id].set(position, true);
+                    }
+                }
+            }
+            RevealResult::Revealed(to_reveal) => {
+                for (chunk_id, mut chunk_reveal) in to_reveal.into_iter() {
+                    let already_revealed = &self.revealed[chunk_id];
+                    for i in 0..16 {
+                        chunk_reveal.0[i] |= already_revealed.0[i];
+                    }
+                    self.revealed[chunk_id] = chunk_reveal;
+                }
+            }
+            RevealResult::Nothing => {}
+        };
     }
 }
 
