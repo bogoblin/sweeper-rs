@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Onlinesweeper</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
+    <script src="MineSocket.js"></script>
+    <script src="Chunk.js"></script>
+    <script src="ChunkStore.js"></script>
+    <script src="ClientPlayers.js"></script>
+    <script src="Player.js"></script>
+    <script src="Tile.js"></script>
+    <script src="TileGraphics.js"></script>
+    <script src="TileMap.js"></script>
+    <script src="TileView.js"></script>
+    <script src="Vector2.js"></script>
+    <script src="canvasUI/PlayerInfo.js"></script>
+</head>
+<body>
+<canvas width="800" height="600" id="gameCanvas"></canvas>
+<script>
+    const mineSocket = new MineSocket("https://localhost:4020");
+    mineSocket.tileView.setCanvas(document.getElementById("gameCanvas"));
+</script>
+</body>
+</html>
