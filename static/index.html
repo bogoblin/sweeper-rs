@@ -19,7 +19,7 @@
 <body>
 <canvas width="800" height="600" id="gameCanvas"></canvas>
 <script>
-    const mineSocket = new MineSocket("https://localhost:4020");
+    const mineSocket = new MineSocket("/");
     mineSocket.tileView.setCanvas(document.getElementById("gameCanvas"));
 </script>
 </body>

@@ -193,6 +193,9 @@ name = "bytes"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "514de17de45fdb8dc022b1a7975556c53c86f9f0aa5f534b98977b171857c2c9"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cc"
@@ -283,6 +286,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b45de904aa0b010bce2ab45264d0631681847fa7b6f2eaa7dab7619943bc4f59"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "engineioxide"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc76e79b0c318bbff227b003843c56d5fc50b43276441d162124166f4cbacc80"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "futures-core",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "pin-project-lite",
+ "rand",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "tower",
 ]
 
 [[package]]
@@ -1149,6 +1178,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "socketioxide"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "178953184593e92c3f58d0d3eda74865c520b6fc05f80dc6c99bb235e39f400a"
+dependencies = [
+ "bytes",
+ "engineioxide",
+ "futures-core",
+ "futures-util",
+ "http",
+ "http-body",
+ "hyper",
+ "itoa",
+ "pin-project-lite",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "sweeper-rs"
 version = "0.1.0"
 dependencies = [
@@ -1158,6 +1209,7 @@ dependencies = [
  "rand",
  "rust_socketio",
  "serde_json",
+ "socketioxide",
  "tokio",
  "tower-http",
 ]
