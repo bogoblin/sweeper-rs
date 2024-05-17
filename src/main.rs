@@ -84,10 +84,6 @@ async fn main() {
                 RevealResult::Nothing => {}
             }
             world.apply_reveal(result);
-
-            socket_ref.emit("hello", json!({"x": 1, "y": 2})).ok();
-            let result = world.reveal(received);
-            world.apply_reveal(result);
         }
     });
 

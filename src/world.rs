@@ -106,10 +106,10 @@ impl World {
     pub(crate) fn reveal(&mut self, position: Position) -> RevealResult {
         let chunk_id = self.generate_chunk(position);
 
-        if self.revealed[chunk_id].get(position) == true {
+        if self.revealed[chunk_id].get(position) {
             return RevealResult::Nothing
         }
-        if self.mines[chunk_id].get(position) == true {
+        if self.mines[chunk_id].get(position) {
             return RevealResult::Death(position)
         }
 
