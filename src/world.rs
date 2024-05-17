@@ -4,7 +4,7 @@ use std::ops;
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 
-struct World {
+pub struct World {
     chunk_ids: HashMap<Position, usize>,
 
     mines: Vec<ChunkBool>,
@@ -15,7 +15,7 @@ struct World {
     rng: rand::rngs::StdRng,
 }
 impl World {
-    fn new() -> World {
+    pub(crate) fn new() -> World {
         let mut world = World {
             chunk_ids: Default::default(),
             mines: Default::default(),
@@ -28,11 +28,11 @@ impl World {
         world
     }
 
-    fn get_chunk_id(&self, position: Position) -> Option<&usize> {
+    pub fn get_chunk_id(&self, position: Position) -> Option<&usize> {
         self.chunk_ids.get(&position.chunk_position())
     }
 
-    fn generate_chunk(&mut self, position: Position) -> usize {
+    pub fn generate_chunk(&mut self, position: Position) -> usize {
         let new_id = self.chunk_ids.len();
         let existing = self.chunk_ids.entry(position.chunk_position());
         match existing {
@@ -56,7 +56,7 @@ impl World {
         }
     }
 
-    fn generate_surrounding_chunks(&mut self, position: Position) -> [usize; 9] {
+    pub fn generate_surrounding_chunks(&mut self, position: Position) -> [usize; 9] {
         [
             self.generate_chunk(&position + (-16, -16)),
             self.generate_chunk(&position + (  0, -16)),
@@ -70,14 +70,14 @@ impl World {
         ]
     }
 
-    fn get_or_fill_adjacent_mines(&mut self, position: Position) -> &AdjacentMines {
+    pub fn get_or_fill_adjacent_mines(&mut self, position: Position) -> &AdjacentMines {
         let surrounding_chunk_ids = self.generate_surrounding_chunks(position);
         let chunk_id = surrounding_chunk_ids[4];
         self.adjacent_mines[chunk_id].get_or_insert(
             AdjacentMines::for_chunk(&self.mines, surrounding_chunk_ids))
     }
 
-    fn display_chunk(&self, chunk_id: usize) -> String {
+    pub fn display_chunk(&self, chunk_id: usize) -> String {
         let mines = &self.mines[chunk_id];
 
         let empty_adjacent = &AdjacentMines::empty();
@@ -99,7 +99,7 @@ impl World {
         output
     }
 
-    fn reveal(&mut self, position: Position) -> RevealResult {
+    pub(crate) fn reveal(&mut self, position: Position) -> RevealResult {
         let chunk_id = self.generate_chunk(position);
 
         if self.revealed[chunk_id].get(position) == true {
@@ -156,7 +156,7 @@ impl World {
         RevealResult::Revealed(to_reveal)
     }
 
-    fn apply_reveal(&mut self, reveal_result: RevealResult) {
+    pub fn apply_reveal(&mut self, reveal_result: RevealResult) {
         match reveal_result {
             RevealResult::Death(position) => {
                 match self.get_chunk_id(position) {
@@ -179,7 +179,7 @@ impl World {
         };
     }
 
-    fn flag(&mut self, position: Position) -> FlagResult {
+    pub fn flag(&mut self, position: Position) -> FlagResult {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if !self.flags[chunk_id].get(position) {
                 return FlagResult::Flagged(position);
@@ -188,7 +188,7 @@ impl World {
         FlagResult::Nothing
     }
 
-    fn unflag(&mut self, position: Position) -> FlagResult {
+    pub fn unflag(&mut self, position: Position) -> FlagResult {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if self.flags[chunk_id].get(position) {
                 return FlagResult::Unflagged(position);
@@ -197,7 +197,7 @@ impl World {
         FlagResult::Nothing
     }
 
-    fn apply_flag_result(&mut self, flag_result: FlagResult) {
+    pub fn apply_flag_result(&mut self, flag_result: FlagResult) {
         match flag_result {
             FlagResult::Flagged(position) => {
                 if let Some(&chunk_id) = self.get_chunk_id(position) {
@@ -214,19 +214,19 @@ impl World {
     }
 }
 
-enum RevealResult {
+pub enum RevealResult {
     Death(Position),
     Revealed(HashMap<usize, ChunkBool>),
     Nothing,
 }
-enum FlagResult {
+pub enum FlagResult {
     Flagged(Position),
     Unflagged(Position),
     Nothing
 }
 
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
-struct Position(i32, i32);
+pub struct Position(pub i32, pub i32);
 impl Position {
     fn chunk_position(&self) -> Position {
         Position(self.0 & !0b1111, self.1 & !0b1111)
