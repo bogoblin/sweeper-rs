@@ -63,13 +63,13 @@ impl World {
     pub fn generate_surrounding_chunks(&mut self, position: Position) -> [usize; 9] {
         [
             self.generate_chunk(&position + (-16, -16)),
-            self.generate_chunk(&position + (  0, -16)),
-            self.generate_chunk(&position + ( 16, -16)),
             self.generate_chunk(&position + (-16,   0)),
-            self.generate_chunk(&position + (  0,   0)),
-            self.generate_chunk(&position + ( 16,   0)),
             self.generate_chunk(&position + (-16,  16)),
+            self.generate_chunk(&position + (  0, -16)),
+            self.generate_chunk(&position + (  0,   0)),
             self.generate_chunk(&position + (  0,  16)),
+            self.generate_chunk(&position + ( 16, -16)),
+            self.generate_chunk(&position + ( 16,   0)),
             self.generate_chunk(&position + ( 16,  16)),
         ]
     }
@@ -233,7 +233,7 @@ pub enum FlagResult {
 pub struct Position(pub i32, pub i32);
 impl Position {
     fn chunk_position(&self) -> Position {
-        Position(self.0 & !0b1111, self.1 & !0b1111)
+        self - (self.position_in_chunk().0, self.position_in_chunk().1)
     }
     fn position_in_chunk(&self) -> Position {
         Position(self.0 & 0b1111, self.1 & 0b1111)
@@ -264,37 +264,37 @@ impl AdjacentMines {
 
     fn empty() -> AdjacentMines { AdjacentMines([[0; 16]; 16]) }
 
-    fn for_chunk(mines: &Vec<ChunkBool>, surrounding_chunk_ids: [usize; 9]) -> AdjacentMines {
-        let surrounding_chunks_mines: Vec<&ChunkBool> = surrounding_chunk_ids.into_iter().map(|id| &mines[id]).collect();
+    fn for_chunk(mines: &[ChunkBool], surrounding_chunk_ids: [usize; 9]) -> AdjacentMines {
+        let surrounding_chunks_mines: [&ChunkBool; 9] = surrounding_chunk_ids.map(|id| &mines[id]);
 
         let is_mine = |position: Position| {
             let (x, y) = (position.0, position.1);
-            // 0 1 2
-            // 3 4 5
-            // 6 7 8
+            // 0 3 6
+            // 1 4 7
+            // 2 5 8
             if x < 0 {
                 if y < 0 {
                     return surrounding_chunks_mines[0].get(position);
                 } else if y > 15 {
-                    return surrounding_chunks_mines[6].get(position);
+                    return surrounding_chunks_mines[2].get(position);
                 }
-                return surrounding_chunks_mines[3].get(position);
+                return surrounding_chunks_mines[1].get(position);
             }
             else if x > 15 {
                 if y < 0 {
-                    return surrounding_chunks_mines[2].get(position);
+                    return surrounding_chunks_mines[6].get(position);
                 } else if y > 15 {
                     return surrounding_chunks_mines[8].get(position);
                 }
-                return surrounding_chunks_mines[5].get(position);
-            }
-            else if y < 0 {
-                return surrounding_chunks_mines[1].get(position);
-            }
-            else if y > 15 {
                 return surrounding_chunks_mines[7].get(position);
             }
-            return surrounding_chunks_mines[4].get(position);
+            else if y < 0 {
+                return surrounding_chunks_mines[3].get(position);
+            }
+            else if y > 15 {
+                return surrounding_chunks_mines[5].get(position);
+            }
+            surrounding_chunks_mines[4].get(position)
         };
 
         let mut adj = AdjacentMines::empty();
@@ -319,7 +319,7 @@ impl AdjacentMines {
 pub struct ChunkBool([u16; 16]);
 
 impl ChunkBool {
-    fn empty() -> ChunkBool {
+    pub(crate) fn empty() -> ChunkBool {
         ChunkBool([0; 16])
     }
 

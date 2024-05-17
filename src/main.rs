@@ -11,7 +11,7 @@ use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use crate::world::{Position, RevealResult, World};
+use crate::world::{ChunkBool, Position, RevealResult, World};
 
 mod world;
 
@@ -54,15 +54,20 @@ async fn main() {
                         if revealed {result += 1<<6}
                         result
                     };
+                    let empty_chunk_bool = ChunkBool::empty();
                     for &chunk_id in chunks.keys() {
+                        let newly_revealed = match chunks.get(&chunk_id) {
+                            None => &empty_chunk_bool,
+                            Some(r) => r,
+                        };
                         if let Some(coords) = world.positions.get(chunk_id) {
                             let mines = world.mines.get(chunk_id).unwrap();
                             let flags = world.flags.get(chunk_id).unwrap();
                             let revealed = world.revealed.get(chunk_id).unwrap();
                             let adjacent = world.adjacent_mines.get(chunk_id).unwrap().as_ref().unwrap();
                             let mut tiles = Vec::new();
-                            for x in 0..16 {
-                                for y in 0..16 {
+                            for y in 0..16 {
+                                for x in 0..16 {
                                     tiles.push(tile_to_u8(
                                         mines.get(Position(x, y)),
                                         flags.get(Position(x, y)),
