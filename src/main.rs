@@ -1,16 +1,17 @@
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::mpsc;
+use std::thread;
 
 use axum::Router;
 use futures_util::FutureExt;
-use serde_json::Value;
+use serde_json::{json, Value};
 use socketioxide::extract::{Bin, Data, SocketRef};
 use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use crate::world::{Position, World};
+use crate::world::{Position, RevealResult, World};
 
 mod world;
 
@@ -30,7 +31,7 @@ async fn main() {
                                 let x = x.as_f64().unwrap().floor() as i32;
                                 let y = y.as_f64().unwrap().floor() as i32;
                                 let position = Position(x, y);
-                                tx.send(position).unwrap();
+                                tx.send((position, socket_ref)).unwrap();
                             }
                         }
                     }
@@ -38,6 +39,56 @@ async fn main() {
                 _ => {}
             }
         })
+    });
+
+    let handle = thread::spawn(move || {
+        for (received, socket_ref) in rx {
+            let result = world.reveal(received);
+            match &result {
+                RevealResult::Death(_) => {}
+                RevealResult::Revealed(chunks) => {
+                    let tile_to_u8 = |mine: bool, flag: bool, revealed: bool, adjacent: u8| -> u8 {
+                        let mut result = adjacent;
+                        if mine {result += 1<<4}
+                        if flag {result += 1<<5}
+                        if revealed {result += 1<<6}
+                        result
+                    };
+                    for &chunk_id in chunks.keys() {
+                        if let Some(coords) = world.positions.get(chunk_id) {
+                            let mines = world.mines.get(chunk_id).unwrap();
+                            let flags = world.flags.get(chunk_id).unwrap();
+                            let revealed = world.revealed.get(chunk_id).unwrap();
+                            let adjacent = world.adjacent_mines.get(chunk_id).unwrap().as_ref().unwrap();
+                            let mut tiles = Vec::new();
+                            for x in 0..16 {
+                                for y in 0..16 {
+                                    tiles.push(tile_to_u8(
+                                        mines.get(Position(x, y)),
+                                        flags.get(Position(x, y)),
+                                        true,
+                                        adjacent.get(Position(x, y)),
+                                    ))
+                                }
+                            }
+                            match socket_ref.emit("chunk", json!({
+                                "coords": [coords.0, coords.1],
+                                "tiles": tiles,
+                            })) {
+                                Ok(_) => { println!("sent") }
+                                Err(err) => { eprintln!("{}", err) }
+                            }
+                        }
+                    }
+                }
+                RevealResult::Nothing => {}
+            }
+            world.apply_reveal(result);
+
+            socket_ref.emit("hello", json!({"x": 1, "y": 2})).ok();
+            let result = world.reveal(received);
+            world.apply_reveal(result);
+        }
     });
 
     let router: Router<> = Router::new()
@@ -48,8 +99,4 @@ async fn main() {
 
     axum::serve(tcp, router).await.unwrap();
 
-    for received in rx {
-        let result = world.reveal(received);
-        world.apply_reveal(result);
-    }
 }

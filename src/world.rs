@@ -5,19 +5,22 @@ use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 
 pub struct World {
-    chunk_ids: HashMap<Position, usize>,
+    pub chunk_ids: HashMap<Position, usize>,
 
-    mines: Vec<ChunkBool>,
-    flags: Vec<ChunkBool>,
-    revealed: Vec<ChunkBool>,
-    adjacent_mines: Vec<Option<AdjacentMines>>,
+    pub positions: Vec<Position>,
+    pub mines: Vec<ChunkBool>,
+    pub flags: Vec<ChunkBool>,
+    pub revealed: Vec<ChunkBool>,
+    pub adjacent_mines: Vec<Option<AdjacentMines>>,
 
-    rng: rand::rngs::StdRng,
+    pub rng: rand::rngs::StdRng,
 }
+
 impl World {
     pub(crate) fn new() -> World {
         let mut world = World {
             chunk_ids: Default::default(),
+            positions: Default::default(),
             mines: Default::default(),
             flags: Default::default(),
             revealed: Default::default(),
@@ -39,6 +42,7 @@ impl World {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 entry.insert(new_id);
+                self.positions.push(position.chunk_position());
 
                 // Generate mines
                 let mut mines = ChunkBool::empty();
@@ -250,10 +254,10 @@ impl ops::Sub<(i32, i32)> for &Position {
     }
 }
 
-struct AdjacentMines([[u8; 16]; 16]);
+pub struct AdjacentMines([[u8; 16]; 16]);
 
 impl AdjacentMines {
-    fn get(&self, position: Position) -> u8 {
+    pub(crate) fn get(&self, position: Position) -> u8 {
         let position = position.position_in_chunk();
         self.0[position.0 as usize][position.1 as usize]
     }
@@ -312,7 +316,7 @@ impl AdjacentMines {
 }
 
 // A boolean value for each tile in a 16x16 chunk
-struct ChunkBool([u16; 16]);
+pub struct ChunkBool([u16; 16]);
 
 impl ChunkBool {
     fn empty() -> ChunkBool {
@@ -343,7 +347,7 @@ impl ChunkBool {
         );
         self.set(position, value);
     }
-    fn get(&self, position: Position) -> bool {
+    pub(crate) fn get(&self, position: Position) -> bool {
         // Making sure that x and y are between 0 and 15 so we can get unchecked
         let Position(x, y) = position.position_in_chunk();
         (self.0[x as usize] & (1 << y as usize)) != 0
