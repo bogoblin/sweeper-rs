@@ -114,8 +114,7 @@ impl World {
         }
 
         let mut to_reveal = HashMap::new();
-        let mut reveal_stack = Vec::new();
-        reveal_stack.push(position);
+        let mut reveal_stack = vec![position];
 
         let mut current_chunk = position.chunk_position();
         let mut current_chunk_id = chunk_id;
@@ -155,8 +154,6 @@ impl World {
             }
         }
 
-        let revealed_in_chunk = ChunkBool::with_true(&[position]);
-        to_reveal.insert(chunk_id, revealed_in_chunk);
         RevealResult::Revealed(to_reveal)
     }
 

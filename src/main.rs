@@ -71,7 +71,7 @@ async fn main() {
                                     tiles.push(tile_to_u8(
                                         mines.get(Position(x, y)),
                                         flags.get(Position(x, y)),
-                                        true,
+                                        revealed.get(Position(x, y)) || newly_revealed.get(Position(x, y)),
                                         adjacent.get(Position(x, y)),
                                     ))
                                 }
