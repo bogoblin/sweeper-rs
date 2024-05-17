@@ -1208,6 +1208,7 @@ dependencies = [
  "futures-util",
  "rand",
  "rust_socketio",
+ "serde",
  "serde_json",
  "socketioxide",
  "tokio",

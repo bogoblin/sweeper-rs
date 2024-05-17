@@ -11,7 +11,7 @@ use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use crate::world::{ChunkBool, Position, RevealResult, World};
+use crate::world::{Position, RevealResult, World};
 
 mod world;
 
@@ -47,35 +47,15 @@ async fn main() {
             match &result {
                 RevealResult::Death(_) => {}
                 RevealResult::Revealed(chunks) => {
-                    let tile_to_u8 = |mine: bool, flag: bool, revealed: bool, adjacent: u8| -> u8 {
-                        let mut result = adjacent;
-                        if mine {result += 1<<4}
-                        if flag {result += 1<<5}
-                        if revealed {result += 1<<6}
-                        result
-                    };
-                    let empty_chunk_bool = ChunkBool::empty();
-                    for &chunk_id in chunks.keys() {
-                        let newly_revealed = match chunks.get(&chunk_id) {
-                            None => &empty_chunk_bool,
-                            Some(r) => r,
-                        };
-                        if let Some(coords) = world.positions.get(chunk_id) {
-                            let mines = world.mines.get(chunk_id).unwrap();
-                            let flags = world.flags.get(chunk_id).unwrap();
-                            let revealed = world.revealed.get(chunk_id).unwrap();
-                            let adjacent = world.adjacent_mines.get(chunk_id).unwrap().as_ref().unwrap();
+                    for &chunk_id in chunks {
+                        if let Some(chunk) = world.chunks.get(chunk_id) {
                             let mut tiles = Vec::new();
                             for y in 0..16 {
                                 for x in 0..16 {
-                                    tiles.push(tile_to_u8(
-                                        mines.get(Position(x, y)),
-                                        flags.get(Position(x, y)),
-                                        revealed.get(Position(x, y)) || newly_revealed.get(Position(x, y)),
-                                        adjacent.get(Position(x, y)),
-                                    ))
+                                    tiles.push(chunk.get_tile(Position(x, y)))
                                 }
                             }
+                            let coords = chunk.position;
                             match socket_ref.emit("chunk", json!({
                                 "coords": [coords.0, coords.1],
                                 "tiles": tiles,
@@ -88,7 +68,6 @@ async fn main() {
                 }
                 RevealResult::Nothing => {}
             }
-            world.apply_reveal(result);
         }
     });
 

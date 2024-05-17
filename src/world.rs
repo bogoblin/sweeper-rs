@@ -1,19 +1,19 @@
+use std::cmp::PartialEq;
+use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap};
 use std::ops;
-use rand::{SeedableRng};
+use std::ops::AddAssign;
+
 use rand::prelude::IteratorRandom;
+use rand::rngs::StdRng;
+use rand::{RngCore, SeedableRng};
+use serde::Serialize;
 
 pub struct World {
     pub chunk_ids: HashMap<Position, usize>,
-
     pub positions: Vec<Position>,
-    pub mines: Vec<ChunkBool>,
-    pub flags: Vec<ChunkBool>,
-    pub revealed: Vec<ChunkBool>,
-    pub adjacent_mines: Vec<Option<AdjacentMines>>,
-
-    pub rng: rand::rngs::StdRng,
+    pub chunks: Vec<Chunk>,
+    pub rng: StdRng,
 }
 
 impl World {
@@ -21,11 +21,8 @@ impl World {
         let mut world = World {
             chunk_ids: Default::default(),
             positions: Default::default(),
-            mines: Default::default(),
-            flags: Default::default(),
-            revealed: Default::default(),
-            adjacent_mines: Default::default(),
-            rng: rand::rngs::StdRng::seed_from_u64(0),
+            chunks: Default::default(),
+            rng: StdRng::seed_from_u64(0),
         };
         world.generate_chunk(Position(0, 0));
         world
@@ -41,20 +38,10 @@ impl World {
         match existing {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
+                let new_chunk = Chunk::generate(position.chunk_position(), self.rng.next_u64(), 40);
                 entry.insert(new_id);
                 self.positions.push(position.chunk_position());
-
-                // Generate mines
-                let mut mines = ChunkBool::empty();
-                let number_of_mines = 40;
-                let mine_indices = (0..255).choose_multiple(&mut self.rng, number_of_mines as usize);
-                mine_indices.into_iter().for_each(|i| mines.set_index(i, true));
-                self.mines.push(mines);
-
-                self.flags.push(ChunkBool::empty());
-                self.revealed.push(ChunkBool::empty());
-                self.adjacent_mines.push(None);
-
+                self.chunks.push(new_chunk);
                 new_id
             }
         }
@@ -74,116 +61,70 @@ impl World {
         ]
     }
 
-    pub fn get_or_fill_adjacent_mines(&mut self, position: Position) -> &AdjacentMines {
+    pub fn fill_adjacent_mines(&mut self, position: Position) {
         let surrounding_chunk_ids = self.generate_surrounding_chunks(position);
         let chunk_id = surrounding_chunk_ids[4];
-        self.adjacent_mines[chunk_id].get_or_insert(
-            AdjacentMines::for_chunk(&self.mines, surrounding_chunk_ids))
-    }
-
-    pub fn display_chunk(&self, chunk_id: usize) -> String {
-        let mines = &self.mines[chunk_id];
-
-        let empty_adjacent = &AdjacentMines::empty();
-        let adjacent = self.adjacent_mines[chunk_id].as_ref().unwrap_or(empty_adjacent);
-
-        let mut output = String::new();
-        for y in 0..16 {
-            for x in 0..16 {
-                let position = Position(x, y);
-                let mine_string = match (mines.get(position), adjacent.get(position)) {
-                    (true, _) => String::from("*"),
-                    (false, 0) => String::from("_"),
-                    (false, adj) => format!("{}", adj),
-                };
-                output.push_str(&mine_string);
+        if let Some(chunk) = self.chunks.get(chunk_id) {
+            if chunk.adjacent_mines_filled {
+                return;
             }
-            output.push('\n');
         }
-        output
+        unsafe {
+            let surrounding_chunks = surrounding_chunk_ids.map(|chunk_id| {
+                self.chunks.get_unchecked(chunk_id)
+            });
+            self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
+        }
     }
 
     pub(crate) fn reveal(&mut self, position: Position) -> RevealResult {
         let chunk_id = self.generate_chunk(position);
+        let chunk = match self.chunks.get(chunk_id) {
+            None => return RevealResult::Nothing,
+            Some(c) => c,
+        };
+        let tile = chunk.get_tile(position);
 
-        if self.revealed[chunk_id].get(position) {
+        if tile.is_revealed() {
             return RevealResult::Nothing
         }
-        if self.mines[chunk_id].get(position) {
+        if tile.is_mine() {
             return RevealResult::Death(position)
         }
 
-        let mut to_reveal = HashMap::new();
         let mut reveal_stack = vec![position];
+        let mut updated_chunk_ids = HashSet::new();
 
-        let mut current_chunk = position.chunk_position();
-        let mut current_chunk_id = chunk_id;
-        let mut current_chunk_adjacent = self.get_or_fill_adjacent_mines(position);
-        let mut current_chunk_to_reveal = to_reveal.entry(current_chunk_id).or_insert(ChunkBool::empty());
         while let Some(position) = reveal_stack.pop() {
-            if position.chunk_position() != current_chunk {
-                current_chunk = position.chunk_position();
-                current_chunk_id = self.generate_chunk(position);
-                current_chunk_adjacent = self.get_or_fill_adjacent_mines(position);
-                current_chunk_to_reveal = to_reveal.entry(current_chunk_id).or_insert(ChunkBool::empty());
-            }
-            if current_chunk_to_reveal.get(position) {
-                continue;
-            }
-            current_chunk_to_reveal.set(position, true);
-            if current_chunk_adjacent.get(position) == 0 {
-                // First push positions in other chunks:
-                for x in -1..=1 {
-                    for y in -1..=1 {
-                        let pos = &position + (x, y);
-                        if pos.chunk_position() != current_chunk {
-                            reveal_stack.push(pos);
+            let current_chunk_id = self.generate_chunk(position);
+            self.fill_adjacent_mines(position);
+            let mut current_chunk = match self.chunks.get_mut(current_chunk_id) {
+                None => continue,
+                Some(c) => c,
+            };
+            let tile = current_chunk.get_tile(position);
+            if !tile.is_revealed() {
+                let tile = current_chunk.set_tile(position, tile.with_revealed());
+                if tile.adjacent() == 0 {
+                    for x in -1..=1 {
+                        for y in -1..=1 {
+                            reveal_stack.push(Position(position.0 + x, position.1 + y));
                         }
                     }
                 }
-                // Then push positions in this chunk:
-                for x in -1..=1 {
-                    for y in -1..=1 {
-                        let pos = &position + (x, y);
-                        if pos.chunk_position() == current_chunk
-                            && !current_chunk_to_reveal.get(pos) {
-                            reveal_stack.push(pos);
-                        }
-                    }
-                }
+                updated_chunk_ids.insert(current_chunk_id);
             }
         }
 
-        RevealResult::Revealed(to_reveal)
-    }
-
-    pub fn apply_reveal(&mut self, reveal_result: RevealResult) {
-        match reveal_result {
-            RevealResult::Death(position) => {
-                match self.get_chunk_id(position) {
-                    None => return,
-                    Some(&chunk_id) => {
-                        self.revealed[chunk_id].set(position, true);
-                    }
-                }
-            }
-            RevealResult::Revealed(to_reveal) => {
-                for (chunk_id, mut chunk_reveal) in to_reveal.into_iter() {
-                    let already_revealed = &self.revealed[chunk_id];
-                    for i in 0..16 {
-                        chunk_reveal.0[i] |= already_revealed.0[i];
-                    }
-                    self.revealed[chunk_id] = chunk_reveal;
-                }
-            }
-            RevealResult::Nothing => {}
-        };
+        RevealResult::Revealed(updated_chunk_ids)
     }
 
     pub fn flag(&mut self, position: Position) -> FlagResult {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
-            if !self.flags[chunk_id].get(position) {
-                return FlagResult::Flagged(position);
+            if let Some(&ref chunk) = self.chunks.get(chunk_id) {
+                if !chunk.get_tile(position).is_flag() {
+                    return FlagResult::Flagged(position)
+                }
             }
         }
         FlagResult::Nothing
@@ -191,33 +132,19 @@ impl World {
 
     pub fn unflag(&mut self, position: Position) -> FlagResult {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
-            if self.flags[chunk_id].get(position) {
-                return FlagResult::Unflagged(position);
+            if let Some(&ref chunk) = self.chunks.get(chunk_id) {
+                if chunk.get_tile(position).is_flag() {
+                    return FlagResult::Unflagged(position)
+                }
             }
         }
         FlagResult::Nothing
-    }
-
-    pub fn apply_flag_result(&mut self, flag_result: FlagResult) {
-        match flag_result {
-            FlagResult::Flagged(position) => {
-                if let Some(&chunk_id) = self.get_chunk_id(position) {
-                    self.flags[chunk_id].set(position, true);
-                }
-            }
-            FlagResult::Unflagged(position) => {
-                if let Some(&chunk_id) = self.get_chunk_id(position) {
-                    self.flags[chunk_id].set(position, false);
-                }
-            }
-            FlagResult::Nothing => {}
-        }
     }
 }
 
 pub enum RevealResult {
     Death(Position),
-    Revealed(HashMap<usize, ChunkBool>),
+    Revealed(HashSet<usize>),
     Nothing,
 }
 pub enum FlagResult {
@@ -251,102 +178,134 @@ impl ops::Sub<(i32, i32)> for &Position {
     }
 }
 
-pub struct AdjacentMines([[u8; 16]; 16]);
+#[derive(Default, Eq, PartialEq, Clone, Copy, Serialize)]
+pub struct Tile (u8);
 
-impl AdjacentMines {
-    pub(crate) fn get(&self, position: Position) -> u8 {
-        let position = position.position_in_chunk();
-        self.0[position.0 as usize][position.1 as usize]
+impl Tile {
+    pub fn empty() -> Tile {
+        Tile(0)
+    }
+    pub fn mine() -> Tile {
+        Tile::empty().with_mine()
+    }
+    pub fn with_mine(&self) -> Tile {
+        Tile(self.0 | 1<<4)
+    }
+    pub fn is_mine(&self) -> bool {
+        self.0 == self.with_mine().0
+    }
+    pub fn with_flag(&self) -> Tile {
+        Tile(self.0 | 1<<5)
+    }
+    pub fn is_flag(&self) -> bool {
+        self.0 == self.with_flag().0
+    }
+    pub fn with_revealed(&self) -> Tile {
+        Tile(self.0 | 1<<6)
+    }
+    pub fn is_revealed(&self) -> bool {
+        self.0 == self.with_revealed().0
+    }
+    pub fn with_adjacent(&self, adjacent: u8) -> Tile {
+        Tile(self.0 + adjacent)
+    }
+    pub fn adjacent(&self) -> u8 {
+        self.0 & 0b1111
+    }
+}
+
+pub struct Chunk {
+    tiles: [[Tile; 16]; 16],
+    pub position: Position,
+    adjacent_mines_filled: bool
+}
+
+impl AddAssign<u8> for Tile {
+    fn add_assign(&mut self, rhs: u8) {
+        self.0 += rhs;
+    }
+}
+
+impl Chunk {
+    pub fn generate(position: Position, seed: u64, number_of_mines: u8) -> Chunk {
+        let mut new_chunk = Chunk {
+            tiles: Default::default(),
+            position,
+            adjacent_mines_filled: false
+        };
+        let mut rng = StdRng::seed_from_u64(seed);
+        for mine_index in (0..255).choose_multiple(&mut rng, number_of_mines as usize) {
+            let x = mine_index % 16;
+            let y = (mine_index - x) >> 4;
+            new_chunk.set_tile(Position(x, y), Tile::mine());
+        }
+        new_chunk
     }
 
-    fn empty() -> AdjacentMines { AdjacentMines([[0; 16]; 16]) }
+    pub fn get_tile(&self, position: Position) -> Tile {
+        let x = position.0 as usize;
+        let y = position.1 as usize;
+        self.tiles[x%16][y%16]
+    }
+    pub fn set_tile(&mut self, position: Position, tile: Tile) -> Tile {
+        let x = position.0 as usize;
+        let y = position.1 as usize;
+        self.tiles[x%16][y%16] = tile;
+        tile
+    }
 
-    fn for_chunk(mines: &[ChunkBool], surrounding_chunk_ids: [usize; 9]) -> AdjacentMines {
-        let surrounding_chunks_mines: [&ChunkBool; 9] = surrounding_chunk_ids.map(|id| &mines[id]);
-
+    pub fn fill_adjacent_mines(surrounding_chunks: [&Chunk; 9]) -> Chunk {
         let is_mine = |position: Position| {
             let (x, y) = (position.0, position.1);
+            let tile_is_mine = |index: usize| -> bool {
+                return surrounding_chunks[index].get_tile(position).is_mine();
+            };
             // 0 3 6
             // 1 4 7
             // 2 5 8
             if x < 0 {
                 if y < 0 {
-                    return surrounding_chunks_mines[0].get(position);
+                    return tile_is_mine(0);
                 } else if y > 15 {
-                    return surrounding_chunks_mines[2].get(position);
+                    return tile_is_mine(2);
                 }
-                return surrounding_chunks_mines[1].get(position);
+                return tile_is_mine(1);
             }
             else if x > 15 {
                 if y < 0 {
-                    return surrounding_chunks_mines[6].get(position);
+                    return tile_is_mine(6);
                 } else if y > 15 {
-                    return surrounding_chunks_mines[8].get(position);
+                    return tile_is_mine(8);
                 }
-                return surrounding_chunks_mines[7].get(position);
+                return tile_is_mine(7);
             }
             else if y < 0 {
-                return surrounding_chunks_mines[3].get(position);
+                return tile_is_mine(3);
             }
             else if y > 15 {
-                return surrounding_chunks_mines[5].get(position);
+                return tile_is_mine(5);
             }
-            surrounding_chunks_mines[4].get(position)
+            tile_is_mine(4)
         };
 
-        let mut adj = AdjacentMines::empty();
+        let mut new_tiles: [[Tile; 16]; 16] = Default::default();
 
         for x in 0..16 {
             for y in 0..16 {
                 for xo in -1..=1 {
                     for yo in -1..=1 {
-                        adj.0[x as usize][y as usize] += match is_mine(Position(x+xo, y+yo)) {
-                            true => 1,
-                            false => 0
+                        if is_mine(Position(x+xo, y+yo)) {
+                            new_tiles[x as usize][y as usize] += 1;
                         }
                     }
                 }
             }
         }
-        adj
-    }
-}
 
-// A boolean value for each tile in a 16x16 chunk
-pub struct ChunkBool([u16; 16]);
-
-impl ChunkBool {
-    pub(crate) fn empty() -> ChunkBool {
-        ChunkBool([0; 16])
-    }
-
-    fn with_true(positions: &[Position]) -> ChunkBool {
-        let mut result = ChunkBool::empty();
-        for position in positions {
-            result.set(position.position_in_chunk(), true);
+        Chunk {
+            tiles: new_tiles,
+            position: surrounding_chunks[4].position,
+            adjacent_mines_filled: true,
         }
-        result
-    }
-
-    fn set(&mut self, position: Position, value: bool) {
-        // Making sure that x and y are between 0 and 15 so we can get unchecked
-        let Position(x, y) = position.position_in_chunk();
-        let col = unsafe { self.0.get_unchecked_mut(x as usize) };
-        match value {
-            true  => *col |= 1 << y,
-            false => *col &= !(1 << y)
-        };
-    }
-    fn set_index(&mut self, index: u8, value: bool) {
-        let position = Position(
-            (index & 0b1111) as i32,
-            (index >> 4) as i32,
-        );
-        self.set(position, value);
-    }
-    pub(crate) fn get(&self, position: Position) -> bool {
-        // Making sure that x and y are between 0 and 15 so we can get unchecked
-        let Position(x, y) = position.position_in_chunk();
-        (self.0[x as usize] & (1 << y as usize)) != 0
     }
 }
