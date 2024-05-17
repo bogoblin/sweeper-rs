@@ -32,6 +32,13 @@ impl World {
         self.chunk_ids.get(&position.chunk_position())
     }
 
+    pub fn get_chunk(&mut self, position: Position) -> Option<&Chunk> {
+        if let Some(&chunk_id) = self.get_chunk_id(position) {
+            return self.chunks.get(chunk_id);
+        }
+        None
+    }
+
     pub fn generate_chunk(&mut self, position: Position) -> usize {
         let new_id = self.chunk_ids.len();
         let existing = self.chunk_ids.entry(position.chunk_position());
@@ -78,20 +85,6 @@ impl World {
     }
 
     pub(crate) fn reveal(&mut self, position: Position) -> RevealResult {
-        let chunk_id = self.generate_chunk(position);
-        let chunk = match self.chunks.get(chunk_id) {
-            None => return RevealResult::Nothing,
-            Some(c) => c,
-        };
-        let tile = chunk.get_tile(position);
-
-        if tile.is_revealed() {
-            return RevealResult::Nothing
-        }
-        if tile.is_mine() {
-            return RevealResult::Death(position)
-        }
-
         let mut reveal_stack = vec![position];
         let mut updated_chunk_ids = HashSet::new();
 
@@ -121,20 +114,14 @@ impl World {
 
     pub fn flag(&mut self, position: Position) -> FlagResult {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
-            if let Some(&ref chunk) = self.chunks.get(chunk_id) {
-                if !chunk.get_tile(position).is_flag() {
-                    return FlagResult::Flagged(position)
-                }
-            }
-        }
-        FlagResult::Nothing
-    }
-
-    pub fn unflag(&mut self, position: Position) -> FlagResult {
-        if let Some(&chunk_id) = self.get_chunk_id(position) {
-            if let Some(&ref chunk) = self.chunks.get(chunk_id) {
-                if chunk.get_tile(position).is_flag() {
-                    return FlagResult::Unflagged(position)
+            if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
+                let tile = chunk.get_tile(position);
+                if tile.is_flag() {
+                    chunk.set_tile(position, tile.without_flag());
+                    return FlagResult::Unflagged(position);
+                } else {
+                    chunk.set_tile(position, tile.with_flag());
+                    return FlagResult::Flagged(position);
                 }
             }
         }
@@ -197,6 +184,9 @@ impl Tile {
     pub fn with_flag(&self) -> Tile {
         Tile(self.0 | 1<<5)
     }
+    pub fn without_flag(&self) -> Tile {
+        Tile(self.0 & !(1<<5))
+    }
     pub fn is_flag(&self) -> bool {
         self.0 == self.with_flag().0
     }
@@ -215,8 +205,8 @@ impl Tile {
 }
 
 pub struct Chunk {
-    tiles: [[Tile; 16]; 16],
-    pub position: Position,
+    pub(crate) tiles: [[Tile; 16]; 16],
+    pub(crate) position: Position,
     adjacent_mines_filled: bool
 }
 
@@ -288,7 +278,7 @@ impl Chunk {
             tile_is_mine(4)
         };
 
-        let mut new_tiles: [[Tile; 16]; 16] = Default::default();
+        let mut new_tiles: [[Tile; 16]; 16] = surrounding_chunks[4].tiles.clone();
 
         for x in 0..16 {
             for y in 0..16 {
