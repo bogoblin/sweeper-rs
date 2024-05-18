@@ -1,13 +1,10 @@
 use std::net::SocketAddr;
-use std::ops::Deref;
 use std::sync::mpsc;
 use std::thread;
 
 use axum::Router;
-use futures_util::FutureExt;
-use serde::Serialize;
 use serde_json::Value;
-use socketioxide::extract::{Bin, Data, SocketRef};
+use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
@@ -15,6 +12,7 @@ use tower_http::services::ServeDir;
 use ClientMessage::{Click, Flag};
 
 use crate::client_messages::ClientMessage;
+use crate::client_messages::ClientMessage::DoubleClick;
 use crate::server_messages::chunk_message;
 use crate::world::{Chunk, FlagResult, Position, RevealResult, World};
 
@@ -27,8 +25,8 @@ async fn main() {
     let mut world = World::new();
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
-    io.ns("/", |socket: SocketRef, Data(data): Data<Value>| {
-        socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data), Bin(bin)| {
+    io.ns("/", |socket: SocketRef| {
+        socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
             if let Value::Array(array) = data {
                 match &array[..] {
                     [Value::String(message_type), Value::Number(x), Value::Number(y)] => {
@@ -38,6 +36,7 @@ async fn main() {
                         let message = match message_type.as_str() {
                             "click" => Click(position),
                             "flag" => Flag(position),
+                            "doubleClick" => DoubleClick(position),
                             _ => return,
                         };
                         tx.send((message, socket_ref)).unwrap();
@@ -48,25 +47,12 @@ async fn main() {
         });
     });
 
-    let handle = thread::spawn(move || {
+    let _handle = thread::spawn(move || {
         for (received, socket_ref) in rx {
             match received {
                 Click(position) => {
                     let result = world.reveal(position);
-                    match &result {
-                        RevealResult::Death(_) => {}
-                        RevealResult::Revealed(chunks) => {
-                            for &chunk_id in chunks {
-                                if let Some(chunk) = world.chunks.get(chunk_id) {
-                                    send_chunk(&socket_ref, chunk);
-                                }
-                            }
-                        }
-                        RevealResult::Nothing => {}
-                    }
-                    if let Some(chunk) = world.get_chunk(position) {
-                        send_chunk(&socket_ref, chunk);
-                    }
+                    send_reveal_result(&world, &socket_ref, result);
                 }
                 Flag(position) => {
                     let result = world.flag(position);
@@ -79,7 +65,10 @@ async fn main() {
                         send_chunk(&socket_ref, chunk);
                     }
                 }
-                ClientMessage::DoubleClick(_) => {}
+                DoubleClick(position) => {
+                    let result = world.double_click(position);
+                    send_reveal_result(&world, &socket_ref, result);
+                }
             }
         }
     });
@@ -98,4 +87,22 @@ fn send_chunk(socket_ref: &SocketRef, chunk: &Chunk) {
     let (event, data) = chunk_message(chunk);
     socket_ref.emit(event, &data).expect("TODO: panic message");
     socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
+}
+
+fn send_reveal_result(world: &World, socket_ref: &SocketRef, result: RevealResult) {
+    match &result {
+        RevealResult::Death(position) => {
+            if let Some(chunk) = world.get_chunk(*position) {
+                send_chunk(socket_ref, chunk);
+            }
+        }
+        RevealResult::Revealed(chunks) => {
+            for &chunk_id in chunks {
+                if let Some(chunk) = world.chunks.get(chunk_id) {
+                    send_chunk(socket_ref, chunk);
+                }
+            }
+        }
+        RevealResult::Nothing => {}
+    }
 }

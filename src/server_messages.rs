@@ -1,4 +1,3 @@
-use serde::{Serialize, Serializer};
 use serde_json::{json, Value};
 use crate::world::{Chunk, Position};
 
