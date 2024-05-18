@@ -52,19 +52,19 @@ class MineSocket {
     }
 
     sendClickMessage(coords) { // c for click
-        this.socket.emit('click', coords);
+        this.socket.emit('message', ['click', ...coords]);
     }
 
     sendFlagMessage(coords) { // f for flag
-        this.socket.emit('flag', coords);
+        this.socket.emit('message', ['flag', ...coords]);
     }
 
     sendDoubleClickMessage(coords) { // d for double click
-        this.socket.emit('doubleClick', coords);
+        this.socket.emit('message', ['doubleClick', ...coords]);
     }
 
     sendMoveMessage(coords) { // m for move
-        this.socket.emit('move', coords);
+        this.socket.emit('message', ['move', ...coords]);
     }
 
     sendLoginMessage(username, password) {

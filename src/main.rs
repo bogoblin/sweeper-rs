@@ -27,45 +27,23 @@ async fn main() {
     let mut world = World::new();
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
-    io.ns("/", move |socket: SocketRef, Data(data): Data<Value>| {
-
-        let tx_click = mpsc::Sender::clone(&tx);
-        socket.on("click", move |socket_ref: SocketRef, Data::<Value>(data), Bin(bin)| {
-            println!("Click: {:?} {:?}", data, bin);
-            match data {
-                Value::Array(array) => {
-                    if array.len() == 2 {
-                        if let Some(Value::Number(x)) = array.get(0) {
-                            if let Some(Value::Number(y)) = array.get(1) {
-                                let x = x.as_f64().unwrap().floor() as i32;
-                                let y = y.as_f64().unwrap().floor() as i32;
-                                let position = Position(x, y);
-                                tx_click.send((Click(position), socket_ref)).unwrap();
-                            }
-                        }
-                    }
-                },
-                _ => {}
-            }
-        });
-
-        let tx_flag = mpsc::Sender::clone(&tx);
-        socket.on("flag", move |socket_ref: SocketRef, Data::<Value>(data), Bin(bin)| {
-            println!("Flag: {:?} {:?}", data, bin);
-            match data {
-                Value::Array(array) => {
-                    if array.len() == 2 {
-                        if let Some(Value::Number(x)) = array.get(0) {
-                            if let Some(Value::Number(y)) = array.get(1) {
-                                let x = x.as_f64().unwrap().floor() as i32;
-                                let y = y.as_f64().unwrap().floor() as i32;
-                                let position = Position(x, y);
-                                tx_flag.send((Flag(position), socket_ref)).unwrap();
-                            }
-                        }
-                    }
-                },
-                _ => {}
+    io.ns("/", |socket: SocketRef, Data(data): Data<Value>| {
+        socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data), Bin(bin)| {
+            if let Value::Array(array) = data {
+                match &array[..] {
+                    [Value::String(message_type), Value::Number(x), Value::Number(y)] => {
+                        let x = x.as_f64().unwrap().floor() as i32;
+                        let y = y.as_f64().unwrap().floor() as i32;
+                        let position = Position(x, y);
+                        let message = match message_type.as_str() {
+                            "click" => Click(position),
+                            "flag" => Flag(position),
+                            _ => return,
+                        };
+                        tx.send((message, socket_ref)).unwrap();
+                    },
+                    _ => {}
+                }
             }
         });
     });
