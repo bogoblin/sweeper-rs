@@ -74,7 +74,7 @@ async fn main() {
     });
 
     let router: Router<> = Router::new()
-        .fallback_service(ServeDir::new("static"))
+        .fallback_service(ServeDir::new("crates/client/pkg"))
         .layer(socket_layer);
     let addr = SocketAddr::from(([127,0,0,1], 8000));
     let tcp = TcpListener::bind(&addr).await.unwrap();
