@@ -2,14 +2,25 @@
 name = "sweeper-client"
 edition = "2021"
 
+[[bin]]
+name = "sweeper-client"
+path = "src/main.rs"
+
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 js-sys = "0.3.69"
-limelight = "0.1.3"
 wasm-bindgen = "0.2.92"
+wasm-bindgen-futures = "0.4.42"
 console_error_panic_hook = "0.1.7"
+winit = { version = "0.29", features = ["rwh_05"] }
+env_logger = "0.11.3"
+log = "0.4"
+wgpu = { version = "0.19", features = ["webgl"] }
+cfg-if = "1.0.0"
+pollster = "0.3.0"
+console_log = "1.0"
 
 [dependencies.web-sys]
 version = "0.3.69"
