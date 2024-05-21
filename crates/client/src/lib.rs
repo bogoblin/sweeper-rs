@@ -9,6 +9,7 @@ use winit::{
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use winit::dpi::PhysicalPosition;
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -20,6 +21,7 @@ struct State<'a> {
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: &'a Window,
+    cursor_position: PhysicalPosition<f64>,
 }
 
 impl<'a> State<'a> {
@@ -99,6 +101,7 @@ impl<'a> State<'a> {
             config,
             size,
             window,
+            cursor_position: PhysicalPosition::new(0f64, 0f64),
         }
     }
 
@@ -142,9 +145,9 @@ impl<'a> State<'a> {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
+                            r: self.cursor_position.x/(self.size.width as f64),
+                            g: self.cursor_position.y/(self.size.height as f64),
+                            b: 0f64,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -211,7 +214,6 @@ pub async fn run() {
                     window_id,
                 } if window_id == state.window().id() => {
                     if !state.input(event) {
-                        // UPDATED!
                         match event {
                             WindowEvent::CloseRequested
                             | WindowEvent::KeyboardInput {
@@ -254,7 +256,11 @@ pub async fn run() {
                                         log::warn!("Surface timeout")
                                     }
                                 }
-                            }
+                            },
+                            WindowEvent::CursorMoved { position, .. } => {
+                                state.cursor_position = *position;
+                                println!("{:?}", state.cursor_position);
+                            },
                             _ => {}
                         }
                     }
