@@ -7,7 +7,7 @@ use serde_json::Value;
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
 use tokio::net::TcpListener;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 use ClientMessage::{Click, Flag};
 
@@ -74,6 +74,7 @@ async fn main() {
     });
 
     let router: Router<> = Router::new()
+        .route_service("/", ServeFile::new("crates/client/index.html"))
         .fallback_service(ServeDir::new("crates/client/pkg"))
         .layer(socket_layer);
     let addr = SocketAddr::from(([127,0,0,1], 8000));
