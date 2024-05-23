@@ -17,7 +17,7 @@ pub struct World {
 }
 
 impl World {
-    pub(crate) fn new() -> World {
+    pub fn new() -> World {
         let mut world = World {
             chunk_ids: Default::default(),
             positions: Default::default(),
@@ -84,7 +84,7 @@ impl World {
         }
     }
 
-    pub(crate) fn reveal(&mut self, position: Position) -> RevealResult {
+    pub fn reveal(&mut self, position: Position) -> RevealResult {
         let mut reveal_stack = vec![position];
         let mut updated_chunk_ids = HashSet::new();
 
@@ -115,7 +115,7 @@ impl World {
         RevealResult::Revealed(updated_chunk_ids)
     }
 
-    pub(crate) fn double_click(&mut self, position: Position) -> RevealResult {
+    pub fn double_click(&mut self, position: Position) -> RevealResult {
         if let Some(chunk) = self.get_chunk(position) {
             let tile = chunk.get_tile(position);
             if !tile.is_revealed() || tile.adjacent() == 0 {
@@ -158,12 +158,12 @@ impl World {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 let tile = chunk.get_tile(position);
-                if tile.is_flag() {
+                return if tile.is_flag() {
                     chunk.set_tile(position, tile.without_flag());
-                    return FlagResult::Unflagged(position);
+                    FlagResult::Unflagged(position)
                 } else {
                     chunk.set_tile(position, tile.with_flag());
-                    return FlagResult::Flagged(position);
+                    FlagResult::Flagged(position)
                 }
             }
         }
@@ -211,7 +211,7 @@ impl ops::Sub<(i32, i32)> for &Position {
 pub struct Tile (u8);
 
 impl Tile {
-    pub fn empty() -> Tile {
+    pub const fn empty() -> Tile {
         Tile(0)
     }
     pub fn mine() -> Tile {
@@ -245,7 +245,7 @@ impl Tile {
 
 pub struct Chunk {
     pub(crate) tiles: [[Tile; 16]; 16],
-    pub(crate) position: Position,
+    pub position: Position,
     adjacent_mines_filled: bool
 }
 

@@ -14,9 +14,8 @@ use ClientMessage::{Click, Flag};
 use crate::client_messages::ClientMessage;
 use crate::client_messages::ClientMessage::DoubleClick;
 use crate::server_messages::chunk_message;
-use crate::world::{Chunk, FlagResult, Position, RevealResult, World};
+use world::{Chunk, FlagResult, Position, RevealResult, World};
 
-mod world;
 mod server_messages;
 mod client_messages;
 

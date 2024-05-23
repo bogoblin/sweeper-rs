@@ -21,6 +21,8 @@ wgpu = { version = "0.19", features = ["webgl"] }
 cfg-if = "1.0.0"
 pollster = "0.3.0"
 console_log = "1.0"
+bytemuck = { version = "1.16.0", features = ["derive"] }
+world = {path = "../world"}
 
 [dependencies.web-sys]
 version = "0.3.69"
@@ -35,3 +37,8 @@ features = [
     'WebGlShader',
     'Window',
 ]
+
+[dependencies.image]
+version = "0.25.1"
+default-features = false
+features = ["png", "jpeg"]
