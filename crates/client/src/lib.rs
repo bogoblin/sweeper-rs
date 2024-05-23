@@ -1,4 +1,5 @@
 use std::iter;
+use cgmath::Point3;
 use image::GenericImageView;
 
 use winit::{
@@ -13,8 +14,139 @@ use wasm_bindgen::prelude::*;
 use wgpu::{BindGroup, RenderPipeline, VertexAttribute, VertexState};
 use wgpu::util::{DeviceExt};
 use winit::dpi::PhysicalPosition;
+use winit::keyboard::{Key, NamedKey};
 
 use world::{Position, Tile};
+
+struct Camera {
+    eye: Point3<f32>,
+    target: Point3<f32>,
+    up: cgmath::Vector3<f32>,
+    aspect: f32,
+    fovy: f32,
+    znear: f32,
+    zfar: f32,
+}
+
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.5,
+    0.0, 0.0, 0.0, 1.0,
+);
+
+impl Camera {
+    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+        // 1.
+        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+        // 2.
+        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+
+        // 3.
+        return OPENGL_TO_WGPU_MATRIX * proj * view;
+    }
+}
+
+// We need this for Rust to store our data correctly for the shaders
+#[repr(C)]
+// This is so we can store this in a buffer
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct CameraUniform {
+    // We can't use cgmath with bytemuck directly, so we'll have
+    // to convert the Matrix4 into a 4x4 f32 array
+    view_proj: [[f32; 4]; 4],
+}
+
+impl CameraUniform {
+    fn new() -> Self {
+        use cgmath::SquareMatrix;
+        Self {
+            view_proj: cgmath::Matrix4::identity().into(),
+        }
+    }
+
+    fn update_view_proj(&mut self, camera: &Camera) {
+        self.view_proj = camera.build_view_projection_matrix().into();
+    }
+}
+
+struct CameraController {
+    speed: f32,
+    is_forward_pressed: bool,
+    is_backward_pressed: bool,
+    is_left_pressed: bool,
+    is_right_pressed: bool,
+}
+
+impl CameraController {
+    fn new(speed: f32) -> Self {
+        Self {
+            speed,
+            is_forward_pressed: false,
+            is_backward_pressed: false,
+            is_left_pressed: false,
+            is_right_pressed: false,
+        }
+    }
+
+    fn process_events(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::KeyboardInput {
+                event,
+                ..
+            } => {
+                let is_pressed = event.state.is_pressed();
+                match event.logical_key {
+                    Key::Named(NamedKey::ArrowLeft) => self.is_left_pressed = is_pressed,
+                    Key::Named(NamedKey::ArrowRight) => self.is_right_pressed = is_pressed,
+                    Key::Named(NamedKey::ArrowUp) => self.is_forward_pressed = is_pressed,
+                    Key::Named(NamedKey::ArrowDown) => self.is_backward_pressed = is_pressed,
+                    Key::Named(_) => {},
+                    Key::Character(_) => {},
+                    Key::Unidentified(_) => {},
+                    Key::Dead(_) => {},
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn update_camera(&self, camera: &mut Camera) {
+        use cgmath::InnerSpace;
+        let forward = camera.target - camera.eye;
+        let forward_norm = forward.normalize();
+        let forward_mag = forward.magnitude();
+
+        // Prevents glitching when the camera gets too close to the
+        // center of the scene.
+        if self.is_forward_pressed && forward_mag > self.speed {
+            camera.eye += forward_norm * self.speed;
+        }
+        if self.is_backward_pressed {
+            camera.eye -= forward_norm * self.speed;
+        }
+
+        let right = forward_norm.cross(camera.up);
+
+        // Redo radius calc in case the forward/backward is pressed.
+        let forward = camera.target - camera.eye;
+        let forward_mag = forward.magnitude();
+
+        if self.is_right_pressed {
+            // Rescale the distance between the target and the eye so
+            // that it doesn't change. The eye, therefore, still
+            // lies on the circle made by the target and eye.
+            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
+        }
+        if self.is_left_pressed {
+            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+        }
+    }
+}
+
+
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -29,9 +161,13 @@ struct State<'a> {
     render_pipeline: RenderPipeline,
     vertices: Vec<Vertex>,
     vertex_buffer: wgpu::Buffer,
-
-    cursor_position: PhysicalPosition<f64>,
     diffuse_bind_group: BindGroup,
+    camera: Camera,
+    cursor_position: PhysicalPosition<f64>,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_controller: CameraController,
+    camera_bind_group: BindGroup,
 }
 
 #[repr(C)]
@@ -52,7 +188,7 @@ impl Vertex {
     }
 }
 
-fn tile_vertices(Position(x, y): Position, tile: Tile) -> [Vertex; 4] {
+fn tile_vertices(Position(x, y): Position, tile: Tile) -> [Vertex; 6] {
     let x = x as f32;
     let y = y as f32;
 
@@ -60,8 +196,10 @@ fn tile_vertices(Position(x, y): Position, tile: Tile) -> [Vertex; 4] {
     if tile.is_revealed() {
         if tile.is_mine() {
             sprite_index = 11;
-        } else {
+        } else if tile.adjacent() <= 8 {
             sprite_index = tile.adjacent();
+        } else {
+            sprite_index = 0;
         }
     } else {
         if tile.is_flag() {
@@ -77,19 +215,27 @@ fn tile_vertices(Position(x, y): Position, tile: Tile) -> [Vertex; 4] {
     return [
         Vertex {
             position: [x, y, 0.0],
+            uv: [uvx, 1.0],
+        },
+        Vertex {
+            position: [x + 1.0, y, 0.0],
+            uv: [uvx_end, 1.0],
+        },
+        Vertex {
+            position: [x, y + 1.0, 0.0],
+            uv: [uvx, 0.0],
+        },
+        Vertex {
+            position: [x, y + 1.0, 0.0],
             uv: [uvx, 0.0],
         },
         Vertex {
             position: [x + 1.0, y, 0.0],
-            uv: [uvx_end, 0.0],
-        },
-        Vertex {
-            position: [x, y + 1.0, 0.0],
-            uv: [uvx, 1.0],
+            uv: [uvx_end, 1.0],
         },
         Vertex {
             position: [x + 1.0, y + 1.0, 0.0],
-            uv: [uvx_end, 1.0],
+            uv: [uvx_end, 0.0],
         },
     ]
 }
@@ -163,6 +309,55 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
+
+        let camera = Camera {
+            eye: (0.0, 0.0, 20.0).into(),
+            // have it look at the origin
+            target: (0.0, 0.0, 0.0).into(),
+            // which way is "up"
+            up: (0.0, 1.0, 0.0).into(),
+            aspect: 1.0, // TODO: change to actual aspect ratio
+            fovy: 45.0,
+            znear: 0.01,
+            zfar: 100.0,
+        };
+
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
+
+        let camera_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Camera Buffer"),
+                contents: bytemuck::cast_slice(&[camera_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+
+        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("camera_bind_group_layout"),
+        });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }
+            ],
+            label: Some("camera_bind_group"),
+        });
 
         let diffuse_bytes = include_bytes!("../textures/tiles.png");
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
@@ -271,7 +466,10 @@ impl<'a> State<'a> {
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/shader.wsgl"));
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout],
+            bind_group_layouts: &[
+                &texture_bind_group_layout,
+                &camera_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -292,7 +490,7 @@ impl<'a> State<'a> {
                 })]
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
@@ -309,7 +507,13 @@ impl<'a> State<'a> {
             multiview: None,
         });
 
-        let vertices = Vec::from(tile_vertices(Position(0, 0), Tile::empty().with_flag()));
+        let mut vertices = vec![];
+        for i in 0..255 {
+            let tile = Tile(i);
+            let x = i%16;
+            let y = i/16;
+            vertices.append(tile_vertices(Position(x as i32, y as i32), tile).to_vec().as_mut());
+        }
         let vertex_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
@@ -318,6 +522,7 @@ impl<'a> State<'a> {
             }
         );
 
+        let camera_controller = CameraController::new(0.2);
 
         Self {
             surface,
@@ -330,6 +535,11 @@ impl<'a> State<'a> {
             vertex_buffer,
             vertices,
             diffuse_bind_group,
+            camera,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            camera_controller,
             cursor_position: PhysicalPosition::new(0f64, 0f64),
         }
     }
@@ -347,12 +557,15 @@ impl<'a> State<'a> {
         }
     }
 
-    #[allow(unused_variables)]
     fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        self.camera_controller.process_events(event)
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -389,6 +602,7 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.draw(0..self.vertices.len() as u32, 0..1);
         }

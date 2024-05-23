@@ -208,7 +208,7 @@ impl ops::Sub<(i32, i32)> for &Position {
 }
 
 #[derive(Default, Eq, PartialEq, Clone, Copy, Serialize)]
-pub struct Tile (u8);
+pub struct Tile (pub u8);
 
 impl Tile {
     pub const fn empty() -> Tile {
