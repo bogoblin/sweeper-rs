@@ -1516,6 +1516,25 @@ dependencies = [
 
 [[package]]
 name = "naga"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae585df4b6514cf8842ac0f1ab4992edc975892704835b549cf818dc0191249e"
+dependencies = [
+ "bit-set",
+ "bitflags 2.5.0",
+ "codespan-reporting",
+ "hexf-parse",
+ "indexmap",
+ "log",
+ "num-traits",
+ "rustc-hash",
+ "termcolor",
+ "thiserror",
+ "unicode-xid",
+]
+
+[[package]]
+name = "naga"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50e3524642f53d9af419ab5e8dd29d3ba155708267667c2f3f06c88c9e130843"
@@ -1532,6 +1551,18 @@ dependencies = [
  "termcolor",
  "thiserror",
  "unicode-xid",
+]
+
+[[package]]
+name = "naga-to-tokenstream"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b660424dda5306aa05622eac05c760351bddd0faea16504fa73f3951b797ca1"
+dependencies = [
+ "naga 0.14.2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.63",
 ]
 
 [[package]]
@@ -2468,6 +2499,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu",
+ "wgsl-inline",
  "winit",
  "world",
 ]
@@ -3145,7 +3177,7 @@ dependencies = [
  "cfg_aliases",
  "js-sys",
  "log",
- "naga",
+ "naga 0.19.2",
  "parking_lot",
  "profiling",
  "raw-window-handle 0.6.2",
@@ -3172,7 +3204,7 @@ dependencies = [
  "codespan-reporting",
  "indexmap",
  "log",
- "naga",
+ "naga 0.19.2",
  "once_cell",
  "parking_lot",
  "profiling",
@@ -3212,7 +3244,7 @@ dependencies = [
  "libloading 0.8.3",
  "log",
  "metal",
- "naga",
+ "naga 0.19.2",
  "ndk-sys",
  "objc",
  "once_cell",
@@ -3239,6 +3271,19 @@ dependencies = [
  "bitflags 2.5.0",
  "js-sys",
  "web-sys",
+]
+
+[[package]]
+name = "wgsl-inline"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "391d307a9e0ddfd2f376d3a576ee02c60aa9fb5d9d5b0ab680847dee295067e7"
+dependencies = [
+ "naga 0.14.2",
+ "naga-to-tokenstream",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.63",
 ]
 
 [[package]]
