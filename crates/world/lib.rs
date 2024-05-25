@@ -9,6 +9,9 @@ use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use serde::Serialize;
 
+pub mod server_messages;
+pub mod client_messages;
+
 pub struct World {
     pub chunk_ids: HashMap<Position, usize>,
     pub positions: Vec<Position>,

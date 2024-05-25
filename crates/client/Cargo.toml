@@ -38,6 +38,13 @@ features = [
     'WebGlProgram',
     'WebGlShader',
     'Window',
+    "BinaryType",
+    "Blob",
+    "ErrorEvent",
+    "FileReader",
+    "MessageEvent",
+    "ProgressEvent",
+    "WebSocket",
 ]
 
 [dependencies.image]

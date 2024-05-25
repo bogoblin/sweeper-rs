@@ -5,6 +5,8 @@ use std::iter;
 use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Zero};
 use image::GenericImageView;
 use log::{log, Record};
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsValue;
 
 use winit::{
     event::*,
@@ -15,11 +17,14 @@ use winit::{
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use web_sys::BinaryType::Arraybuffer;
+use web_sys::WebSocket;
 use wgpu::{BindGroup, Buffer, Device, RenderPass, RenderPipeline, VertexAttribute, VertexState};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use winit::dpi::PhysicalPosition;
 
 use world::{Position, Tile};
+use world::client_messages::ClientMessage;
 use crate::camera::Camera;
 use crate::shaders::diffuse_shader;
 
@@ -147,6 +152,10 @@ fn tile_vertices(Position(x, y): Position, tile: Tile) -> [Vertex; 6] {
             uv: [uvx_end, 0.0],
         },
     ]
+}
+
+struct Socket {
+    ws: WebSocket,
 }
 
 impl<'a> State<'a> {
@@ -381,7 +390,6 @@ impl<'a> State<'a> {
         let cursor_vertices = cursor_vertices(Point3::origin()).to_vec();
         let cursor_vertex_buffer = VertexBuffer::from(&device, cursor_vertices);
 
-
         let mut new = Self {
             surface,
             device,
@@ -415,7 +423,24 @@ impl<'a> State<'a> {
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera.input(event)
+        self.camera.input(event);
+        match event {
+            WindowEvent::MouseInput {button, ..} => {
+                match button {
+                    MouseButton::Left => {
+                        log::info!("Clicked at {:?}", self.camera.cursor_to_xy_plane(self.cursor_position));
+                        return true;
+                    }
+                    MouseButton::Right => {}
+                    MouseButton::Middle => {}
+                    MouseButton::Back => {}
+                    MouseButton::Forward => {}
+                    MouseButton::Other(_) => {}
+                }
+            }
+            _ => {}
+        };
+        false
     }
 
     fn update(&mut self) {
@@ -574,7 +599,6 @@ pub async fn run() {
                                     -(relative.y / half_size.y) as f32,
                                 );
                                 state.cursor_position = clip;
-                                log::info!("{:?}", state.cursor_position);
                             },
                             _ => {}
                         }

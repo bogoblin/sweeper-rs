@@ -1,4 +1,4 @@
-use world::Position;
+use crate::Position;
 
 pub enum ClientMessage {
     Click(Position),

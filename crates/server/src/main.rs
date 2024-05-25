@@ -9,15 +9,10 @@ use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
 
-use ClientMessage::{Click, Flag};
-
-use crate::client_messages::ClientMessage;
-use crate::client_messages::ClientMessage::DoubleClick;
-use crate::server_messages::chunk_message;
+use world::client_messages::ClientMessage::{Click, Flag};
+use world::client_messages::ClientMessage::DoubleClick;
 use world::{Chunk, FlagResult, Position, RevealResult, World};
-
-mod server_messages;
-mod client_messages;
+use world::server_messages::chunk_message;
 
 #[tokio::main]
 async fn main() {

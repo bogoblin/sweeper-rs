@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use world::{Chunk, Position};
+use crate::{Chunk, Position};
 
 pub fn chunk_message(chunk: &Chunk) -> (&'static str, Value) {
     let coords = chunk.position;
