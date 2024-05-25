@@ -1,5 +1,6 @@
 mod camera;
 mod shaders;
+mod socket;
 
 use std::iter;
 use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Zero};
@@ -27,6 +28,7 @@ use world::{Position, Tile};
 use world::client_messages::ClientMessage;
 use crate::camera::Camera;
 use crate::shaders::diffuse_shader;
+use crate::socket::Socket;
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -44,6 +46,7 @@ struct State<'a> {
     diffuse_bind_group: BindGroup,
     camera: Camera,
     cursor_position: Vector2<f32>,
+    socket: Socket,
 }
 
 #[repr(C)]
@@ -152,10 +155,6 @@ fn tile_vertices(Position(x, y): Position, tile: Tile) -> [Vertex; 6] {
             uv: [uvx_end, 0.0],
         },
     ]
-}
-
-struct Socket {
-    ws: WebSocket,
 }
 
 impl<'a> State<'a> {
@@ -403,6 +402,7 @@ impl<'a> State<'a> {
             diffuse_bind_group,
             camera,
             cursor_position: Vector2::zero(),
+            socket: Socket::new().expect("Couldn't create socket"),
         };
 
         new
