@@ -2,7 +2,9 @@ mod camera;
 mod shaders;
 
 use std::iter;
+use cgmath::{EuclideanSpace, Point2, Point3, Vector2, Zero};
 use image::GenericImageView;
+use log::{log, Record};
 
 use winit::{
     event::*,
@@ -13,8 +15,8 @@ use winit::{
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use wgpu::{BindGroup, RenderPipeline, VertexAttribute, VertexState};
-use wgpu::util::{DeviceExt};
+use wgpu::{BindGroup, Buffer, Device, RenderPass, RenderPipeline, VertexAttribute, VertexState};
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use winit::dpi::PhysicalPosition;
 
 use world::{Position, Tile};
@@ -23,7 +25,7 @@ use crate::shaders::diffuse_shader;
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
-    device: wgpu::Device,
+    device: Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
@@ -32,11 +34,11 @@ struct State<'a> {
     // unsafe references to the window's resources.
     window: &'a Window,
     render_pipeline: RenderPipeline,
-    vertices: Vec<Vertex>,
-    vertex_buffer: wgpu::Buffer,
+    tiles_vertex_buffer: VertexBuffer,
+    cursor_vertex_buffer: VertexBuffer,
     diffuse_bind_group: BindGroup,
     camera: Camera,
-    cursor_position: PhysicalPosition<f64>,
+    cursor_position: Vector2<f32>,
 }
 
 #[repr(C)]
@@ -53,6 +55,44 @@ impl Vertex {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: Default::default(),
             attributes: &Self::ATTRIBS
+        }
+    }
+}
+
+fn cursor_vertices(Point3 { x, y, z }: Point3<f32>) -> [Vertex; 3] {
+    [
+        Vertex {
+            position: [x, y, z],
+            uv: [0.0, 0.0],
+        },
+        Vertex {
+            position: [x+1.0, y, z],
+            uv: [1.0, 0.0],
+        },
+        Vertex {
+            position: [x, y+1.0, z],
+            uv: [0.0, 1.0],
+        },
+    ]
+}
+
+struct VertexBuffer {
+    vertices: Vec<Vertex>,
+    buffer: Buffer,
+}
+
+impl VertexBuffer {
+    fn from(device: &Device, vertices: Vec<Vertex>) -> Self {
+        let buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+        Self {
+            vertices,
+            buffer,
         }
     }
 }
@@ -336,15 +376,13 @@ impl<'a> State<'a> {
             let y = i/16;
             vertices.append(tile_vertices(Position(x as i32, y as i32), tile).to_vec().as_mut());
         }
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
+        let tiles_vertex_buffer = VertexBuffer::from(&device, vertices);
 
-        Self {
+        let cursor_vertices = cursor_vertices(Point3::origin()).to_vec();
+        let cursor_vertex_buffer = VertexBuffer::from(&device, cursor_vertices);
+
+
+        let mut new = Self {
             surface,
             device,
             queue,
@@ -352,12 +390,14 @@ impl<'a> State<'a> {
             size,
             window,
             render_pipeline,
-            vertex_buffer,
-            vertices,
+            tiles_vertex_buffer,
+            cursor_vertex_buffer,
             diffuse_bind_group,
             camera,
-            cursor_position: PhysicalPosition::new(0f64, 0f64),
-        }
+            cursor_position: Vector2::zero(),
+        };
+
+        new
     }
 
     fn window(&self) -> &Window {
@@ -369,6 +409,7 @@ impl<'a> State<'a> {
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
+            self.camera.set_aspect_ratio(new_size.width as f32 / new_size.height as f32);
             self.surface.configure(&self.device, &self.config);
         }
     }
@@ -379,6 +420,9 @@ impl<'a> State<'a> {
 
     fn update(&mut self) {
         self.camera.update(&self.queue);
+        let cursor = self.camera.cursor_to_xy_plane(self.cursor_position);
+        let cursor_vertices = cursor_vertices(cursor);
+        self.cursor_vertex_buffer = VertexBuffer::from(&self.device, cursor_vertices.to_vec());
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -401,8 +445,8 @@ impl<'a> State<'a> {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.cursor_position.x/(self.size.width as f64),
-                            g: self.cursor_position.y/(self.size.height as f64),
+                            r: 1000.0*(self.cursor_position.x as f64)/(self.size.width as f64),
+                            g: 1000.0*(self.cursor_position.y as f64)/(self.size.height as f64),
                             b: 0f64,
                             a: 1.0,
                         }),
@@ -417,8 +461,10 @@ impl<'a> State<'a> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..self.vertices.len() as u32, 0..1);
+            for vertex_buffer in [&self.tiles_vertex_buffer, &self.cursor_vertex_buffer] {
+                render_pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+                render_pass.draw(0..vertex_buffer.vertices.len() as u32, 0..1);
+            }
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -461,7 +507,7 @@ pub async fn run() {
             })
             .expect("Couldn't append canvas to document body.");
 
-        let _ = window.request_inner_size(PhysicalSize::new(800, 800));
+        let _ = window.request_inner_size(PhysicalSize::new(1200, 800));
     }
 
     // State::new uses async code, so we're going to wait for it to finish
@@ -520,8 +566,15 @@ pub async fn run() {
                                 }
                             },
                             WindowEvent::CursorMoved { position, .. } => {
-                                state.cursor_position = *position;
-                                println!("{:?}", state.cursor_position);
+                                let half_size = Vector2::new((state.size.width/2) as f64, (state.size.height/2) as f64);
+                                let cursor_position = Point2::new(position.x, position.y);
+                                let relative = cursor_position - half_size;
+                                let clip = Vector2::new(
+                                    (relative.x / half_size.x) as f32,
+                                    -(relative.y / half_size.y) as f32,
+                                );
+                                state.cursor_position = clip;
+                                log::info!("{:?}", state.cursor_position);
                             },
                             _ => {}
                         }

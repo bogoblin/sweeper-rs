@@ -1,8 +1,11 @@
-use cgmath::{Point3, Vector3};
+use std::f32::consts::PI;
+use cgmath::{InnerSpace, Point2, Point3, Vector2, Vector3, Zero};
+use js_sys::Math::tan;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue};
 use wgpu::util::DeviceExt;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::WindowEvent;
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, NamedKey, SmolStr};
 
 pub(crate) struct Camera {
     transform: Transform,
@@ -105,6 +108,20 @@ impl Camera {
         self.uniform.view_proj = projection_matrix.into();
         queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]))
     }
+
+    pub fn cursor_to_xy_plane(&self, Vector2 { x, y }: Vector2<f32>) -> Point3<f32> {
+        let to_plane = self.transform.target - self.transform.eye;
+        let d = to_plane.magnitude();
+        let tan_fov_y = tan((self.transform.fovy * PI/180.0 * 0.5) as f64) as f32;
+        let tan_fov_x = tan_fov_y * self.transform.aspect;
+        let y_calc = y * tan_fov_y * d;
+        let x_calc = x * tan_fov_x * d;
+        self.transform.target + Vector3::new(x_calc, y_calc, 0.0) * 1.5 // idk why it's 1.5 but it works perfectly
+    }
+
+    pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
+        self.transform.aspect = aspect_ratio;
+    }
 }
 
 // We need this for Rust to store our data correctly for the shaders
@@ -132,6 +149,8 @@ struct CameraController {
     is_backward_pressed: bool,
     is_left_pressed: bool,
     is_right_pressed: bool,
+    is_zoom_in_pressed: bool,
+    is_zoom_out_pressed: bool,
 }
 
 impl CameraController {
@@ -142,6 +161,8 @@ impl CameraController {
             is_backward_pressed: false,
             is_left_pressed: false,
             is_right_pressed: false,
+            is_zoom_in_pressed: false,
+            is_zoom_out_pressed: false,
         }
     }
 
@@ -152,13 +173,19 @@ impl CameraController {
                 ..
             } => {
                 let is_pressed = event.state.is_pressed();
-                match event.logical_key {
+                match &event.logical_key {
                     Key::Named(NamedKey::ArrowLeft) => self.is_left_pressed = is_pressed,
                     Key::Named(NamedKey::ArrowRight) => self.is_right_pressed = is_pressed,
                     Key::Named(NamedKey::ArrowUp) => self.is_forward_pressed = is_pressed,
                     Key::Named(NamedKey::ArrowDown) => self.is_backward_pressed = is_pressed,
                     Key::Named(_) => {},
-                    Key::Character(_) => {},
+                    Key::Character(char) => {
+                        match char.as_str() {
+                            "+" => self.is_zoom_in_pressed = is_pressed,
+                            "-" => self.is_zoom_out_pressed = is_pressed,
+                            _ => {}
+                        }
+                    },
                     Key::Unidentified(_) => {},
                     Key::Dead(_) => {},
                 }
@@ -179,5 +206,8 @@ impl CameraController {
 
         camera.eye += (vertical + horizontal) * self.speed;
         camera.target += (vertical + horizontal) * self.speed;
+
+        let zoom = (self.is_zoom_in_pressed as i32 - self.is_zoom_out_pressed as i32) as f32;
+        camera.fovy += zoom * self.speed;
     }
 }
