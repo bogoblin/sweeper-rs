@@ -2,19 +2,20 @@ use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::ops;
-use std::ops::AddAssign;
+use std::ops::{AddAssign};
 
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use serde::Serialize;
+use crate::RevealResult::Nothing;
 
 pub mod server_messages;
 pub mod client_messages;
 
 pub struct World {
-    pub chunk_ids: HashMap<Position, usize>,
-    pub positions: Vec<Position>,
+    pub chunk_ids: HashMap<ChunkPosition, usize>,
+    pub positions: Vec<ChunkPosition>,
     pub chunks: Vec<Chunk>,
     pub rng: StdRng,
 }
@@ -79,35 +80,32 @@ impl World {
                 return;
             }
         }
-        unsafe {
-            let surrounding_chunks = surrounding_chunk_ids.map(|chunk_id| {
-                self.chunks.get_unchecked(chunk_id)
-            });
-            self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
-        }
+        let surrounding_chunks = surrounding_chunk_ids.map(|chunk_id| unsafe {
+            self.chunks.get_unchecked(chunk_id)
+        });
+        self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
 
-    pub fn reveal(&mut self, position: Position) -> RevealResult {
-        let mut reveal_stack = vec![position];
+    pub fn reveal(&mut self, mut to_reveal: Vec<Position>) -> RevealResult {
         let mut updated_chunk_ids = HashSet::new();
 
-        while let Some(position) = reveal_stack.pop() {
+        while let Some(position) = to_reveal.pop() {
             let current_chunk_id = self.generate_chunk(position);
             self.fill_adjacent_mines(position);
             let current_chunk = match self.chunks.get_mut(current_chunk_id) {
                 None => continue,
                 Some(c) => c,
             };
-            let tile = current_chunk.get_tile(position);
+            let tile = unsafe { current_chunk.tiles.get_unchecked_mut(position.tile_index()) };
             if !tile.is_revealed() {
-                let tile = current_chunk.set_tile(position, tile.with_revealed());
+                *tile = tile.with_revealed();
                 if tile.is_mine() {
                     return RevealResult::Death(position);
                 }
                 if tile.adjacent() == 0 {
                     for x in -1..=1 {
                         for y in -1..=1 {
-                            reveal_stack.push(Position(position.0 + x, position.1 + y));
+                            to_reveal.push(Position(position.0 + x, position.1 + y));
                         }
                     }
                 }
@@ -119,54 +117,51 @@ impl World {
     }
 
     pub fn double_click(&mut self, position: Position) -> RevealResult {
-        if let Some(chunk) = self.get_chunk(position) {
-            let tile = chunk.get_tile(position);
-            if !tile.is_revealed() || tile.adjacent() == 0 {
-                return RevealResult::Nothing
-            }
-            // TODO: speed up this part it will be slow
-            let mut surrounding_flags = 0;
-            let mut to_reveal = vec![];
-            for x in -1..=1 {
-                for y in -1..=1 {
-                    let pos = Position(position.0+x, position.1+y);
-                    if let Some(chunk) = self.get_chunk(pos) {
-                        let t = chunk.get_tile(pos);
-                        if !t.is_revealed() {
-                            if t.is_flag() {
-                                surrounding_flags += 1;
-                            } else {
-                                to_reveal.push(pos);
-                            }
+        let chunk = match self.get_chunk(position) {
+            Some(chunk) => chunk,
+            None => return Nothing
+        };
+        let tile = chunk.get_tile(position);
+        if !tile.is_revealed() || tile.adjacent() == 0 {
+            return Nothing;
+        }
+        // TODO: speed up this part it will be slow
+        let mut surrounding_flags = 0;
+        let mut to_reveal = vec![];
+        for x in -1..=1 {
+            for y in -1..=1 {
+                let pos = Position(position.0 + x, position.1 + y);
+                if let Some(chunk) = self.get_chunk(pos) {
+                    let t = chunk.get_tile(pos);
+                    if !t.is_revealed() {
+                        if t.is_flag() {
+                            surrounding_flags += 1;
+                        } else {
+                            to_reveal.push(pos);
                         }
+                    } else if t.is_mine() {
+                        surrounding_flags += 1;
                     }
                 }
-            }
-            if surrounding_flags == tile.adjacent() {
-                let mut result: HashSet<usize> = HashSet::new();
-                for position in to_reveal {
-                    if let RevealResult::Revealed(chunks_revealed) = self.reveal(position) {
-                        for chunk_id in chunks_revealed {
-                            result.insert(chunk_id);
-                        }
-                    }
-                }
-                return RevealResult::Revealed(result);
             }
         }
-        RevealResult::Nothing
+        if surrounding_flags == tile.adjacent() {
+            return self.reveal(to_reveal);
+        }
+        Nothing
     }
 
     pub fn flag(&mut self, position: Position) -> FlagResult {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
-                let tile = chunk.get_tile(position);
-                return if tile.is_flag() {
-                    chunk.set_tile(position, tile.without_flag());
-                    FlagResult::Unflagged(position)
-                } else {
-                    chunk.set_tile(position, tile.with_flag());
-                    FlagResult::Flagged(position)
+                if let Some(&mut ref mut tile) = chunk.tiles.get_mut(position.position_in_chunk().index()) {
+                    return if tile.is_flag() {
+                        *tile = tile.without_flag();
+                        FlagResult::Unflagged(position)
+                    } else {
+                        *tile = tile.with_flag();
+                        FlagResult::Flagged(position)
+                    }
                 }
             }
         }
@@ -185,14 +180,48 @@ pub enum FlagResult {
     Nothing
 }
 
+#[derive(Copy, Clone, Eq, Hash, PartialEq)]
+pub struct ChunkPosition(pub i32, pub i32);
+
+impl ChunkPosition {
+    pub fn new(x: i32, y: i32) -> Self {
+        Self(x & !0b1111, y & !0b1111)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PositionInChunk(u8);
+
+impl PositionInChunk {
+    pub fn new(x: i32, y:i32) -> Self {
+        Self(((x & 0b1111) + ((y & 0b1111) << 4)) as u8)
+    }
+
+    pub fn x(&self) -> u8 {
+        self.0 & 0b1111
+    }
+
+    pub fn y(&self) -> u8 {
+        (self.0 >> 4) & 0b1111
+    }
+
+    pub fn index(&self) -> usize {
+        self.0 as usize
+    }
+}
+
 #[derive(Eq, Hash, PartialEq, Copy, Clone)]
 pub struct Position(pub i32, pub i32);
 impl Position {
-    fn chunk_position(&self) -> Position {
-        self - (self.position_in_chunk().0, self.position_in_chunk().1)
+    fn chunk_position(&self) -> ChunkPosition {
+        ChunkPosition::new(self.0, self.1)
     }
-    fn position_in_chunk(&self) -> Position {
-        Position(self.0 & 0b1111, self.1 & 0b1111)
+    fn position_in_chunk(&self) -> PositionInChunk {
+        PositionInChunk::new(self.0, self.1)
+    }
+
+    pub fn tile_index(&self) -> usize {
+        self.position_in_chunk().index()
     }
 }
 impl ops::Add<(i32, i32)> for &Position {
@@ -247,8 +276,8 @@ impl Tile {
 }
 
 pub struct Chunk {
-    pub(crate) tiles: [[Tile; 16]; 16],
-    pub position: Position,
+    pub tiles: [Tile; 256],
+    pub position: ChunkPosition,
     adjacent_mines_filled: bool
 }
 
@@ -259,9 +288,9 @@ impl AddAssign<u8> for Tile {
 }
 
 impl Chunk {
-    pub fn generate(position: Position, seed: u64, number_of_mines: u8) -> Chunk {
+    pub fn generate(position: ChunkPosition, seed: u64, number_of_mines: u8) -> Chunk {
         let mut new_chunk = Chunk {
-            tiles: Default::default(),
+            tiles: [Tile::empty(); 256],
             position,
             adjacent_mines_filled: false
         };
@@ -275,14 +304,10 @@ impl Chunk {
     }
 
     pub fn get_tile(&self, position: Position) -> Tile {
-        let x = position.0 as usize;
-        let y = position.1 as usize;
-        self.tiles[x%16][y%16]
+        self.tiles[position.position_in_chunk().index()]
     }
     pub fn set_tile(&mut self, position: Position, tile: Tile) -> Tile {
-        let x = position.0 as usize;
-        let y = position.1 as usize;
-        self.tiles[x%16][y%16] = tile;
+        self.tiles[position.position_in_chunk().index()] = tile;
         tile
     }
 
@@ -320,14 +345,15 @@ impl Chunk {
             tile_is_mine(4)
         };
 
-        let mut new_tiles: [[Tile; 16]; 16] = surrounding_chunks[4].tiles.clone();
+        let mut new_tiles: [Tile; 256] = surrounding_chunks[4].tiles.clone();
 
         for x in 0..16 {
             for y in 0..16 {
+                let tile_index = PositionInChunk::new(x, y).index();
                 for xo in -1..=1 {
                     for yo in -1..=1 {
                         if is_mine(Position(x+xo, y+yo)) {
-                            new_tiles[x as usize][y as usize] += 1;
+                            new_tiles[tile_index] += 1;
                         }
                     }
                 }

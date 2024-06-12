@@ -7,11 +7,11 @@ use serde_json::Value;
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
 use tokio::net::TcpListener;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 
-use world::client_messages::ClientMessage::{Click, Flag};
-use world::client_messages::ClientMessage::DoubleClick;
 use world::{Chunk, FlagResult, Position, RevealResult, World};
+use world::client_messages::ClientMessage::{Click, Flag, Welcome};
+use world::client_messages::ClientMessage::DoubleClick;
 use world::server_messages::chunk_message;
 
 #[tokio::main]
@@ -20,6 +20,7 @@ async fn main() {
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
+        tx.send((Welcome, socket.clone())).unwrap();
         socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
             if let Value::Array(array) = data {
                 match &array[..] {
@@ -45,7 +46,7 @@ async fn main() {
         for (received, socket_ref) in rx {
             match received {
                 Click(position) => {
-                    let result = world.reveal(position);
+                    let result = world.reveal(vec![position]);
                     send_reveal_result(&world, &socket_ref, result);
                 }
                 Flag(position) => {
@@ -63,13 +64,17 @@ async fn main() {
                     let result = world.double_click(position);
                     send_reveal_result(&world, &socket_ref, result);
                 }
+                Welcome => {
+                    for chunk in &world.chunks {
+                        send_chunk(&socket_ref, chunk);
+                    }
+                }
             }
         }
     });
 
     let router: Router<> = Router::new()
-        .route_service("/", ServeFile::new("crates/client/index.html"))
-        .fallback_service(ServeDir::new("crates/client/pkg"))
+        .fallback_service(ServeDir::new("static"))
         .layer(socket_layer);
     let addr = SocketAddr::from(([127,0,0,1], 8000));
     let tcp = TcpListener::bind(&addr).await.unwrap();
