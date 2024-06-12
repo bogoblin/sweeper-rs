@@ -9,9 +9,8 @@ use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use world::{Chunk, FlagResult, Position, RevealResult, World};
-use world::client_messages::ClientMessage::{Click, Flag, Welcome};
-use world::client_messages::ClientMessage::DoubleClick;
+use world::{Chunk, FlagResult, Position, World};
+use world::client_messages::ClientMessage::*;
 use world::server_messages::chunk_message;
 
 #[tokio::main]
@@ -32,6 +31,7 @@ async fn main() {
                             "click" => Click(position),
                             "flag" => Flag(position),
                             "doubleClick" => DoubleClick(position),
+                            "move" => Move(position),
                             _ => return,
                         };
                         tx.send((message, socket_ref)).expect("Can't send game message");
@@ -48,11 +48,11 @@ async fn main() {
             eprintln!("Player {player_id} : {:?}", received);
             match received {
                 Click(position) => {
-                    let result = world.reveal(vec![position]);
+                    let result = world.reveal(vec![position], player_id);
                     send_reveal_result(&world, &socket_ref, result);
                 }
                 Flag(position) => {
-                    let result = world.flag(position);
+                    let result = world.flag(position, player_id);
                     match &result {
                         FlagResult::Flagged(_) => {}
                         FlagResult::Unflagged(_) => {}
@@ -63,7 +63,7 @@ async fn main() {
                     }
                 }
                 DoubleClick(position) => {
-                    let result = world.double_click(position);
+                    let result = world.double_click(position, player_id);
                     send_reveal_result(&world, &socket_ref, result);
                 }
                 Welcome => {
@@ -71,7 +71,12 @@ async fn main() {
                         send_chunk(&socket_ref, chunk);
                     }
                 }
+                Move(position) => {
+                    world.players[player_id].position = position;
+                }
             }
+            let player = unsafe {world.players.get_unchecked(player_id)};
+            eprintln!("{:?}", player);
         }
     });
 
@@ -91,20 +96,10 @@ fn send_chunk(socket_ref: &SocketRef, chunk: &Chunk) {
     socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
 }
 
-fn send_reveal_result(world: &World, socket_ref: &SocketRef, result: RevealResult) {
-    match &result {
-        RevealResult::Death(position) => {
-            if let Some(chunk) = world.get_chunk(*position) {
-                send_chunk(socket_ref, chunk);
-            }
+fn send_reveal_result(world: &World, socket_ref: &SocketRef, chunks: Vec<usize>) {
+    for chunk_id in chunks {
+        if let Some(chunk) = world.chunks.get(chunk_id) {
+            send_chunk(socket_ref, chunk);
         }
-        RevealResult::Revealed(chunks) => {
-            for &chunk_id in chunks {
-                if let Some(chunk) = world.chunks.get(chunk_id) {
-                    send_chunk(socket_ref, chunk);
-                }
-            }
-        }
-        RevealResult::Nothing => {}
     }
 }

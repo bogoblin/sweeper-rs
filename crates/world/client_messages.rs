@@ -6,4 +6,5 @@ pub enum ClientMessage {
     Click(Position),
     Flag(Position),
     DoubleClick(Position),
+    Move(Position),
 }

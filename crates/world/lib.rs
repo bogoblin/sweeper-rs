@@ -9,7 +9,6 @@ use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use serde::Serialize;
 use crate::player::Player;
-use crate::RevealResult::Nothing;
 
 pub mod server_messages;
 pub mod client_messages;
@@ -104,7 +103,11 @@ impl World {
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
 
-    pub fn reveal(&mut self, mut to_reveal: Vec<Position>) -> RevealResult {
+    pub fn reveal(&mut self, mut to_reveal: Vec<Position>, by_player_id: usize) -> Vec<usize> {
+        if self.players.get(by_player_id).is_none() {
+            return vec![]
+        };
+
         let mut updated_chunk_ids = HashSet::new();
 
         while let Some(position) = to_reveal.pop() {
@@ -114,11 +117,15 @@ impl World {
                 None => continue,
                 Some(c) => c,
             };
+            // It's okay to get unchecked here because we know that tile_index() always returns a number < 256
             let tile = unsafe { current_chunk.tiles.get_unchecked_mut(position.tile_index()) };
             if !tile.is_revealed() {
+                // It's okay to get unchecked here because we check that the player_id exists at the top of the function
+                let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
+
                 *tile = tile.with_revealed();
                 if tile.is_mine() {
-                    return RevealResult::Death(position);
+                    player.kill();
                 }
                 if tile.adjacent() == 0 {
                     for x in -1..=1 {
@@ -127,28 +134,29 @@ impl World {
                         }
                     }
                 }
+                player.stats_revealed[tile.adjacent() as usize] += 1;
                 updated_chunk_ids.insert(current_chunk_id);
             }
         }
 
-        RevealResult::Revealed(updated_chunk_ids)
+        updated_chunk_ids.iter().map(|id| id.clone()).collect()
     }
 
-    pub fn double_click(&mut self, position: Position) -> RevealResult {
+    pub fn double_click(&mut self, position: Position, by_player_id: usize) -> Vec<usize> {
         let chunk = match self.get_chunk(position) {
             Some(chunk) => chunk,
-            None => return Nothing
+            None => return vec![],
         };
         let tile = chunk.get_tile(position);
         if !tile.is_revealed() || tile.adjacent() == 0 {
-            return Nothing;
+            return vec![];
         }
-        // TODO: speed up this part it will be slow
         let mut surrounding_flags = 0;
         let mut to_reveal = vec![];
         for x in -1..=1 {
             for y in -1..=1 {
                 let pos = Position(position.0 + x, position.1 + y);
+                // TODO: speed up this part, it will be slow because it keeps getting the same chunk from the hashmap
                 if let Some(chunk) = self.get_chunk(pos) {
                     let t = chunk.get_tile(pos);
                     if !t.is_revealed() {
@@ -164,20 +172,39 @@ impl World {
             }
         }
         if surrounding_flags == tile.adjacent() {
-            return self.reveal(to_reveal);
+            return self.reveal(to_reveal, by_player_id);
         }
-        Nothing
+        vec![]
     }
 
-    pub fn flag(&mut self, position: Position) -> FlagResult {
+    pub fn flag(&mut self, position: Position, by_player_id: usize) -> FlagResult {
+        if self.players.get(by_player_id).is_none() {
+            return FlagResult::Nothing;
+        };
+
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.get_mut(position.position_in_chunk().index()) {
+                    let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
                     return if tile.is_flag() {
+                        // Unflag
                         *tile = tile.without_flag();
+                        /* TODO: not sure what to do here yet
+                        if tile.is_mine() {
+                            player.stats_flags_incorrect -= 1;
+                        } else {
+                            player.stats_flags_correct -= 1;
+                        }
+                        */
                         FlagResult::Unflagged(position)
                     } else {
+                        // Flag
                         *tile = tile.with_flag();
+                        if tile.is_mine() {
+                            player.stats_flags_correct += 1;
+                        } else {
+                            player.stats_flags_incorrect += 1;
+                        }
                         FlagResult::Flagged(position)
                     }
                 }
@@ -187,11 +214,6 @@ impl World {
     }
 }
 
-pub enum RevealResult {
-    Death(Position),
-    Revealed(HashSet<usize>),
-    Nothing,
-}
 pub enum FlagResult {
     Flagged(Position),
     Unflagged(Position),
