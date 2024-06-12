@@ -8,28 +8,46 @@ use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use serde::Serialize;
+use crate::player::Player;
 use crate::RevealResult::Nothing;
 
 pub mod server_messages;
 pub mod client_messages;
+mod player;
 
 pub struct World {
     pub chunk_ids: HashMap<ChunkPosition, usize>,
     pub positions: Vec<ChunkPosition>,
     pub chunks: Vec<Chunk>,
     pub rng: StdRng,
+
+    pub player_ids: HashMap<String, usize>,
+    pub players: Vec<Player>
 }
 
 impl World {
     pub fn new() -> World {
         let mut world = World {
             chunk_ids: Default::default(),
-            positions: Default::default(),
-            chunks: Default::default(),
+            positions: vec![],
+            chunks: vec![],
             rng: StdRng::seed_from_u64(0),
+            player_ids: Default::default(),
+            players: vec![],
         };
         world.generate_chunk(Position(0, 0));
         world
+    }
+
+    pub fn register_player(&mut self, cookie: String) -> usize {
+        return match self.player_ids.entry(cookie) {
+            Entry::Occupied(entry) => entry.get().clone(),
+            Entry::Vacant(entry) => {
+                let new_player_id = self.players.len();
+                self.players.push(Player::new());
+                *entry.insert(new_player_id)
+            }
+        }
     }
 
     pub fn get_chunk_id(&self, position: Position) -> Option<&usize> {
@@ -210,19 +228,16 @@ impl PositionInChunk {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone)]
 pub struct Position(pub i32, pub i32);
 impl Position {
-    fn chunk_position(&self) -> ChunkPosition {
-        ChunkPosition::new(self.0, self.1)
-    }
-    fn position_in_chunk(&self) -> PositionInChunk {
-        PositionInChunk::new(self.0, self.1)
-    }
+    pub fn origin() -> Self { Self(0, 0) }
 
-    pub fn tile_index(&self) -> usize {
-        self.position_in_chunk().index()
-    }
+    fn chunk_position(&self) -> ChunkPosition { ChunkPosition::new(self.0, self.1) }
+
+    fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
+
+    pub fn tile_index(&self) -> usize { self.position_in_chunk().index() }
 }
 impl ops::Add<(i32, i32)> for &Position {
     type Output = Position;

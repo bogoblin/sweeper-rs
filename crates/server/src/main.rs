@@ -20,7 +20,7 @@ async fn main() {
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
-        tx.send((Welcome, socket.clone())).unwrap();
+        tx.send((Welcome, socket.clone())).expect("Can't send welcome message");
         socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
             if let Value::Array(array) = data {
                 match &array[..] {
@@ -34,7 +34,7 @@ async fn main() {
                             "doubleClick" => DoubleClick(position),
                             _ => return,
                         };
-                        tx.send((message, socket_ref)).unwrap();
+                        tx.send((message, socket_ref)).expect("Can't send game message");
                     },
                     _ => {}
                 }
@@ -44,6 +44,8 @@ async fn main() {
 
     let _handle = thread::spawn(move || {
         for (received, socket_ref) in rx {
+            let player_id = world.register_player(format!("{}", socket_ref.id));
+            eprintln!("Player {player_id} : {:?}", received);
             match received {
                 Click(position) => {
                     let result = world.reveal(vec![position]);
