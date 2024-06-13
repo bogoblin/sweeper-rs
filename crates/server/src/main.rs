@@ -68,6 +68,10 @@ async fn main() {
                     send_reveal_result(&world, &socket_ref, result, player_id);
                 }
                 Welcome => {
+                    let player = unsafe {world.players.get_unchecked(player_id)};
+                    let username = player.username.clone();
+                    send_player(&socket_ref, player);
+                    socket_ref.emit("welcome", username).expect("Couldn't send welcome message");
                     for chunk in &world.chunks {
                         send_chunk(&socket_ref, chunk);
                     }
