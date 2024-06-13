@@ -17,14 +17,6 @@ class Chunk {
     }
 
     /**
-     * @param socket {WebSocket}
-     */
-    send(socket) {
-        socket.send(this.serialize());
-    }
-
-
-    /**
      * Chunk stores an array of tiles. This function returns the index of that array that corresponds to the given world coordinates.
      * @param worldCoords {number[]} the coordinates to find the index of.
      * @returns {number} the index for the tiles array for this coordinate. Returns -1 if the coordinate is not in this chunk.
@@ -36,17 +28,6 @@ class Chunk {
             return -1;
         }
         return row*chunkSize + col;
-    }
-
-    /**
-     * The inverse of indexOf()
-     * @param index {number}
-     * @returns {number[]}
-     */
-    coordsOf(index) {
-        const col = index % chunkSize;
-        const row = Math.floor(index/chunkSize);
-        return vectorAdd(this.topLeft(), [col, row]);
     }
 
     updateTile(worldCoords, tile) {
@@ -79,99 +60,6 @@ class Chunk {
         }
 
         context.drawImage(this.canvas, screenX, screenY);
-    }
-
-    addMine(index, chunkStore) {
-        if (index < 0 || index > chunkSize*chunkSize) return;
-
-        const tileIsMineAlready = mine(this.tiles[index]);
-        if (tileIsMineAlready) return;
-
-        this.tiles[index] |= Mine;
-
-        // Now we need to update the number of adjacent tiles
-        forEachNeighbour(this.coordsOf(index), (coordsOfAdjTile) => {
-            const indexOfAdjTile = this.indexOf(coordsOfAdjTile);
-            if (indexOfAdjTile === -1) {
-                const adjChunk = chunkStore.getChunk(coordsOfAdjTile);
-                if (adjChunk) {
-                    const adjIndex = adjChunk.indexOf(coordsOfAdjTile);
-                    adjChunk.tiles[adjIndex] += 1;
-                }
-            } else {
-                this.tiles[indexOfAdjTile] += 1;
-            }
-        });
-    }
-
-    /**
-     *
-     * @param player {Player}
-     * @param worldCoords {number[]}
-     * @param world {World}
-     */
-    reveal(player, worldCoords, world) {
-        const index = this.indexOf(worldCoords);
-        if (index === -1) {
-            world.queueReveal(player, worldCoords);
-            return;
-        }
-
-        const tile = this.tiles[index];
-
-        if (revealed(tile)) return;
-
-        const numberOfAdjacentMines = adjacent(tile);
-        player.hasRevealed(tile, world);
-        this.tiles[index] += Revealed;
-
-        // Reveal adjacent tiles if none of them are mines
-        if (numberOfAdjacentMines === 0) {
-            forEachNeighbour(worldCoords, (adjacentCoords) => {
-                const adjacentTile = this.getTile(adjacentCoords);
-                if (!revealed(adjacentTile)) {
-                    this.reveal(player, adjacentCoords, world);
-                }
-            });
-        }
-        else {
-        }
-    }
-
-    flag(worldCoords) {
-        const index = this.indexOf(worldCoords);
-        if (index === -1) return;
-
-        const tile = this.tiles[index];
-        if (flag(tile)) {
-            this.tiles[index] -= Flag;
-        } else {
-            this.tiles[index] += Flag;
-        }
-    }
-
-    topLeft() {
-        return this.coords;
-    }
-    topRight() {
-        return vectorAdd(this.topLeft(), [chunkSize, 0]);
-    }
-    bottomLeft() {
-        return vectorAdd(this.topLeft(), [0, chunkSize]);
-    }
-    bottomRight() {
-        return vectorAdd(this.topLeft(), [chunkSize, chunkSize]);
-    }
-    rect() {
-        return [this.topLeft(), this.bottomRight()];
-    }
-
-    publicVersion() {
-        const publicTiles = this.tiles.map(tile => publicVersion(tile));
-        return {
-            coords: this.coords,
-            tiles: publicTiles
-        };
     }
 }
 

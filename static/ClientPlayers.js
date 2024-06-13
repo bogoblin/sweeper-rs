@@ -10,7 +10,6 @@ class ClientPlayers {
         const username = player.username;
         if (!this.players[username]) {
             const newPlayer = new Player(username);
-            newPlayer.playerInfo = new PlayerInfo(newPlayer);
             this.players[username] = newPlayer;
         }
         const existingPlayer = this.players[username];

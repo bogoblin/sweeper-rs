@@ -12,7 +12,7 @@ use crate::player::Player;
 
 pub mod server_messages;
 pub mod client_messages;
-mod player;
+pub mod player;
 
 pub struct World {
     pub chunk_ids: HashMap<ChunkPosition, usize>,
@@ -39,11 +39,11 @@ impl World {
     }
 
     pub fn register_player(&mut self, cookie: String) -> usize {
-        return match self.player_ids.entry(cookie) {
+        return match self.player_ids.entry(cookie.clone()) {
             Entry::Occupied(entry) => entry.get().clone(),
             Entry::Vacant(entry) => {
                 let new_player_id = self.players.len();
-                self.players.push(Player::new());
+                self.players.push(Player::new(cookie)); // TODO: use an actual username when we have them
                 *entry.insert(new_player_id)
             }
         }
@@ -107,6 +107,10 @@ impl World {
         if self.players.get(by_player_id).is_none() {
             return vec![]
         };
+        let first_reveal = match to_reveal.get(0) {
+            None => return vec![],
+            Some(&p) => p
+        };
 
         let mut updated_chunk_ids = HashSet::new();
 
@@ -138,6 +142,9 @@ impl World {
                 updated_chunk_ids.insert(current_chunk_id);
             }
         }
+
+        let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
+        player.last_clicked = first_reveal;
 
         updated_chunk_ids.iter().map(|id| id.clone()).collect()
     }
@@ -172,7 +179,10 @@ impl World {
             }
         }
         if surrounding_flags == tile.adjacent() {
-            return self.reveal(to_reveal, by_player_id);
+            let result = self.reveal(to_reveal, by_player_id);
+            let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
+            player.last_clicked = position;
+            return result;
         }
         vec![]
     }
@@ -186,6 +196,7 @@ impl World {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.get_mut(position.position_in_chunk().index()) {
                     let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
+                    player.last_clicked = position;
                     return if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
@@ -250,7 +261,7 @@ impl PositionInChunk {
     }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone)]
+#[derive(Serialize, Debug, Eq, Hash, PartialEq, Copy, Clone)]
 pub struct Position(pub i32, pub i32);
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }

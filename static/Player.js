@@ -1,12 +1,10 @@
 class Player {
     username;
     socket;
-    hashedPassword;
     position;
 
-    constructor(username, hashedPassword) {
+    constructor(username) {
         this.username = username;
-        this.hashedPassword = hashedPassword;
         this.position = [0,0];
         this.lastClick = null;
         this.score = [];
@@ -16,17 +14,6 @@ class Player {
 
         this.deadUntil = 0;
         this.deaths = 0;
-    }
-
-    publicVersion() {
-        return {
-            username: this.username,
-            position: this.position,
-            lastClick: this.lastClick,
-            score: this.score,
-            deadUntil: this.deadUntil,
-            deaths: this.deaths,
-        };
     }
 
     connect(socket) {
@@ -39,15 +26,6 @@ class Player {
 
     move(newPosition) {
         this.position = newPosition;
-    }
-
-    /**
-     * Kill this player
-     * @param deathDuration {number} time until respawn in milliseconds
-     */
-    kill(deathDuration) {
-        this.deadUntil = Date.now() + deathDuration;
-        this.deaths++;
     }
 
     hasRevealed(tile, world) {
