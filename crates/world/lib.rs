@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::ops;
-use std::ops::{AddAssign};
+use std::ops::{AddAssign, Sub};
 
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
@@ -103,16 +103,17 @@ impl World {
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
 
-    pub fn reveal(&mut self, mut to_reveal: Vec<Position>, by_player_id: usize) -> Vec<usize> {
+    pub fn reveal(&mut self, mut to_reveal: Vec<Position>, by_player_id: usize) -> UpdatedRect {
         if self.players.get(by_player_id).is_none() {
-            return vec![]
+            return Default::default();
         };
         let first_reveal = match to_reveal.get(0) {
-            None => return vec![],
+            None => return Default::default(),
             Some(&p) => p
         };
 
         let mut updated_chunk_ids = HashSet::new();
+        let mut updated_tiles = vec![];
 
         while let Some(position) = to_reveal.pop() {
             let current_chunk_id = self.generate_chunk(position);
@@ -139,6 +140,7 @@ impl World {
                     }
                 }
                 player.stats_revealed[tile.adjacent() as usize] += 1;
+                updated_tiles.push(UpdatedTile {position, tile: tile.clone()});
                 updated_chunk_ids.insert(current_chunk_id);
             }
         }
@@ -146,17 +148,17 @@ impl World {
         let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
         player.last_clicked = first_reveal;
 
-        updated_chunk_ids.iter().map(|id| id.clone()).collect()
+        UpdatedRect::new(updated_tiles)
     }
 
-    pub fn double_click(&mut self, position: Position, by_player_id: usize) -> Vec<usize> {
+    pub fn double_click(&mut self, position: Position, by_player_id: usize) -> UpdatedRect {
         let chunk = match self.get_chunk(position) {
             Some(chunk) => chunk,
-            None => return vec![],
+            None => return Default::default(),
         };
         let tile = chunk.get_tile(position);
         if !tile.is_revealed() || tile.adjacent() == 0 {
-            return vec![];
+            return Default::default();
         }
         let mut surrounding_flags = 0;
         let mut to_reveal = vec![];
@@ -184,12 +186,12 @@ impl World {
             player.last_clicked = position;
             return result;
         }
-        vec![]
+        Default::default()
     }
 
-    pub fn flag(&mut self, position: Position, by_player_id: usize) -> FlagResult {
+    pub fn flag(&mut self, position: Position, by_player_id: usize) -> UpdatedRect {
         if self.players.get(by_player_id).is_none() {
-            return FlagResult::Nothing;
+            return UpdatedRect::empty();
         };
 
         if let Some(&chunk_id) = self.get_chunk_id(position) {
@@ -197,7 +199,8 @@ impl World {
                 if let Some(&mut ref mut tile) = chunk.tiles.get_mut(position.position_in_chunk().index()) {
                     let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
                     player.last_clicked = position;
-                    return if tile.is_flag() {
+                    let updated_tile = UpdatedTile{position, tile: tile.clone()};
+                    if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
                         /* TODO: not sure what to do here yet
@@ -207,7 +210,6 @@ impl World {
                             player.stats_flags_correct -= 1;
                         }
                         */
-                        FlagResult::Unflagged(position)
                     } else {
                         // Flag
                         *tile = tile.with_flag();
@@ -216,19 +218,13 @@ impl World {
                         } else {
                             player.stats_flags_incorrect += 1;
                         }
-                        FlagResult::Flagged(position)
                     }
+                    return UpdatedRect::new(vec![updated_tile])
                 }
             }
         }
-        FlagResult::Nothing
+        UpdatedRect::empty()
     }
-}
-
-pub enum FlagResult {
-    Flagged(Position),
-    Unflagged(Position),
-    Nothing
 }
 
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
@@ -261,7 +257,7 @@ impl PositionInChunk {
     }
 }
 
-#[derive(Serialize, Debug, Eq, Hash, PartialEq, Copy, Clone)]
+#[derive(Serialize, Debug, Eq, Hash, PartialEq, Copy, Clone, Default)]
 pub struct Position(pub i32, pub i32);
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }
@@ -279,7 +275,7 @@ impl ops::Add<(i32, i32)> for &Position {
         Position(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
-impl ops::Sub<(i32, i32)> for &Position {
+impl Sub<(i32, i32)> for &Position {
     type Output = Position;
 
     fn sub(self, rhs: (i32, i32)) -> Position {
@@ -412,6 +408,72 @@ impl Chunk {
             tiles: new_tiles,
             position: surrounding_chunks[4].position,
             adjacent_mines_filled: true,
+        }
+    }
+}
+
+pub struct UpdatedTile {
+    position: Position,
+    tile: Tile,
+}
+
+#[derive(Default)]
+pub struct UpdatedRect {
+    pub top_left: Position,
+    pub updated: Vec<Vec<Tile>>,
+}
+
+impl Sub for Position {
+    type Output = Position;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Position(self.0 - rhs.0, self.1 - rhs.1)
+    }
+}
+
+impl UpdatedRect {
+    pub fn empty() -> Self {
+        Self {top_left: Position::origin(), updated: vec![]}
+    }
+    pub fn new(updated_tiles: Vec<UpdatedTile>) -> Self {
+        let first_tile = match updated_tiles.get(0) {
+            None => return Self::empty(),
+            Some(t) => t,
+        };
+
+        let Position(mut min_x, mut min_y) = first_tile.position;
+        let mut max_x = min_x;
+        let mut max_y = min_y;
+
+        for updated_tile in &updated_tiles {
+            let Position(x, y) = updated_tile.position;
+            if x < min_x { min_x = x; }
+            if x > max_x { max_x = x; }
+            if y < min_y { min_y = y; }
+            if y > max_y { max_y = y; }
+        }
+
+        let top_left = Position(min_x, min_y);
+
+        let n_cols = max_x + 1 - min_x;
+        let n_rows = max_y + 1 - min_y;
+
+        let mut updated = vec![];
+        for i in 0..n_cols {
+            updated.push(vec![]);
+            for _j in 0..n_rows {
+                updated[i as usize].push(Tile::empty())
+            }
+        }
+
+        for updated_tile in &updated_tiles {
+            let Position(x, y) = updated_tile.position - top_left;
+            updated[x as usize][y as usize] = updated_tile.tile;
+        }
+
+        Self {
+            top_left,
+            updated
         }
     }
 }

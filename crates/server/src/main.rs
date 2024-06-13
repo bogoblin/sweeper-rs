@@ -9,10 +9,10 @@ use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use world::{Chunk, FlagResult, Position, World};
+use world::{Chunk, Position, UpdatedRect, World};
 use world::client_messages::ClientMessage::*;
-use world::server_messages::{chunk_message, player_message};
 use world::player::Player;
+use world::server_messages::{chunk_message, player_message, updated_rect_message};
 
 #[tokio::main]
 async fn main() {
@@ -54,14 +54,7 @@ async fn main() {
                 }
                 Flag(position) => {
                     let result = world.flag(position, player_id);
-                    match &result {
-                        FlagResult::Flagged(_) => {}
-                        FlagResult::Unflagged(_) => {}
-                        FlagResult::Nothing => {}
-                    }
-                    if let Some(chunk) = world.get_chunk(position) {
-                        send_chunk(&socket_ref, chunk);
-                    }
+                    send_reveal_result(&world, &socket_ref, result, player_id);
                 }
                 DoubleClick(position) => {
                     let result = world.double_click(position, player_id);
@@ -107,12 +100,17 @@ fn send_player(socket_ref: &SocketRef, player: &Player) {
     socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
 }
 
-fn send_reveal_result(world: &World, socket_ref: &SocketRef, chunks: Vec<usize>, by_player_id: usize) {
-    for chunk_id in chunks {
-        if let Some(chunk) = world.chunks.get(chunk_id) {
-            send_chunk(socket_ref, chunk);
-        }
+fn send_updated_rect(socket_ref: &SocketRef, updated_rect: &UpdatedRect) {
+    if updated_rect.updated.is_empty() {
+        return;
     }
+    let (event, data) = updated_rect_message(updated_rect);
+    socket_ref.emit(event, &data).expect("TODO: panic message");
+    socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
+}
+
+fn send_reveal_result(world: &World, socket_ref: &SocketRef, updated: UpdatedRect, by_player_id: usize) {
+    send_updated_rect(socket_ref, &updated);
     let player = unsafe {world.players.get_unchecked(by_player_id)};
     send_player(socket_ref, player);
 }
