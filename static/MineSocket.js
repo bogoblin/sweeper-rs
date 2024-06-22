@@ -26,7 +26,7 @@ class MineSocket {
                 if (!chunk) {
                     return;
                 }
-                this.tileMap.addChunk(new Chunk(chunk.coords, new Uint8Array(chunk.tiles)));
+                this.tileMap.chunks.addChunk(new Chunk(chunk.coords, new Uint8Array(chunk.tiles)));
             });
             this.socket.on('updated_rect', ({ topLeft, updated }) => {
                 console.log(updated);
@@ -36,7 +36,7 @@ class MineSocket {
                         let y = relative_y + topLeft[1];
                         const updatedTile = updated[relative_x][relative_y];
                         if (updatedTile !== 0) {
-                            this.tileMap.updateTile([x, y], updatedTile);
+                            this.tileMap.chunks.updateTile([x, y], updatedTile);
                         }
                     }
                 }

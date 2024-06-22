@@ -32,33 +32,19 @@ class TileView {
         }
         this.canvas = newCanvas;
         this.context = this.canvas.getContext('2d');
+
+        this.buttonsDown = [false,false,false]; // left, middle, right
+
         this.canvas.addEventListener('mousedown', this.mouseDown.bind(this));
         this.canvas.addEventListener('mouseup', this.mouseUp.bind(this));
         this.canvas.addEventListener('mousemove', this.mouseMove.bind(this));
-        this.canvas.oncontextmenu = () => false; // disable right click
 
-        this.buttonsDown = [false,false,false]; // left, middle, right
+        this.canvas.oncontextmenu = () => false; // disable right click
 
         this.updateCanvasSize();
         this.draw();
     }
 
-    updateCanvasSize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-    }
-
-    getScreenCoords(event) {
-        const {left, top} = this.canvas.getBoundingClientRect();
-        const screenCoords = [event.clientX, event.clientY];
-
-        return vectorSub(screenCoords, [left, top]);
-    }
-
-    /**
-     *
-     * @param event {MouseEvent}
-     */
     mouseDown(event) {
         const button = event.button;
         this.buttonsDown[button] = true;
@@ -77,14 +63,9 @@ class TileView {
         }
     }
 
-    /**
-     *
-     * @param event {MouseEvent}
-     */
     mouseUp(event) {
         const button = event.button;
         this.buttonsDown[button] = false;
-
         const screenCoords = this.getScreenCoords(event);
 
         if (button === 0 || button === 1) {
@@ -103,6 +84,9 @@ class TileView {
                 if (this.buttonsDown[2]) {
                     this.tileMap.doubleClick(worldCoords);
                 }
+                else if (event.shiftKey) {
+                    this.tileMap.rightClick(worldCoords);
+                }
                 else {
                     this.tileMap.click(worldCoords);
                 }
@@ -111,17 +95,25 @@ class TileView {
         }
     }
 
-    /**
-     *
-     * @param event {MouseEvent}
-     */
     mouseMove(event) {
         if (this.buttonsDown[0] || this.buttonsDown[1]) {
             const screenCoords = this.getScreenCoords(event);
             const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
-            const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1/this.tileSize);
+            const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1 / this.tileSize);
             this.viewCenter = vectorAdd(this.drag.viewCenterOnDragStart, dragVectorInWorldSpace);
         }
+    }
+
+    updateCanvasSize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    }
+
+    getScreenCoords(event) {
+        const {left, top} = this.canvas.getBoundingClientRect();
+        const screenCoords = [event.clientX, event.clientY];
+
+        return vectorSub(screenCoords, [left, top]);
     }
 
     draw() {

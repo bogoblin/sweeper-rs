@@ -22,29 +22,18 @@ const getSpriteIndex = (tile) => {
  * @param canvasCoords {number[]}
  * @param tile {number}
  */
-const drawTileToCanvasContext = (context, canvasCoords, tile) => {
-    if (debug) {
-        context.globalAlpha = 0.5;
-
-        const spriteIndex = getSpriteIndex(tile | Revealed);
-        const [x, y] = canvasCoords;
-        context.drawImage(sprites, spriteIndex * tileSize, 0, tileSize, tileSize, x, y, tileSize, tileSize);
-    }
-
+const drawTileToCanvasContext = (context, [x, y], tile) => {
     const spriteIndex = getSpriteIndex(tile);
-    const [x, y] = canvasCoords;
     context.drawImage(sprites, // source image
         spriteIndex * tileSize, 0, tileSize, tileSize, // left, top, width and height of rectangle in source image
         x, y, tileSize, tileSize // left, top, width and height of rectangle on the canvas
     );
-
-    if (debug) {
-        context.strokeStyle = "2px solid red";
-        context.strokeRect(0,0,context.canvas.width, context.canvas.height);
-    }
 }
 
 const drawChunkCanvas = (chunk) => {
+    if (!chunk.redraw) {
+        return;
+    }
     if (!chunk.canvas) {
         chunk.canvas = document.createElement('canvas');
     }

@@ -28,17 +28,6 @@ class Player {
         this.position = newPosition;
     }
 
-    hasRevealed(tile, world) {
-        const info = tileInfo(tile);
-
-        if (info.mine) {
-            world.killPlayer(this, 5000 * this.deaths);
-        }
-        else {
-            this.score[info.adjacent] += 1;
-        }
-    }
-
     isAlive() {
         return Date.now() > this.deadUntil;
     }
