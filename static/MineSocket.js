@@ -42,6 +42,14 @@ class MineSocket {
                     }
                 }
             });
+            this.socket.on('flag', ({ position }) => {
+                const tile = this.tileMap.chunks.getTile(position);
+                this.tileMap.chunks.updateTile(position, withFlag(tile));
+            });
+            this.socket.on('unflag', ({ position }) => {
+                const tile = this.tileMap.chunks.getTile(position);
+                this.tileMap.chunks.updateTile(position, withoutFlag(tile));
+            });
             this.socket.on('player', player => {
                 if (!player) {
                     return;

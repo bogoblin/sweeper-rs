@@ -1,6 +1,7 @@
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
+use std::fmt::{Debug, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
 
@@ -8,11 +9,13 @@ use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use serde::Serialize;
+use crate::events::Event;
 use crate::player::Player;
 
 pub mod server_messages;
 pub mod client_messages;
 pub mod player;
+pub mod events;
 
 pub struct World {
     pub chunk_ids: HashMap<ChunkPosition, usize>,
@@ -21,7 +24,9 @@ pub struct World {
     pub rng: StdRng,
 
     pub player_ids: HashMap<String, usize>,
-    pub players: Vec<Player>
+    pub players: Vec<Player>,
+
+    pub events: Vec<Event>,
 }
 
 impl World {
@@ -33,6 +38,7 @@ impl World {
             rng: StdRng::seed_from_u64(0),
             player_ids: Default::default(),
             players: vec![],
+            events: vec![],
         };
         world.generate_chunk(Position(0, 0));
         world
@@ -44,6 +50,9 @@ impl World {
             Entry::Vacant(entry) => {
                 let new_player_id = self.players.len();
                 self.players.push(Player::new(cookie)); // TODO: use an actual username when we have them
+                self.events.push(Event::Registered {
+                    player_id: new_player_id
+                });
                 *entry.insert(new_player_id)
             }
         }
@@ -103,7 +112,16 @@ impl World {
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
 
-    pub fn reveal(&mut self, mut to_reveal: Vec<Position>, by_player_id: usize) -> UpdatedRect {
+    pub fn click(&mut self, at: Position, by_player_id: usize) {
+        let updated = self.reveal(vec![at], by_player_id);
+        self.events.push(Event::Clicked {
+            player_id: by_player_id,
+            at,
+            updated
+        });
+    }
+
+    fn reveal(&mut self, mut to_reveal: Vec<Position>, by_player_id: usize) -> UpdatedRect {
         if self.players.get(by_player_id).is_none() {
             return Default::default();
         };
@@ -151,14 +169,14 @@ impl World {
         UpdatedRect::new(updated_tiles)
     }
 
-    pub fn double_click(&mut self, position: Position, by_player_id: usize) -> UpdatedRect {
+    pub fn double_click(&mut self, position: Position, by_player_id: usize) {
         let chunk = match self.get_chunk(position) {
             Some(chunk) => chunk,
-            None => return Default::default(),
+            None => return,
         };
         let tile = chunk.get_tile(position);
         if !tile.is_revealed() || tile.adjacent() == 0 {
-            return Default::default();
+            return;
         }
         let mut surrounding_flags = 0;
         let mut to_reveal = vec![];
@@ -181,17 +199,21 @@ impl World {
             }
         }
         if surrounding_flags == tile.adjacent() {
-            let result = self.reveal(to_reveal, by_player_id);
+            let updated = self.reveal(to_reveal, by_player_id);
             let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
             player.last_clicked = position;
-            return result;
+            self.events.push(Event::DoubleClicked {
+                player_id: by_player_id,
+                at: position,
+                updated
+            });
+            return;
         }
-        Default::default()
     }
 
-    pub fn flag(&mut self, position: Position, by_player_id: usize) -> UpdatedRect {
+    pub fn flag(&mut self, position: Position, by_player_id: usize) {
         if self.players.get(by_player_id).is_none() {
-            return UpdatedRect::empty();
+            return;
         };
 
         if let Some(&chunk_id) = self.get_chunk_id(position) {
@@ -210,6 +232,10 @@ impl World {
                             player.stats_flags_correct -= 1;
                         }
                         */
+                        self.events.push(Event::Unflag {
+                            player_id: by_player_id,
+                            at: position
+                        });
                     } else {
                         // Flag
                         *tile = tile.with_flag();
@@ -218,12 +244,14 @@ impl World {
                         } else {
                             player.stats_flags_incorrect += 1;
                         }
+                        self.events.push(Event::Flag {
+                            player_id: by_player_id,
+                            at: position
+                        });
                     }
-                    return UpdatedRect::new(vec![updated_tile])
                 }
             }
         }
-        UpdatedRect::empty()
     }
 }
 
@@ -421,6 +449,12 @@ pub struct UpdatedTile {
 pub struct UpdatedRect {
     pub top_left: Position,
     pub updated: Vec<Vec<Tile>>,
+}
+
+impl Debug for UpdatedRect {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("UpdatedRect")
+    }
 }
 
 impl Sub for Position {

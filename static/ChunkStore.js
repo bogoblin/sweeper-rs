@@ -21,11 +21,19 @@ class ChunkStore {
         return this.chunks[chunkKey(worldCoords)];
     }
 
-    updateTile(worldCoords, tileId) {
+    getOrCreateChunk(worldCoords) {
         let chunk = this.getChunk(worldCoords);
         if (!chunk) {
-            chunk = this.addChunk(new Chunk(worldCoords));
+            return this.addChunk(new Chunk(worldCoords));
         }
-        chunk.updateTile(worldCoords, tileId);
+        return chunk;
+    }
+
+    getTile(worldCoords) {
+        return this.getOrCreateChunk(worldCoords).getTile(worldCoords);
+    }
+
+    updateTile(worldCoords, tile) {
+        this.getOrCreateChunk(worldCoords).updateTile(worldCoords, tile);
     }
 }

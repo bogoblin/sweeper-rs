@@ -12,7 +12,8 @@ use tower_http::services::ServeDir;
 use world::{Chunk, Position, UpdatedRect, World};
 use world::client_messages::ClientMessage::*;
 use world::player::Player;
-use world::server_messages::{chunk_message, player_message, updated_rect_message};
+use world::server_messages::{chunk_message, flag_message, player_message, unflag_message, updated_rect_message};
+use world::events::Event;
 
 #[tokio::main]
 async fn main() {
@@ -49,16 +50,13 @@ async fn main() {
             eprintln!("Player {player_id} : {:?}", received);
             match received {
                 Click(position) => {
-                    let result = world.reveal(vec![position], player_id);
-                    send_reveal_result(&world, &socket_ref, result, player_id);
+                    world.click(position, player_id);
                 }
                 Flag(position) => {
-                    let result = world.flag(position, player_id);
-                    send_reveal_result(&world, &socket_ref, result, player_id);
+                    world.flag(position, player_id);
                 }
                 DoubleClick(position) => {
-                    let result = world.double_click(position, player_id);
-                    send_reveal_result(&world, &socket_ref, result, player_id);
+                    world.double_click(position, player_id);
                 }
                 Welcome => {
                     let player = unsafe {world.players.get_unchecked(player_id)};
@@ -73,6 +71,7 @@ async fn main() {
                     world.players[player_id].position = position;
                 }
             }
+            send_last_event(&world, &socket_ref);
             let player = unsafe {world.players.get_unchecked(player_id)};
             eprintln!("{:?}", player);
         }
@@ -86,6 +85,40 @@ async fn main() {
 
     axum::serve(tcp, router).await.unwrap();
 
+}
+
+fn send_last_event(world: &World, socket_ref: &SocketRef) {
+    if let Some(event) = world.events.last() {
+        println!("{:?}", event);
+        match event {
+            Event::Registered { player_id } => {
+                let player = unsafe {world.players.get_unchecked(*player_id)};
+                send_player(socket_ref, player);
+            }
+            Event::Clicked { player_id, at, updated } => {
+                send_updated_rect(socket_ref, &updated);
+                let player = unsafe {world.players.get_unchecked(*player_id)};
+                send_player(socket_ref, player);
+            },
+            Event::DoubleClicked { player_id, at, updated } => {
+                send_updated_rect(socket_ref, &updated);
+                let player = unsafe {world.players.get_unchecked(*player_id)};
+                send_player(socket_ref, player);
+            }
+            Event::Flag { player_id, at } => {
+                let (event, data) = flag_message(at);
+                send_all(socket_ref, event, data);
+                let player = unsafe {world.players.get_unchecked(*player_id)};
+                send_player(socket_ref, player);
+            }
+            Event::Unflag { player_id, at } => {
+                let (event, data) = unflag_message(at);
+                send_all(socket_ref, event, data);
+                let player = unsafe {world.players.get_unchecked(*player_id)};
+                send_player(socket_ref, player);
+            }
+        }
+    }
 }
 
 fn send_chunk(socket_ref: &SocketRef, chunk: &Chunk) {

@@ -25,6 +25,22 @@ const tileInfo = (tile) => {
     };
 }
 
+function withFlag(tile) {
+    if (flag(tile)) {
+        return tile;
+    } else {
+        return tile + Flag;
+    }
+}
+
+function withoutFlag(tile) {
+    if (flag(tile)) {
+        return tile - Flag;
+    } else {
+        return tile;
+    }
+}
+
 const publicVersion = (tile) => {
     if (revealed(tile)) {
         return tile;
