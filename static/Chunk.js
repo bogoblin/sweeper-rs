@@ -3,6 +3,7 @@ class Chunk {
     coords;
     tiles;
     canvas;
+    redraw = true;
 
     constructor(coords, tiles) {
         this.coords = chunkCoords(coords);
@@ -37,29 +38,6 @@ class Chunk {
         this.tiles[index] = tile;
 
         this.redraw = true;
-    }
-
-    getTile(worldCoords) {
-        const index = this.indexOf(worldCoords);
-        if (index === -1) return;
-
-        return this.tiles[index];
-    }
-
-    /**
-     * Draw this to the canvas context
-     * @param context {CanvasRenderingContext2D}
-     * @param screenX {number}
-     * @param screenY {number}
-     * @param drawFunction {function}
-     */
-    draw(context, [screenX, screenY], drawFunction) {
-        // Redraw this chunk if we need to
-        if (this.redraw) {
-            drawFunction(this);
-        }
-
-        context.drawImage(this.canvas, screenX, screenY);
     }
 }
 
