@@ -10,6 +10,7 @@ class TileView {
         this.players = players;
 
         this.viewCenter = [0,0];
+        this.mouseCoords = [0,0];
 
         this.setCanvas(document.createElement('canvas'));
 
@@ -116,8 +117,9 @@ class TileView {
      * @param event {MouseEvent}
      */
     mouseMove(event) {
+        const screenCoords = this.getScreenCoords(event);
+        this.mouseCoords = this.screenToWorldInt(screenCoords);
         if (this.buttonsDown[0] || this.buttonsDown[1]) {
-            const screenCoords = this.getScreenCoords(event);
             const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
             const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1/this.tileSize);
             this.viewCenter = vectorAdd(this.drag.viewCenterOnDragStart, dragVectorInWorldSpace);
@@ -137,6 +139,10 @@ class TileView {
         );
 
         this.players.draw(this);
+
+        // Debug
+        drawText(this.context, `View Centre: ${this.viewCenter}`, [10,10]);
+        drawText(this.context, `Mouse Position: ${this.mouseCoords}`, [10,40]);
 
         requestAnimationFrame(() => {
             this.draw();

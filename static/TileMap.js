@@ -62,17 +62,11 @@ class TileMap {
     }
 
     doubleClick(worldCoords) {
+        console.log(`Double Clicked at ${worldCoords}`);
         this.socket.sendDoubleClickMessage(worldCoords);
     }
 
-    /**
-     * chunk {Chunk}
-     */
     addChunk(chunk) {
         this.chunks.addChunk(chunk);
-    }
-
-    updateTile(worldCoords, tileId) {
-        this.chunks.updateTile(worldCoords, tileId);
     }
 }

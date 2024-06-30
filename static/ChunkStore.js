@@ -9,6 +9,7 @@ class ChunkStore {
      */
     addChunk(chunk) {
         this.chunks[chunkKey(chunk.coords)] = chunk;
+        return chunk;
     }
 
     /**
@@ -20,15 +21,11 @@ class ChunkStore {
         return this.chunks[chunkKey(worldCoords)];
     }
 
-    getTile(worldCoords) {
-        const chunk = this.getChunk(worldCoords);
-        return chunk? chunk.getTile(worldCoords) : 0;
-    }
-
     updateTile(worldCoords, tileId) {
-        const chunk = this.getChunk(worldCoords);
-        if (chunk) {
-            chunk.updateTile(worldCoords, tileId);
+        let chunk = this.getChunk(worldCoords);
+        if (!chunk) {
+            chunk = this.addChunk(new Chunk(worldCoords));
         }
+        chunk.updateTile(worldCoords, tileId);
     }
 }

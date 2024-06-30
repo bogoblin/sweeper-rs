@@ -5,6 +5,7 @@
     <title>Onlinesweeper</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
     <script src="MineSocket.js"></script>
+    <script src="Text.js"></script>
     <script src="Chunk.js"></script>
     <script src="ChunkStore.js"></script>
     <script src="ClientPlayers.js"></script>
@@ -28,6 +29,20 @@
 <script>
     const mineSocket = new MineSocket("/");
     mineSocket.tileView.setCanvas(document.getElementById("gameCanvas"));
+
+    let bot = false;
+
+    let coords = [0,0];
+    setInterval(() => {
+        if (bot) {
+            let diff = Math.floor(Math.random() * 100) - 50;
+            coords[0] += diff;
+            diff = Math.floor(Math.random() * 100) - 50;
+            coords[1] -= diff;
+            mineSocket.tileView.viewCenter = coords;
+            mineSocket.sendClickMessage(coords);
+        }
+    }, 500);
 </script>
 </body>
 </html>
