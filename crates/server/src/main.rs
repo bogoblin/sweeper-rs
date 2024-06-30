@@ -95,12 +95,12 @@ fn send_last_event(world: &World, socket_ref: &SocketRef) {
                 let player = unsafe {world.players.get_unchecked(*player_id)};
                 send_player(socket_ref, player);
             }
-            Event::Clicked { player_id, at, updated } => {
+            Event::Clicked { player_id, at: _, updated } => {
                 send_updated_rect(socket_ref, &updated);
                 let player = unsafe {world.players.get_unchecked(*player_id)};
                 send_player(socket_ref, player);
             },
-            Event::DoubleClicked { player_id, at, updated } => {
+            Event::DoubleClicked { player_id, at: _, updated } => {
                 send_updated_rect(socket_ref, &updated);
                 let player = unsafe {world.players.get_unchecked(*player_id)};
                 send_player(socket_ref, player);
@@ -142,10 +142,4 @@ fn send_updated_rect(socket_ref: &SocketRef, updated_rect: &UpdatedRect) {
 fn send_all(socket_ref: &SocketRef, event: &'static str, data: Value) {
     socket_ref.emit(event, &data).ok();
     socket_ref.broadcast().emit(event, &data).ok();
-}
-
-fn send_reveal_result(world: &World, socket_ref: &SocketRef, updated: UpdatedRect, by_player_id: usize) {
-    send_updated_rect(socket_ref, &updated);
-    let player = unsafe {world.players.get_unchecked(by_player_id)};
-    send_player(socket_ref, player);
 }

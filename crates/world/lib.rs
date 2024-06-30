@@ -221,7 +221,6 @@ impl World {
                 if let Some(&mut ref mut tile) = chunk.tiles.get_mut(position.position_in_chunk().index()) {
                     let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
                     player.last_clicked = position;
-                    let updated_tile = UpdatedTile{position, tile: tile.clone()};
                     if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
