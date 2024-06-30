@@ -39,6 +39,13 @@ class Chunk {
 
         this.redraw = true;
     }
+
+    getTile(worldCoords) {
+        const index = this.indexOf(worldCoords);
+        if (index === -1) return;
+
+        return this.tiles[index];
+    }
 }
 
 /**

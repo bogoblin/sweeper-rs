@@ -27,15 +27,10 @@ class TileMap {
         // Iterate through the chunks and draw them
         for (let chunkY=firstChunkCoords[1]; chunkY<=lastChunkCoords[1]; chunkY+=chunkSize) {
             for (let chunkX=firstChunkCoords[0]; chunkX<=lastChunkCoords[0]; chunkX+=chunkSize) {
-                const chunk = this.chunks.getChunk([chunkX, chunkY]);
-                let chunkToDraw;
-                if (chunk) {
-                    chunkToDraw = chunk;
-                }
-                else {
-                    chunkToDraw = defaultChunk;
-                }
-                chunkToDraw.draw(context, tileView.worldToScreen([chunkX, chunkY]), drawChunkCanvas);
+                const chunk = this.chunks.getChunk([chunkX, chunkY]) || defaultChunk;
+                const screenCoords = tileView.worldToScreen([chunkX, chunkY]);
+                drawChunkCanvas(chunk);
+                context.drawImage(chunk.canvas, ...screenCoords);
             }
         }
     }
@@ -43,30 +38,25 @@ class TileMap {
     doubleClickTime = 600; // milliseconds
     click(worldCoords) {
         console.log(`Clicked at ${worldCoords}`);
+        if (!this.socket) { return }
         const now = performance.now();
-        if (this.socket) {
-            if (now - this.lastClicked < this.doubleClickTime) {
-                this.doubleClick(worldCoords);
-            }
-            else {
-                this.socket.sendClickMessage(worldCoords);
-            }
+        if (now - this.lastClicked < this.doubleClickTime) {
+            this.doubleClick(worldCoords);
+        }
+        else {
+            this.socket.sendClickMessage(worldCoords);
         }
         this.lastClicked = now;
     }
 
     rightClick(worldCoords) {
-        if (this.socket) {
-            this.socket.sendFlagMessage(worldCoords);
-        }
+        if (!this.socket) { return }
+        this.socket.sendFlagMessage(worldCoords);
     }
 
     doubleClick(worldCoords) {
-        console.log(`Double Clicked at ${worldCoords}`);
+        if (!this.socket) { return }
         this.socket.sendDoubleClickMessage(worldCoords);
     }
 
-    addChunk(chunk) {
-        this.chunks.addChunk(chunk);
-    }
 }
