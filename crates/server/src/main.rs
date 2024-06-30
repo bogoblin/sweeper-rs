@@ -90,14 +90,12 @@ async fn main() {
 
 fn send_chunk(socket_ref: &SocketRef, chunk: &Chunk) {
     let (event, data) = chunk_message(chunk);
-    socket_ref.emit(event, &data).expect("TODO: panic message");
-    socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
+    send_all(socket_ref, event, data);
 }
 
 fn send_player(socket_ref: &SocketRef, player: &Player) {
     let (event, data) = player_message(player);
-    socket_ref.emit(event, &data).expect("TODO: panic message");
-    socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
+    send_all(socket_ref, event, data);
 }
 
 fn send_updated_rect(socket_ref: &SocketRef, updated_rect: &UpdatedRect) {
@@ -105,8 +103,12 @@ fn send_updated_rect(socket_ref: &SocketRef, updated_rect: &UpdatedRect) {
         return;
     }
     let (event, data) = updated_rect_message(updated_rect);
-    socket_ref.emit(event, &data).expect("TODO: panic message");
-    socket_ref.broadcast().emit(event, &data).expect("TODO: panic message");
+    send_all(socket_ref, event, data);
+}
+
+fn send_all(socket_ref: &SocketRef, event: &'static str, data: Value) {
+    socket_ref.emit(event, &data).ok();
+    socket_ref.broadcast().emit(event, &data).ok();
 }
 
 fn send_reveal_result(world: &World, socket_ref: &SocketRef, updated: UpdatedRect, by_player_id: usize) {
