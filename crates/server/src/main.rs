@@ -45,6 +45,7 @@ async fn main() {
     });
 
     let _handle = thread::spawn(move || {
+        let mut next_event = 0;
         for (received, socket_ref) in rx {
             let player_id = world.register_player(format!("{}", socket_ref.id));
             eprintln!("Player {player_id} : {:?}", received);
@@ -71,7 +72,8 @@ async fn main() {
                     world.players[player_id].position = position;
                 }
             }
-            send_last_event(&world, &socket_ref);
+            send_recent_events(&world, &socket_ref, next_event);
+            next_event = world.events.len();
             let player = unsafe {world.players.get_unchecked(player_id)};
             eprintln!("{:?}", player);
         }
@@ -87,8 +89,8 @@ async fn main() {
 
 }
 
-fn send_last_event(world: &World, socket_ref: &SocketRef) {
-    if let Some(event) = world.events.last() {
+fn send_recent_events(world: &World, socket_ref: &SocketRef, next_event: usize) {
+    for event in &world.events[next_event..] {
         println!("{:?}", event);
         match event {
             Event::Registered { player_id } => {
