@@ -6,14 +6,13 @@ sprites.src ='./tiles.png';
 let debug = false;
 
 const getSpriteIndex = (tile) => {
+    if (loading(tile)) return 12;
     if (!revealed(tile)) {
         if (flag(tile)) return 10;
         else return 9;
     }
-    else {
-        if (mine(tile)) return 11;
-        else return adjacent(tile);
-    }
+    if (mine(tile)) return 11;
+    return adjacent(tile);
 }
 
 /**
