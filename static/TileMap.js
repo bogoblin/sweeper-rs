@@ -35,7 +35,7 @@ class TileMap {
         }
     }
 
-    doubleClickTime = 600; // milliseconds
+    doubleClickTime = 100; // milliseconds
     click(worldCoords) {
         console.log(`Clicked at ${worldCoords}`);
         if (!this.socket) { return }

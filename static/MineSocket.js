@@ -74,6 +74,7 @@ class MineSocket {
     }
 
     sendClickMessage(coords) { // c for click
+        this.tileMap.chunks.updateTile(coords, Loading);
         this.socket.emit('message', ['click', ...coords]);
     }
 
