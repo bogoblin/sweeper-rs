@@ -1,0 +1,11 @@
+[package]
+name = "sweeper-server-new"
+edition = "2021"
+
+[dependencies]
+world = { path = "../world" }
+websocket = "0.27.1"
+http = "1.1.0"
+http-bytes = "0.1.0"
+mime_guess = "2.0.5"
+serde_json = "1.0.117"

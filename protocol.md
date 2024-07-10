@@ -13,9 +13,8 @@ The server will send numbered messages regarding events:
 1003 Player added a flag at (11, 25)
 ...
 
-The client should acknowledge these messages: `ACK 1003` would mean that the client has received
-all messages up to and including #1003. The message index can wrap around back to zero so that the
-message index doesn't grow indefinitely. This jump will always be more than 2048.
+The client doesn't need to acknowledge these messages. Instead, if a message is missing, the client can ask for it to be repeated.
+
 
 ## Queries
 
