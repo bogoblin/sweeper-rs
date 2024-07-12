@@ -36,4 +36,18 @@ class ChunkStore {
     updateTile(worldCoords, tile) {
         this.getOrCreateChunk(worldCoords).updateTile(worldCoords, tile);
     }
+
+    updateRect([leftX, topY], updated) {
+        for (let relative_x = 0; relative_x < updated.length; relative_x++) {
+            for (let relative_y = 0; relative_y < updated[0].length; relative_y++) {
+                let x = relative_x + leftX;
+                let y = relative_y + topY;
+                const updatedTile = updated[relative_x][relative_y];
+                if (updatedTile !== 0) {
+                    // Optimization: Can skip some chunk lookup here
+                    this.updateTile([x, y], updatedTile);
+                }
+            }
+        }
+    }
 }

@@ -1,7 +1,6 @@
 class MineSocket {
     onError = () => {};
     onWelcome = () => {};
-    onLogout = () => {};
     onPlayerUpdate = () => {};
 
     currentError;
@@ -29,18 +28,7 @@ class MineSocket {
                 this.tileMap.chunks.addChunk(new Chunk(chunk.coords, new Uint8Array(chunk.tiles)));
             });
             this.socket.on('updated_rect', ({ topLeft, updated }) => {
-                let num_updated = 0;
-                for (let relative_x = 0; relative_x < updated.length; relative_x++) {
-                    for (let relative_y = 0; relative_y < updated[0].length; relative_y++) {
-                        let x = relative_x + topLeft[0];
-                        let y = relative_y + topLeft[1];
-                        const updatedTile = updated[relative_x][relative_y];
-                        if (updatedTile !== 0) {
-                            this.tileMap.chunks.updateTile([x, y], updatedTile);
-                            num_updated += 1;
-                        }
-                    }
-                }
+                this.tileMap.chunks.updateRect(topLeft, updated);
             });
             this.socket.on('flag', ({ position }) => {
                 const tile = this.tileMap.chunks.getTile(position);
@@ -89,24 +77,10 @@ class MineSocket {
         this.socket.emit('message', ['move', ...coords]);
     }
 
-    sendLoginMessage(username, password) {
-        this.players.setMyUsername(username);
-        this.socket.emit('login', username, password);
-    }
-
     error(err) {
         this.currentError = err;
         if (this.onError) {
             this.onError();
         }
-    }
-
-    logOut() {
-        this.socket.emit('logout');
-        this.socket.disconnect();
-        if (this.onLogout) {
-            this.onLogout();
-        }
-        this.reset();
     }
 }
