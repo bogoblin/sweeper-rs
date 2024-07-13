@@ -4,7 +4,7 @@ use crate::player::Player;
 
 pub fn chunk_message(chunk: &Chunk) -> (&'static str, Value) {
     let coords = chunk.position;
-    let tiles = chunk.tiles.to_vec();
+    let tiles = chunk.tiles.0.to_vec();
     ("chunk", json!({
                     "coords": [coords.0, coords.1],
                     "tiles": tiles,

@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
 use crate::{Position, UpdatedRect};
 
 #[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub enum Event {
     Registered {
         player_id: usize

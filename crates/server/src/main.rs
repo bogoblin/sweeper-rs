@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc;
-use std::thread;
-
+use std::{fs, thread};
+use std::time::{Duration, Instant};
 use axum::Router;
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
@@ -19,7 +19,14 @@ use world::events::Event;
 
 #[tokio::main]
 async fn main() {
-    let mut world = World::new();
+    let saved_world = {
+        if let Ok(saved_world) = fs::read("worldfile") {
+            postcard::from_bytes::<World>(saved_world.as_slice()).ok()
+        } else {
+            None
+        }
+    };
+    let mut world = saved_world.unwrap_or(World::new());
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
@@ -62,6 +69,7 @@ async fn main() {
     let mut socket_id_to_player_id: HashMap<Sid, usize> = HashMap::new();
     let _handle = thread::spawn(move || {
         let mut next_event = 0;
+        let mut last_backup: Option<Instant> = None;
         for (received, socket_ref) in rx {
             let player_id = socket_id_to_player_id.get(&socket_ref.id).cloned();
             match received {
@@ -115,6 +123,22 @@ async fn main() {
             next_event = world.events.len();
             if let Some(player) = player_id.map(|player_id| world.players.get(player_id)).flatten() {
                 eprintln!("{:?}", player);
+            }
+
+            let now = Instant::now();
+            let do_backup = match last_backup {
+                None => true,
+                Some(backup_time) =>
+                    now - backup_time > Duration::from_secs(5)
+            };
+            if do_backup {
+                last_backup = Some(now);
+                let serialized = postcard::to_allocvec(&world);
+                let serialized = serialized.unwrap();
+                let num_bytes = serialized.len();
+                println!("Writing {num_bytes} to backup file...");
+                fs::write("worldfile", serialized).expect("Couldn't write backup");
+                println!("Done");
             }
         }
     });
