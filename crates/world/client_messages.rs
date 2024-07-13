@@ -2,7 +2,7 @@ use crate::{AuthKey, Position};
 
 #[derive(Debug)]
 pub enum ClientMessage {
-    Welcome,
+    Connected,
     Click(Position),
     Flag(Position),
     DoubleClick(Position),

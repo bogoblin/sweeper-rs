@@ -24,7 +24,7 @@ pub struct World {
     pub chunks: Vec<Chunk>,
     pub rng: StdRng,
 
-    pub player_ids: HashMap<AuthKey, usize>,
+    pub player_ids_by_auth_key: HashMap<AuthKey, usize>,
     pub players: Vec<Player>,
 
     pub events: Vec<Event>,
@@ -42,23 +42,28 @@ impl AuthKey {
 }
 
 impl World {
-    pub fn authenticate_player(&self, auth_key: AuthKey) -> Option<usize> {
-        return if let Some(&player_id) = self.player_ids.get(&auth_key) {
-            Some(player_id)
-        } else {
-            None
-        }
+    pub fn authenticate_player(&self, auth_key: &AuthKey) -> Option<(usize, &Player)> {
+        let player_id = *self.player_ids_by_auth_key.get(auth_key)?;
+        let player = self.players.get(player_id)?;
+        Some((player_id, player))
     }
 
-    pub fn register_player(&mut self, username: &String) -> AuthKey {
-        let auth_key = AuthKey::new(&mut self.rng);
-        let new_player_id = self.players.len();
-        self.players.push(Player::new(username.clone()));
-        self.events.push(Event::Registered {
-            player_id: new_player_id
-        });
-        self.player_ids.insert(auth_key.clone(), new_player_id);
-        auth_key
+    pub fn register_player(&mut self, username: String) -> (AuthKey, &Player) {
+        loop {
+            // We want to generate an auth key that isn't already in use, so we loop until we get one.
+            // It's unlikely to loop, but it is a possibility.
+            let auth_key = AuthKey::new(&mut self.rng);
+            if self.player_ids_by_auth_key.contains_key(&auth_key) { continue; }
+
+            let new_player_id = self.players.len();
+            self.players.push(Player::new(username));
+            self.events.push(Event::Registered {
+                player_id: new_player_id
+            });
+            self.player_ids_by_auth_key.insert(auth_key.clone(), new_player_id);
+            let new_player = unsafe { self.players.get_unchecked(new_player_id) };
+            return (auth_key, new_player);
+        }
     }
 }
 
@@ -69,7 +74,7 @@ impl World {
             positions: vec![],
             chunks: vec![],
             rng: StdRng::seed_from_u64(0),
-            player_ids: Default::default(),
+            player_ids_by_auth_key: Default::default(),
             players: vec![],
             events: vec![],
         };

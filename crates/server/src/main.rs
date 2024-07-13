@@ -6,6 +6,7 @@ use std::thread;
 use axum::Router;
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
+use socketioxide::socket::Sid;
 use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
@@ -22,7 +23,7 @@ async fn main() {
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
-        tx.send((Welcome, socket.clone())).expect("Can't send welcome message");
+        tx.send((Connected, socket.clone())).expect("Can't send welcome message");
         socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
             if let Value::Array(array) = data {
                 match &array[..] {
@@ -58,60 +59,62 @@ async fn main() {
         });
     });
 
-    let mut socket_id_to_player_id = HashMap::new();
+    let mut socket_id_to_player_id: HashMap<Sid, usize> = HashMap::new();
     let _handle = thread::spawn(move || {
         let mut next_event = 0;
         for (received, socket_ref) in rx {
-            if let Some(&player_id) = socket_id_to_player_id.get(&socket_ref.id) {
-                eprintln!("Player {player_id} : {:?}", received);
-                match received {
-                    Click(position) => {
+            let player_id = socket_id_to_player_id.get(&socket_ref.id).cloned();
+            match received {
+                Click(position) => {
+                    player_id.map(|player_id| {
                         world.click(position, player_id);
-                    }
-                    Flag(position) => {
+                    });
+                }
+                Flag(position) => {
+                    player_id.map(|player_id| {
                         world.flag(position, player_id);
-                    }
-                    DoubleClick(position) => {
+                    });
+                }
+                DoubleClick(position) => {
+                    player_id.map(|player_id| {
                         world.double_click(position, player_id);
-                    }
-                    Move(position) => {
+                    });
+                }
+                Move(position) => {
+                    player_id.map(|player_id| {
                         world.players[player_id].position = position;
-                    }
-                    _ => {}
+                    });
                 }
-                send_recent_events(&world, &socket_ref, next_event);
-                next_event = world.events.len();
-                let player = unsafe {world.players.get_unchecked(player_id)};
+                Connected => {
+                    for chunk in &world.chunks {
+                        send_chunk(&socket_ref, chunk);
+                    }
+                }
+                Register(username) => {
+                    let (AuthKey(auth_key), player) = world.register_player(username);
+                    let username = player.username.clone();
+                    socket_ref.emit("login_details", json!({
+                        "username": username,
+                        "authKey": auth_key
+                    })).expect("Couldn't send login details");
+                    // TODO: Handle failure by removing player from world
+                }
+                Login(auth_key) => {
+                    if let Some(( player_id, player )) = world.authenticate_player(&auth_key) {
+                        socket_id_to_player_id.insert(socket_ref.id, player_id);
+                        send_player(&socket_ref, &player);
+                        socket_ref.emit("welcome", &player.username).expect("Couldn't send welcome message");
+                    } else {
+                        socket_ref.emit("error", json!({
+                            "error": "Auth key not recognised"
+                        })).expect("Couldn't send auth key error");
+                    }
+                }
+            }
+            send_recent_events(&world, &socket_ref, next_event);
+            next_event = world.events.len();
+            if let Some(player) = player_id.map(|player_id| world.players.get(player_id)).flatten() {
                 eprintln!("{:?}", player);
-            } else {
-                match received {
-                    Welcome => {
-                        for chunk in &world.chunks {
-                            send_chunk(&socket_ref, chunk);
-                        }
-                    }
-                    Register(username) => {
-                        let AuthKey(auth_key) = world.register_player(&username);
-                        socket_ref.emit("login_details", json!({
-                            "username": username,
-                            "authKey": auth_key
-                        })).expect("Couldn't send login details");
-                        // TODO: Handle failure by removing player from world
-                    }
-                    Login(auth_key) => {
-                        if let Some(player_id) = world.authenticate_player(auth_key) {
-                            socket_id_to_player_id.insert(socket_ref.id, player_id);
-                            let player = unsafe { world.players.get_unchecked(player_id) };
-                            send_player(&socket_ref, &player);
-                            socket_ref.emit("welcome", &player.username).expect("Couldn't send welcome message");
-                        } else {
-                            socket_ref.emit("error", json!({
-                                "error": "Auth key not recognised"
-                            })).expect("Couldn't send auth key error");
-                        }
-                    }
-                    _ => {}
-                }
             }
         }
     });
