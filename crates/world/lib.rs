@@ -30,6 +30,7 @@ pub struct World {
     pub player_ids_by_auth_key: HashMap<AuthKey, usize>,
     pub players: Vec<Player>,
 
+    #[serde(skip)]
     pub events: Vec<Event>,
 }
 

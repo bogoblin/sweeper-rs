@@ -19,10 +19,17 @@ use world::events::Event;
 
 #[tokio::main]
 async fn main() {
-    let saved_world = {
+    let saved_world: Option<World> = {
         if let Ok(saved_world) = fs::read("worldfile") {
-            postcard::from_bytes::<World>(saved_world.as_slice()).ok()
+            match postcard::from_bytes::<World>(saved_world.as_slice()) {
+                Ok(world) => Some(world),
+                Err(e) => {
+                    eprintln!("{:?}", e);
+                    None
+                }
+            }
         } else {
+            eprintln!("World file not found. Creating new world...");
             None
         }
     };
@@ -136,7 +143,7 @@ async fn main() {
                 let serialized = postcard::to_allocvec(&world);
                 let serialized = serialized.unwrap();
                 let num_bytes = serialized.len();
-                println!("Writing {num_bytes} to backup file...");
+                println!("Writing {num_bytes} bytes to backup file...");
                 fs::write("worldfile", serialized).expect("Couldn't write backup");
                 println!("Done");
             }
