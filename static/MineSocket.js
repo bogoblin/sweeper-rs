@@ -7,10 +7,33 @@ class MineSocket {
 
     constructor(url) {
         this.url = url;
-        this.reset();
+        this.connect();
+
     }
 
-    reset() {
+    signUp(username) {
+        console.log(`register ${username}`);
+        this.socket.emit('message', [ 'register', username ]);
+    }
+
+    logIn(authKey) {
+        setTimeout(() => {
+            console.log(`login ${authKey}`);
+            this.socket.emit('message', [ 'login', authKey ]);
+        }, 2000);
+    }
+
+    showLoginBox() {
+        const loginDialogElement = document.getElementById("login");
+        loginDialogElement.setAttribute("open", "open");
+        loginDialogElement.getElementsByTagName("form")[0].onsubmit = () => {
+            const username = document.getElementById("nameEntry").value;
+            loginDialogElement.removeAttribute("open");
+            this.signUp(username);
+        }
+    }
+
+    connect() {
         this.socket = io(this.url);
         this.players = new ClientPlayers();
         this.tileMap = new TileMap();
@@ -19,8 +42,11 @@ class MineSocket {
         this.tileMap.socket = this;
         this.tileView.socket = this;
 
-
         this.socket.on('connect', () => {
+            this.socket.on('login_details', ({username, authKey}) => {
+                localStorage.setItem("authKey", authKey);
+                this.logIn(authKey);
+            });
             this.socket.on('chunk', chunk => {
                 if (!chunk) {
                     return;
@@ -57,7 +83,19 @@ class MineSocket {
             this.socket.on('error', error => {
                 console.log(error);
                 this.error(error);
+                if (error["error"] === "Auth key not recognised") {
+                    localStorage.removeItem("authKey");
+                    this.showLoginBox();
+                }
             });
+
+            const authKey = localStorage.getItem("authKey");
+            if (!authKey) {
+                this.showLoginBox();
+            } else {
+                console.log("going to send the auth key");
+                this.logIn(authKey);
+            }
         });
     }
 

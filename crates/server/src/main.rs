@@ -1,15 +1,16 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::thread;
 
 use axum::Router;
-use serde_json::Value;
+use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use world::{Chunk, Position, UpdatedRect, World};
+use world::{AuthKey, Chunk, Position, UpdatedRect, World};
 use world::client_messages::ClientMessage::*;
 use world::player::Player;
 use world::server_messages::{chunk_message, flag_message, player_message, unflag_message, updated_rect_message};
@@ -38,44 +39,80 @@ async fn main() {
                         };
                         tx.send((message, socket_ref)).expect("Can't send game message");
                     },
+                    [Value::String(message_type), Value::String(string)] => {
+                        match message_type.as_str() {
+                            "register" => {
+                                let username = string.to_string();
+                                tx.send((Register(username), socket_ref)).expect("Can't send register message");
+                            }
+                            "login" => {
+                                let auth_key = AuthKey(string.to_string());
+                                tx.send((Login(auth_key), socket_ref)).expect("Can't send login message");
+                            }
+                            _ => {}
+                        }
+                    }
                     _ => {}
                 }
             }
         });
     });
 
+    let mut socket_id_to_player_id = HashMap::new();
     let _handle = thread::spawn(move || {
         let mut next_event = 0;
         for (received, socket_ref) in rx {
-            let player_id = world.register_player(format!("{}", socket_ref.id));
-            eprintln!("Player {player_id} : {:?}", received);
-            match received {
-                Click(position) => {
-                    world.click(position, player_id);
-                }
-                Flag(position) => {
-                    world.flag(position, player_id);
-                }
-                DoubleClick(position) => {
-                    world.double_click(position, player_id);
-                }
-                Welcome => {
-                    let player = unsafe {world.players.get_unchecked(player_id)};
-                    let username = player.username.clone();
-                    send_player(&socket_ref, player);
-                    socket_ref.emit("welcome", username).expect("Couldn't send welcome message");
-                    for chunk in &world.chunks {
-                        send_chunk(&socket_ref, chunk);
+            if let Some(&player_id) = socket_id_to_player_id.get(&socket_ref.id) {
+                eprintln!("Player {player_id} : {:?}", received);
+                match received {
+                    Click(position) => {
+                        world.click(position, player_id);
                     }
+                    Flag(position) => {
+                        world.flag(position, player_id);
+                    }
+                    DoubleClick(position) => {
+                        world.double_click(position, player_id);
+                    }
+                    Move(position) => {
+                        world.players[player_id].position = position;
+                    }
+                    _ => {}
                 }
-                Move(position) => {
-                    world.players[player_id].position = position;
+                send_recent_events(&world, &socket_ref, next_event);
+                next_event = world.events.len();
+                let player = unsafe {world.players.get_unchecked(player_id)};
+                eprintln!("{:?}", player);
+            } else {
+                match received {
+                    Welcome => {
+                        for chunk in &world.chunks {
+                            send_chunk(&socket_ref, chunk);
+                        }
+                    }
+                    Register(username) => {
+                        let AuthKey(auth_key) = world.register_player(&username);
+                        socket_ref.emit("login_details", json!({
+                            "username": username,
+                            "authKey": auth_key
+                        })).expect("Couldn't send login details");
+                        // TODO: Handle failure by removing player from world
+                    }
+                    Login(auth_key) => {
+                        if let Some(player_id) = world.authenticate_player(auth_key) {
+                            socket_id_to_player_id.insert(socket_ref.id, player_id);
+                            let player = unsafe { world.players.get_unchecked(player_id) };
+                            send_player(&socket_ref, &player);
+                            socket_ref.emit("welcome", &player.username).expect("Couldn't send welcome message");
+                        } else {
+                            socket_ref.emit("error", json!({
+                                "error": "Auth key not recognised"
+                            })).expect("Couldn't send auth key error");
+                        }
+                    }
+                    _ => {}
                 }
             }
-            send_recent_events(&world, &socket_ref, next_event);
-            next_event = world.events.len();
-            let player = unsafe {world.players.get_unchecked(player_id)};
-            eprintln!("{:?}", player);
         }
     });
 

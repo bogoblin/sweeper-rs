@@ -12,7 +12,7 @@ class TileView {
         this.viewCenter = [0,0];
         this.mouseCoords = [0,0];
 
-        this.setCanvas(document.createElement('canvas'));
+        this.setCanvas(document.getElementById("gameCanvas"));
 
         window.addEventListener("resize", () => {
             this.updateCanvasSize();

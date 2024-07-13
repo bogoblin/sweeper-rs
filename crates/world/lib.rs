@@ -5,9 +5,10 @@ use std::fmt::{Debug, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
 
+use base64::prelude::*;
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 use serde::Serialize;
 use crate::events::Event;
 use crate::player::Player;
@@ -23,10 +24,42 @@ pub struct World {
     pub chunks: Vec<Chunk>,
     pub rng: StdRng,
 
-    pub player_ids: HashMap<String, usize>,
+    pub player_ids: HashMap<AuthKey, usize>,
     pub players: Vec<Player>,
 
     pub events: Vec<Event>,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct AuthKey(pub String);
+
+impl AuthKey {
+    fn new(rng: &mut impl Rng) -> Self {
+        let mut auth_bytes: [u8; 24] = Default::default();
+        rng.fill_bytes(&mut auth_bytes);
+        Self(BASE64_URL_SAFE.encode(auth_bytes))
+    }
+}
+
+impl World {
+    pub fn authenticate_player(&self, auth_key: AuthKey) -> Option<usize> {
+        return if let Some(&player_id) = self.player_ids.get(&auth_key) {
+            Some(player_id)
+        } else {
+            None
+        }
+    }
+
+    pub fn register_player(&mut self, username: &String) -> AuthKey {
+        let auth_key = AuthKey::new(&mut self.rng);
+        let new_player_id = self.players.len();
+        self.players.push(Player::new(username.clone()));
+        self.events.push(Event::Registered {
+            player_id: new_player_id
+        });
+        self.player_ids.insert(auth_key.clone(), new_player_id);
+        auth_key
+    }
 }
 
 impl World {
@@ -42,20 +75,6 @@ impl World {
         };
         world.generate_chunk(Position(0, 0));
         world
-    }
-
-    pub fn register_player(&mut self, cookie: String) -> usize {
-        return match self.player_ids.entry(cookie.clone()) {
-            Entry::Occupied(entry) => entry.get().clone(),
-            Entry::Vacant(entry) => {
-                let new_player_id = self.players.len();
-                self.players.push(Player::new(cookie)); // TODO: use an actual username when we have them
-                self.events.push(Event::Registered {
-                    player_id: new_player_id
-                });
-                *entry.insert(new_player_id)
-            }
-        }
     }
 
     pub fn get_chunk_id(&self, position: Position) -> Option<&usize> {

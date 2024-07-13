@@ -2045,6 +2045,7 @@ dependencies = [
 name = "world"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "getrandom",
  "rand 0.9.0-alpha.1",
  "serde",

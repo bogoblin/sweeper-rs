@@ -25,10 +25,16 @@
     }
 </style>
 <body>
+<dialog id="login">
+    <form action="#">
+        <label for="nameEntry">Enter name:</label>
+        <input type="text" id="nameEntry">
+        <button>Go!</button>
+    </form>
+</dialog>
 <canvas width="800" height="600" id="gameCanvas"></canvas>
 <script>
     const mineSocket = new MineSocket("/");
-    mineSocket.tileView.setCanvas(document.getElementById("gameCanvas"));
 
     let bot = false;
 
