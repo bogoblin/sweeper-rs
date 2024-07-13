@@ -105,7 +105,7 @@ impl World {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 let position = entry.key().clone();
-                let new_chunk = Chunk::generate(position.clone(), 40);
+                let new_chunk = Chunk::generate(position.clone(), 40, self.seed);
                 entry.insert(new_id);
                 self.positions.push(position);
                 self.chunks.push(new_chunk);
@@ -293,10 +293,10 @@ impl ChunkPosition {
         Self(x & !0b1111, y & !0b1111)
     }
 
-    fn seed(&self) -> u64 {
+    fn seed(&self, salt: u64) -> u64 {
         (self.0 as u64).overflowing_add(
             (self.1 as u64) << 31
-        ).0
+        ).0 + salt
     }
 }
 
@@ -447,13 +447,13 @@ impl AddAssign<u8> for Tile {
 }
 
 impl Chunk {
-    pub fn generate(position: ChunkPosition, number_of_mines: u8) -> Chunk {
+    pub fn generate(position: ChunkPosition, number_of_mines: u8, salt: u64) -> Chunk {
         let mut new_chunk = Chunk {
             tiles: ChunkTiles([Tile::empty(); 256]),
             position,
             adjacent_mines_filled: false
         };
-        let mut rng = StdRng::seed_from_u64(position.seed());
+        let mut rng = StdRng::seed_from_u64(position.seed(salt));
         for mine_index in (0..255).choose_multiple(&mut rng, number_of_mines as usize) {
             let x = mine_index % 16;
             let y = (mine_index - x) >> 4;
