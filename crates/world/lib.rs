@@ -6,7 +6,7 @@ use std::ops;
 use std::ops::{AddAssign, Sub};
 
 use base64::prelude::*;
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -39,9 +39,9 @@ pub struct World {
 pub struct AuthKey(pub String);
 
 impl AuthKey {
-    fn new(player_id: usize) -> Self {
+    fn new(ref mut rng: &mut impl Rng) -> Self {
         let mut auth_bytes: [u8; 24] = Default::default();
-        StdRng::seed_from_u64(player_id as u64).fill_bytes(&mut auth_bytes);
+        rng.fill_bytes(&mut auth_bytes);
         Self(BASE64_URL_SAFE.encode(auth_bytes))
     }
 }
@@ -55,10 +55,11 @@ impl World {
 
     pub fn register_player(&mut self, username: String) -> (AuthKey, &Player) {
         let new_player_id = self.players.len();
+        let mut rng = StdRng::seed_from_u64(new_player_id as u64);
         loop {
             // We want to generate an auth key that isn't already in use, so we loop until we get one.
             // It's unlikely to loop, but it is a possibility.
-            let auth_key = AuthKey::new(new_player_id);
+            let auth_key = AuthKey::new(&mut rng);
             if self.player_ids_by_auth_key.contains_key(&auth_key) { continue; }
 
             self.players.push(Player::new(username));
