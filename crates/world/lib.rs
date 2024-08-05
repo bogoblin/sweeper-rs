@@ -19,6 +19,7 @@ pub mod server_messages;
 pub mod client_messages;
 pub mod player;
 pub mod events;
+mod huffman;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {
