@@ -5,8 +5,7 @@ use std::fmt::{Debug, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
 
-use base64::prelude::*;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use crate::{Chunk, Position, UpdatedRect};
+use crate::{Chunk};
 use crate::events::Event;
 
 pub fn chunk_message(chunk: &Chunk) -> (&'static str, Value) {
