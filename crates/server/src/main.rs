@@ -7,7 +7,7 @@ use axum::Router;
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::socket::Sid;
-use socketioxide::SocketIo;
+use socketioxide::{SendError, SocketIo};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
@@ -37,7 +37,7 @@ async fn main() {
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
-        tx.send((Connected, socket.clone())).expect("Can't send welcome message");
+        let _ = tx.send((Connected, socket.clone())).or_else(|err| Ok(println!("{err}")));
         socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
             if let Value::Array(array) = data {
                 match &array[..] {
@@ -52,17 +52,17 @@ async fn main() {
                             "move" => Move(position),
                             _ => return,
                         };
-                        tx.send((message, socket_ref)).expect("Can't send game message");
+                        let _ = tx.send((message, socket_ref)).or_else(|err| Ok(println!("{err}")));
                     },
                     [Value::String(message_type), Value::String(string)] => {
                         match message_type.as_str() {
                             "register" => {
                                 let username = string.to_string();
-                                tx.send((Register(username), socket_ref)).expect("Can't send register message");
+                                let _ = tx.send((Register(username), socket_ref)).or_else(|err| Ok(println!("{err}")));
                             }
                             "login" => {
                                 let auth_key = AuthKey(string.to_string());
-                                tx.send((Login(auth_key), socket_ref)).expect("Can't send login message");
+                                let _ = tx.send((Login(auth_key), socket_ref)).or_else(|err| Ok(println!("{err}")));
                             }
                             _ => {}
                         }
@@ -81,24 +81,16 @@ async fn main() {
             let player_id = socket_id_to_player_id.get(&socket_ref.id).cloned();
             match received {
                 Click(position) => {
-                    player_id.map(|player_id| {
-                        world.click(position, player_id);
-                    });
+                    if let Some(player_id) = player_id { world.click(position, player_id); }
                 }
                 Flag(position) => {
-                    player_id.map(|player_id| {
-                        world.flag(position, player_id);
-                    });
+                    if let Some(player_id) = player_id { world.flag(position, player_id); }
                 }
                 DoubleClick(position) => {
-                    player_id.map(|player_id| {
-                        world.double_click(position, player_id);
-                    });
+                    if let Some(player_id) = player_id { world.double_click(position, player_id); }
                 }
                 Move(position) => {
-                    player_id.map(|player_id| {
-                        world.players[player_id].position = position;
-                    });
+                    if let Some(player_id) = player_id { world.players[player_id].position = position; }
                 }
                 Connected => {
                     for chunk in &world.chunks {
@@ -108,21 +100,21 @@ async fn main() {
                 Register(username) => {
                     let (AuthKey(auth_key), player) = world.register_player(username);
                     let username = player.username.clone();
-                    socket_ref.emit("login_details", json!({
+                    let _ = socket_ref.emit("login_details", json!({
                         "username": username,
                         "authKey": auth_key
-                    })).expect("Couldn't send login details");
+                    })).or_else(|err| Ok(println!("{err}")));
                     // TODO: Handle failure by removing player from world
                 }
                 Login(auth_key) => {
                     if let Some(( player_id, player )) = world.authenticate_player(&auth_key) {
                         socket_id_to_player_id.insert(socket_ref.id, player_id);
                         send_player(&socket_ref, &player);
-                        socket_ref.emit("welcome", &player.username).expect("Couldn't send welcome message");
+                        let _ = socket_ref.emit("welcome", &player.username).or_else(|err| Ok(println!("{err}")));
                     } else {
-                        socket_ref.emit("error", json!({
+                        let _ = socket_ref.emit("error", json!({
                             "error": "Auth key not recognised"
-                        })).expect("Couldn't send auth key error");
+                        })).or_else(|err| Ok(println!("{err}")));
                     }
                 }
             }
@@ -140,12 +132,12 @@ async fn main() {
             };
             if do_backup {
                 last_backup = Some(now);
-                let serialized = postcard::to_allocvec(&world);
-                let serialized = serialized.unwrap();
-                let num_bytes = serialized.len();
-                println!("Writing {num_bytes} bytes to backup file...");
-                fs::write("worldfile", serialized).expect("Couldn't write backup");
-                println!("Done");
+                if let Ok(serialized) = postcard::to_allocvec(&world) {
+                    let num_bytes = serialized.len();
+                    println!("Writing {num_bytes} bytes to backup file...");
+                    let _ = fs::write("worldfile", serialized).or_else(|err| Ok(println!("{err}")));
+                    println!("Done");
+                }
             }
         }
     });
