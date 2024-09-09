@@ -7,7 +7,7 @@ use axum::Router;
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::socket::Sid;
-use socketioxide::{SendError, SocketIo};
+use socketioxide::{SocketIo};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
@@ -37,40 +37,41 @@ async fn main() {
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
-        let _ = tx.send((Connected, socket.clone())).or_else(|err| Ok(println!("{err}")));
-        socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
-            if let Value::Array(array) = data {
-                match &array[..] {
-                    [Value::String(message_type), Value::Number(x), Value::Number(y)] => {
-                        let x = x.as_f64().unwrap().floor() as i32;
-                        let y = y.as_f64().unwrap().floor() as i32;
-                        let position = Position(x, y);
-                        let message = match message_type.as_str() {
-                            "click" => Click(position),
-                            "flag" => Flag(position),
-                            "doubleClick" => DoubleClick(position),
-                            "move" => Move(position),
-                            _ => return,
-                        };
-                        let _ = tx.send((message, socket_ref)).or_else(|err| Ok(println!("{err}")));
-                    },
-                    [Value::String(message_type), Value::String(string)] => {
-                        match message_type.as_str() {
-                            "register" => {
-                                let username = string.to_string();
-                                let _ = tx.send((Register(username), socket_ref)).or_else(|err| Ok(println!("{err}")));
+        if let Ok(_) = tx.send((Connected, socket.clone())) {
+            socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
+                if let Value::Array(array) = data {
+                    match &array[..] {
+                        [Value::String(message_type), Value::Number(x), Value::Number(y)] => {
+                            let x = x.as_f64().unwrap().floor() as i32;
+                            let y = y.as_f64().unwrap().floor() as i32;
+                            let position = Position(x, y);
+                            let message = match message_type.as_str() {
+                                "click" => Click(position),
+                                "flag" => Flag(position),
+                                "doubleClick" => DoubleClick(position),
+                                "move" => Move(position),
+                                _ => return,
+                            };
+                            tx.send((message, socket_ref)).unwrap_or_default();
+                        },
+                        [Value::String(message_type), Value::String(string)] => {
+                            match message_type.as_str() {
+                                "register" => {
+                                    let username = string.to_string();
+                                    tx.send((Register(username), socket_ref)).unwrap_or_default();
+                                }
+                                "login" => {
+                                    let auth_key = AuthKey(string.to_string());
+                                    tx.send((Login(auth_key), socket_ref)).unwrap_or_default();
+                                }
+                                _ => {}
                             }
-                            "login" => {
-                                let auth_key = AuthKey(string.to_string());
-                                let _ = tx.send((Login(auth_key), socket_ref)).or_else(|err| Ok(println!("{err}")));
-                            }
-                            _ => {}
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            }
-        });
+            });
+        }
     });
 
     let mut socket_id_to_player_id: HashMap<Sid, usize> = HashMap::new();
@@ -100,21 +101,21 @@ async fn main() {
                 Register(username) => {
                     let (AuthKey(auth_key), player) = world.register_player(username);
                     let username = player.username.clone();
-                    let _ = socket_ref.emit("login_details", json!({
+                    socket_ref.emit("login_details", json!({
                         "username": username,
                         "authKey": auth_key
-                    })).or_else(|err| Ok(println!("{err}")));
+                    })).unwrap_or_default();
                     // TODO: Handle failure by removing player from world
                 }
                 Login(auth_key) => {
                     if let Some(( player_id, player )) = world.authenticate_player(&auth_key) {
                         socket_id_to_player_id.insert(socket_ref.id, player_id);
                         send_player(&socket_ref, &player);
-                        let _ = socket_ref.emit("welcome", &player.username).or_else(|err| Ok(println!("{err}")));
+                        socket_ref.emit("welcome", &player.username).unwrap_or_default();
                     } else {
-                        let _ = socket_ref.emit("error", json!({
+                        socket_ref.emit("error", json!({
                             "error": "Auth key not recognised"
-                        })).or_else(|err| Ok(println!("{err}")));
+                        })).unwrap_or_default();
                     }
                 }
             }
@@ -135,7 +136,9 @@ async fn main() {
                 if let Ok(serialized) = postcard::to_allocvec(&world) {
                     let num_bytes = serialized.len();
                     println!("Writing {num_bytes} bytes to backup file...");
-                    let _ = fs::write("worldfile", serialized).or_else(|err| Ok(println!("{err}")));
+                    if let Err(err) = fs::write("worldfile", serialized) {
+                        eprintln!("{err}");
+                    }
                     println!("Done");
                 }
             }
