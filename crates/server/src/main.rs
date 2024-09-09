@@ -145,7 +145,7 @@ async fn main() {
     let router: Router<> = Router::new()
         .fallback_service(ServeDir::new("static"))
         .layer(socket_layer);
-    let addr = SocketAddr::from(([127,0,0,1], 8000));
+    let addr = SocketAddr::from(([0,0,0,0], 8000));
     let tcp = TcpListener::bind(&addr).await.unwrap();
 
     axum::serve(tcp, router).await.unwrap();
