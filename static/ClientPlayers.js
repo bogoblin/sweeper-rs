@@ -23,6 +23,11 @@ class ClientPlayers {
      * @returns {Player}
      */
     getPlayer(username) {
+        const existingPlayer = this.players[username];
+        if (existingPlayer) {
+        } else {
+            this.players[username] = new Player(username);
+        }
         return this.players[username];
     }
 
@@ -65,13 +70,8 @@ class ClientPlayers {
             player.cursorDisplay = (vectorTimesScalar(vectorAdd(player.cursorDisplay, player.cursorTarget), 1/2));
             const [x, y] = tileView.worldToScreen(player.cursorDisplay);
 
+            // TODO: different cursors for different players
             context.drawImage(cursor, x, y);
-            context.font = `20px monospace`;
-            context.strokeStyle = 'white';
-            context.lineWidth = 5;
-            context.strokeText(player.username, x+5, y-5);
-            context.fillStyle = 'blue';
-            context.fillText(player.username, x+5, y-5);
         }
 
         // if you are dead, make the screen red and show the respawn time

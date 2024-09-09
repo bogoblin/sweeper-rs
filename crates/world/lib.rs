@@ -13,11 +13,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
 
 use crate::events::Event;
-use crate::player::Player;
 
 pub mod server_messages;
 pub mod client_messages;
-pub mod player;
 pub mod events;
 
 #[derive(Serialize, Deserialize)]
@@ -27,51 +25,10 @@ pub struct World {
     pub chunks: Vec<Chunk>,
     pub seed: u64,
 
-    pub player_ids_by_auth_key: HashMap<AuthKey, usize>,
-    pub players: Vec<Player>,
-
     #[serde(skip)]
     pub events: Vec<Event>,
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-#[derive(Serialize, Deserialize)]
-pub struct AuthKey(pub String);
-
-impl AuthKey {
-    fn new(ref mut rng: &mut impl Rng) -> Self {
-        let mut auth_bytes: [u8; 24] = Default::default();
-        rng.fill_bytes(&mut auth_bytes);
-        Self(BASE64_URL_SAFE.encode(auth_bytes))
-    }
-}
-
-impl World {
-    pub fn authenticate_player(&self, auth_key: &AuthKey) -> Option<(usize, &Player)> {
-        let player_id = *self.player_ids_by_auth_key.get(auth_key)?;
-        let player = self.players.get(player_id)?;
-        Some((player_id, player))
-    }
-
-    pub fn register_player(&mut self, username: String) -> (AuthKey, &Player) {
-        let new_player_id = self.players.len();
-        let mut rng = StdRng::seed_from_u64(new_player_id as u64);
-        loop {
-            // We want to generate an auth key that isn't already in use, so we loop until we get one.
-            // It's unlikely to loop, but it is a possibility.
-            let auth_key = AuthKey::new(&mut rng);
-            if self.player_ids_by_auth_key.contains_key(&auth_key) { continue; }
-
-            self.players.push(Player::new(username));
-            self.events.push(Event::Registered {
-                player_id: new_player_id
-            });
-            self.player_ids_by_auth_key.insert(auth_key.clone(), new_player_id);
-            let new_player = unsafe { self.players.get_unchecked(new_player_id) };
-            return (auth_key, new_player);
-        }
-    }
-}
 
 impl World {
     pub fn new() -> World {
@@ -80,8 +37,6 @@ impl World {
             positions: vec![],
             chunks: vec![],
             seed: 0,
-            player_ids_by_auth_key: Default::default(),
-            players: vec![],
             events: vec![],
         };
         world.generate_chunk(Position(0, 0));
@@ -143,23 +98,19 @@ impl World {
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
 
-    pub fn click(&mut self, at: Position, by_player_id: usize) {
-        let updated = self.reveal(vec![at], by_player_id);
+    pub fn click(&mut self, at: Position, by_player_id: &str) {
+        let updated = self.reveal(vec![at]);
         self.events.push(Event::Clicked {
-            player_id: by_player_id,
+            player_id: by_player_id.to_string(),
             at,
             updated
         });
     }
 
-    fn reveal(&mut self, mut to_reveal: Vec<Position>, by_player_id: usize) -> UpdatedRect {
-        if self.players.get(by_player_id).is_none() {
+    fn reveal(&mut self, mut to_reveal: Vec<Position>) -> UpdatedRect {
+        if to_reveal.is_empty() {
             return Default::default();
-        };
-        let first_reveal = match to_reveal.get(0) {
-            None => return Default::default(),
-            Some(&p) => p
-        };
+        }
 
         let mut updated_chunk_ids = HashSet::new();
         let mut updated_tiles = vec![];
@@ -174,13 +125,7 @@ impl World {
             // It's okay to get unchecked here because we know that tile_index() always returns a number < 256
             let tile = unsafe { current_chunk.tiles.0.get_unchecked_mut(position.tile_index()) };
             if !tile.is_revealed() {
-                // It's okay to get unchecked here because we check that the player_id exists at the top of the function
-                let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
-
                 *tile = tile.with_revealed();
-                if tile.is_mine() {
-                    player.kill();
-                }
                 if tile.adjacent() == 0 {
                     for x in -1..=1 {
                         for y in -1..=1 {
@@ -188,19 +133,15 @@ impl World {
                         }
                     }
                 }
-                // player.stats_revealed[tile.adjacent() as usize] += 1;
                 updated_tiles.push(UpdatedTile {position, tile: tile.clone()});
                 updated_chunk_ids.insert(current_chunk_id);
             }
         }
 
-        let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
-        player.last_clicked = first_reveal;
-
         UpdatedRect::new(updated_tiles)
     }
 
-    pub fn double_click(&mut self, position: Position, by_player_id: usize) {
+    pub fn double_click(&mut self, position: Position, by_player_id: &str) {
         let chunk = match self.get_chunk(position) {
             Some(chunk) => chunk,
             None => return,
@@ -230,11 +171,9 @@ impl World {
             }
         }
         if surrounding_flags == tile.adjacent() {
-            let updated = self.reveal(to_reveal, by_player_id);
-            let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
-            player.last_clicked = position;
+            let updated = self.reveal(to_reveal);
             self.events.push(Event::DoubleClicked {
-                player_id: by_player_id,
+                player_id: by_player_id.to_string(),
                 at: position,
                 updated
             });
@@ -242,40 +181,22 @@ impl World {
         }
     }
 
-    pub fn flag(&mut self, position: Position, by_player_id: usize) {
-        if self.players.get(by_player_id).is_none() {
-            return;
-        };
-
+    pub fn flag(&mut self, position: Position, by_player_id: &str) {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
-                    let player = unsafe { self.players.get_unchecked_mut(by_player_id) };
-                    player.last_clicked = position;
                     if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
-                        /* TODO: not sure what to do here yet
-                        if tile.is_mine() {
-                            player.stats_flags_incorrect -= 1;
-                        } else {
-                            player.stats_flags_correct -= 1;
-                        }
-                        */
                         self.events.push(Event::Unflag {
-                            player_id: by_player_id,
+                            player_id: by_player_id.to_string(),
                             at: position
                         });
                     } else {
                         // Flag
                         *tile = tile.with_flag();
-                        if tile.is_mine() {
-                            // player.stats_flags_correct += 1;
-                        } else {
-                            // player.stats_flags_incorrect += 1;
-                        }
                         self.events.push(Event::Flag {
-                            player_id: by_player_id,
+                            player_id: by_player_id.to_string(),
                             at: position
                         });
                     }

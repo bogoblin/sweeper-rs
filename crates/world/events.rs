@@ -4,25 +4,22 @@ use crate::{Position, UpdatedRect};
 #[derive(Debug)]
 #[derive(Serialize, Deserialize)]
 pub enum Event {
-    Registered {
-        player_id: usize
-    },
     Clicked {
-        player_id: usize,
+        player_id: String,
         at: Position,
         updated: UpdatedRect,
     },
     DoubleClicked {
-        player_id: usize,
+        player_id: String,
         at: Position,
         updated: UpdatedRect,
     },
     Flag {
-        player_id: usize,
+        player_id: String,
         at: Position,
     },
     Unflag {
-        player_id: usize,
+        player_id: String,
         at: Position,
     }
 }
