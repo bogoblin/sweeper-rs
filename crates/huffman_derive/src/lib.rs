@@ -39,11 +39,11 @@ impl HuffmanTree {
             Leaf(_, probability) => *probability,
         }
     }
-    
+
     fn inverse(&self) -> InverseHuffmanTree {
         InverseHuffmanTree(self._inverse(vec![]))
     }
-    
+
     fn _inverse(&self, prefix: Vec<bool>) -> Vec<(ExprPath, Vec<bool>)> {
         match self {
             Tree { left, right, probability } => {
@@ -67,7 +67,9 @@ impl ToTokens for InverseHuffmanTree {
 
         tokens.append_all(
             quote! { match self {
-                #(#keys => vec![#(#values),*]),*
+                #(#keys => {
+                    #( encode_to.write_bit(#values); )*
+                }),*
             } }
         )
     }
@@ -78,9 +80,9 @@ impl ToTokens for HuffmanTree {
         let stream = match self {
             Tree { left, right, probability } => {
                 quote! { if decode_from.read_byte()? {
-                    #left 
+                    #left
                 } else {
-                    #right 
+                    #right
                 }}
             },
             Leaf(path, _probability) => {
@@ -167,10 +169,7 @@ pub fn huffman_derive(attr: TokenStream, input: TokenStream) -> TokenStream {
         use huffman::{BitReader, BitWriter};
         impl HuffmanCode for #type_of {
             fn encode(&self, encode_to: &mut BitWriter) {
-                let encoded = #inverted;
-                for bit in encoded {
-                    encode_to.write_bit(bit);
-                }
+                #inverted
             }
             fn decode(decode_from: &mut BitReader) -> Option<Box<Self>> {
                 #tree
