@@ -52,7 +52,7 @@ impl BitWriter {
             self.offset_within_byte = 0;
         }
     }
-    
+
     pub fn to_bytes(self) -> Vec<u8> {
         self.bytes
     }
@@ -61,4 +61,17 @@ impl BitWriter {
 pub trait HuffmanCode {
     fn encode(&self, encode_to: &mut BitWriter);
     fn decode(decode_from: &mut BitReader) -> Option<Box<Self>>;
+    
+    fn from_huffman_bytes(bytes: Vec<u8>) -> Vec<Box<Self>> {
+        let mut reader = BitReader::from(bytes);
+        let mut decoded = vec![];
+        loop {
+            if let Some(thing) = Self::decode(&mut reader) {
+                decoded.push(thing)
+            } else {
+                break;
+            }
+        }
+        decoded
+    }
 }

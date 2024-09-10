@@ -22,14 +22,6 @@ fn test() {
     }
     let bytes = bits.to_bytes();
     println!("{bytes:?}");
-    let mut reader = BitReader::from(bytes);
-    let mut decoded = vec![];
-    loop {
-        if let Some(thing) = HuffTest::decode(&mut reader) {
-            decoded.push(*thing)
-        } else {
-            break;
-        }
-    }
+    let mut decoded = HuffTest::from_huffman_bytes(bytes);
     println!("{decoded:?}");
 }
