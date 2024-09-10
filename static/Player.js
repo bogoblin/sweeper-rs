@@ -1,6 +1,5 @@
 class Player {
     username;
-    socket;
     position;
 
     constructor(username) {
@@ -13,15 +12,10 @@ class Player {
         }
 
         this.deadUntil = 0;
-        this.deaths = 0;
     }
-
-    connect(socket) {
-        this.socket = socket;
-        socket.player = this;
-        const session = socket.request.session;
-        session.username = this.username;
-        session.save();
+    
+    kill() {
+        this.deadUntil = Date.now() + 10*1000; // TODO: not a magic number
     }
 
     move(newPosition) {

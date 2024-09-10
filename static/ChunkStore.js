@@ -38,6 +38,8 @@ class ChunkStore {
     }
 
     updateRect([leftX, topY], updated) {
+        // TODO: I don't really like the way this function returns a boolean like that
+        let dead = false;
         for (let relative_x = 0; relative_x < updated.length; relative_x++) {
             for (let relative_y = 0; relative_y < updated[0].length; relative_y++) {
                 let x = relative_x + leftX;
@@ -46,8 +48,12 @@ class ChunkStore {
                 if (updatedTile !== 0) {
                     // Optimization: Can skip some chunk lookup here
                     this.updateTile([x, y], updatedTile);
+                    if (revealed(updatedTile) && mine(updatedTile)) {
+                        dead = true;
+                    }
                 }
             }
         }
+        return dead;
     }
 }

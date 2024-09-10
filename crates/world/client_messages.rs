@@ -1,4 +1,4 @@
-use crate::{AuthKey, Position};
+use crate::{Position};
 
 #[derive(Debug)]
 pub enum ClientMessage {
@@ -6,7 +6,4 @@ pub enum ClientMessage {
     Click(Position),
     Flag(Position),
     DoubleClick(Position),
-    Move(Position),
-    Register(String),
-    Login(AuthKey)
 }
