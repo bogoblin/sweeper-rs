@@ -20,7 +20,7 @@ impl PublicTile {
     fn from(tile: &Tile) -> Self {
         if tile.is_revealed() {
             if tile.is_mine() {
-                return Exploded;
+                Exploded
             } else {
                 match tile.adjacent() {
                     1 => Revealed1,
@@ -35,7 +35,7 @@ impl PublicTile {
                 }
             }
         } else {
-            return if tile.is_flag() {
+            if tile.is_flag() {
                 Flag
             } else {
                 Hidden
@@ -44,7 +44,7 @@ impl PublicTile {
     }
 
     fn from_bits(bits: &mut BitReader) -> Option<Self> {
-        return if bits.read_byte()? == false { // 0
+        if bits.read_byte()? == false { // 0
             Some(Hidden)
         } else {
             if bits.read_byte()? == false { // 10
@@ -80,7 +80,7 @@ impl PublicTile {
                             }
                         }
                     } else { // 1111
-                        return if bits.read_byte()? == false { // 11110
+                        if bits.read_byte()? == false { // 11110
                             Some(Revealed3)
                         } else { // 11111
                             Some(Flag)
