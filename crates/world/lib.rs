@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops;
-use std::ops::{AddAssign, Sub};
+use std::ops::{AddAssign, Deref, Sub};
 
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
@@ -16,7 +16,6 @@ use crate::events::Event;
 pub mod server_messages;
 pub mod client_messages;
 pub mod events;
-mod huffman;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {

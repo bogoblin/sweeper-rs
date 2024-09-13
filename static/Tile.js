@@ -10,7 +10,7 @@ const adjacent = tile => tile & AdjacencyMask;
 const mine = tile => (tile & Mine) !== 0;
 const flag = tile => (tile & Flag) !== 0;
 const revealed = tile => (tile & Revealed) !== 0;
-const loading = tile => (tile & loading) !== 0;
+const loading = tile => (tile & Loading) !== 0;
 
 function withFlag(tile) {
     if (flag(tile)) {

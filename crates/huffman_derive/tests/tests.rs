@@ -1,6 +1,5 @@
 use huffman_derive::huffman_derive;
 use crate::HuffTest::*;
-use huffman::HuffmanCode;
 
 #[huffman_derive(
     One => 1,

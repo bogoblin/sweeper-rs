@@ -166,7 +166,7 @@ pub fn huffman_derive(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     TokenStream::from_iter(vec![
         quote! {
-        use huffman::{BitReader, BitWriter};
+        use huffman::{BitReader, BitWriter, HuffmanCode};
         impl HuffmanCode for #type_of {
             fn encode(&self, encode_to: &mut BitWriter) {
                 #inverted
