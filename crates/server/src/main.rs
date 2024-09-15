@@ -1,11 +1,13 @@
 use axum::Router;
 use serde_json::{json, Value};
-use socketioxide::extract::{Data, SocketRef};
+use socketioxide::extract::{Bin, Data, SocketRef};
 use socketioxide::SocketIo;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use std::{fs, thread};
+use std::io::Read;
+use axum::body::Bytes;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
@@ -34,6 +36,7 @@ async fn main() {
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
         if let Ok(_) = tx.send((Connected, socket.clone())) {
+            socket.join("default").expect("TODO: panic message");
             let _ = socket.emit("join", json!({
                 "player_id": socket.id
             }));
@@ -116,9 +119,11 @@ async fn main() {
 fn send_recent_events(world: &World, socket_ref: &SocketRef, next_event: usize) {
     for event in &world.events[next_event..] {
         println!("{:?}", event);
-        let (event, data) = from_event(event);
-        socket_ref.emit(event, &data).ok();
-        socket_ref.broadcast().emit(event, &data).ok();
+        let (event, data, binary) = from_event(event);
+        socket_ref
+            .bin(vec![Bytes::from(binary)])
+            .within("default")
+            .emit(event, &data).ok();
     }
 }
 

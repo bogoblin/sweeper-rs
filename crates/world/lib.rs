@@ -307,6 +307,12 @@ impl Tile {
     }
 }
 
+impl Into<u8> for Tile {
+    fn into(self) -> u8 {
+        self.0
+    }
+}
+
 #[derive(Clone)]
 pub struct ChunkTiles(pub [Tile; 256]);
 

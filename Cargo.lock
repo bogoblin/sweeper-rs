@@ -232,6 +232,7 @@ dependencies = [
  "huffman_derive",
  "wasm-bindgen",
  "web-sys",
+ "world",
 ]
 
 [[package]]

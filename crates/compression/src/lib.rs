@@ -1,7 +1,8 @@
+use crate::PublicTile::*;
+use huffman_derive::huffman_derive;
 use wasm_bindgen::prelude::wasm_bindgen;
 use web_sys::js_sys::{Array, Uint8Array};
-use huffman_derive::huffman_derive;
-use crate::PublicTile::*;
+use world::Tile;
 
 #[huffman_derive(
     Hidden => 40,
@@ -34,22 +35,51 @@ enum PublicTile {
     Newline,
 }
 
-impl Into<u8> for PublicTile {
-    fn into(self) -> u8 {
+impl Into<PublicTile> for Tile {
+    fn into(self) -> PublicTile {
+        if self.is_revealed() {
+            if self.is_mine() {
+                Exploded
+            } else {
+                match self.adjacent() { 
+                    0 => Adjacent0,
+                    1 => Adjacent1,
+                    2 => Adjacent2,
+                    3 => Adjacent3,
+                    4 => Adjacent4,
+                    5 => Adjacent5,
+                    6 => Adjacent6,
+                    7 => Adjacent7,
+                    8 => Adjacent8,
+                    _ => panic!("Uh oh what have we got here...")
+                }
+            }
+        } else {
+            if self.is_flag() {
+                Flag
+            } else {
+                Hidden
+            }
+        }
+    }
+}
+
+impl Into<Tile> for PublicTile {
+    fn into(self) -> Tile {
         match self {
-            Hidden => 0,
-            Flag => 1<<4,
-            Exploded => 1<<6 + 1<<5,
-            Adjacent0 => 1<<6 + 0,
-            Adjacent1 => 1<<6 + 1,
-            Adjacent2 => 1<<6 + 2,
-            Adjacent3 => 1<<6 + 3,
-            Adjacent4 => 1<<6 + 4,
-            Adjacent5 => 1<<6 + 5,
-            Adjacent6 => 1<<6 + 6,
-            Adjacent7 => 1<<6 + 7,
-            Adjacent8 => 1<<6 + 8,
-            Newline => 255,
+            Hidden => Tile::empty(),
+            Flag => Tile::empty().with_flag(),
+            Exploded => Tile::mine().with_revealed(),
+            Adjacent0 => Tile(0).with_revealed(),
+            Adjacent1 => Tile(1).with_revealed(),
+            Adjacent2 => Tile(2).with_revealed(),
+            Adjacent3 => Tile(3).with_revealed(),
+            Adjacent4 => Tile(4).with_revealed(),
+            Adjacent5 => Tile(5).with_revealed(),
+            Adjacent6 => Tile(6).with_revealed(),
+            Adjacent7 => Tile(7).with_revealed(),
+            Adjacent8 => Tile(8).with_revealed(),
+            Newline => Tile::empty(),
         }
     }
 }
@@ -66,7 +96,8 @@ pub fn decompress(compressed: Uint8Array) -> Array {
                 current_line = vec![];
             },
             tile => {
-                current_line.push(tile.into())
+                let tile: Tile = tile.into();
+                current_line.push(tile.into());
             }
         }
     }
