@@ -1,12 +1,12 @@
 use axum::Router;
 use serde_json::{json, Value};
-use socketioxide::extract::{Bin, Data, SocketRef};
+use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use std::{fs, thread};
-use std::io::Read;
+use std::string::FromUtf8Error;
 use axum::body::Bytes;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
@@ -119,11 +119,10 @@ async fn main() {
 fn send_recent_events(world: &World, socket_ref: &SocketRef, next_event: usize) {
     for event in &world.events[next_event..] {
         println!("{:?}", event);
-        let (event, data, binary) = from_event(event);
         socket_ref
-            .bin(vec![Bytes::from(binary)])
+            .bin(vec![Bytes::from(event.compress())])
             .within("default")
-            .emit(event, &data).ok();
+            .emit("e", vec![""]).ok();
     }
 }
 

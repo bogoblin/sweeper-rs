@@ -3,19 +3,20 @@ use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops;
-use std::ops::{AddAssign, Deref, Sub};
+use std::ops::{AddAssign, Sub};
 
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
-
+use crate::compression::PublicTile;
 use crate::events::Event;
 
 pub mod server_messages;
 pub mod client_messages;
 pub mod events;
+pub mod compression;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {
@@ -271,7 +272,7 @@ impl Sub<(i32, i32)> for &Position {
 }
 
 #[derive(Default, Eq, PartialEq, Clone, Copy)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Tile (pub u8);
 
 impl Tile {
@@ -454,10 +455,12 @@ impl Chunk {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct UpdatedTile {
     position: Position,
     tile: Tile,
 }
+
 
 #[derive(Default)]
 #[derive(Serialize, Deserialize)]
@@ -524,5 +527,16 @@ impl UpdatedRect {
             top_left,
             updated
         }
+    }
+    
+    pub fn public_tiles(&self) -> Vec<PublicTile> {
+        let mut result = vec![];
+        for row in &self.updated {
+            for tile in row {
+                result.push(tile.into())
+            }
+            result.push(PublicTile::Newline)
+        }
+        result
     }
 }

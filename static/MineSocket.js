@@ -1,10 +1,14 @@
-class MineSocket {
+import init, {decompress} from "./pkg/client.js";
+
+export class MineSocket {
     constructor(url) {
         this.url = url;
-        this.connect();
+        this.connect().then(() => {});
     }
 
-    connect() {
+    async connect() {
+        await init();
+
         this.socket = io(this.url);
         this.players = new ClientPlayers();
         this.tileMap = new TileMap();
@@ -14,6 +18,33 @@ class MineSocket {
         this.tileView.socket = this;
 
         this.socket.on('connect', () => {
+            this.socket.io.engine.on('packet', ({ type, data }) => {
+                try {
+                    const events = JSON.parse(decompress(new Uint8Array(data)));
+                    if (events['Clicked']) {
+                        const {player_id, at, updated} = events['Clicked'];
+                        const isDead = this.tileMap.chunks.updateRect(updated["top_left"], updated["updated"]);
+                        const player = this.players.getPlayer(player_id);
+                        player.lastClick = at;
+                        if (isDead) {
+                            player.kill();
+                        }
+                    }
+                    if (events['Flag']) {
+                        const {player_id, at} = events['Flag'];
+                        const tile = this.tileMap.chunks.getTile(at);
+                        this.tileMap.chunks.updateTile(at, withFlag(tile));
+                        this.players.getPlayer(player_id).lastClick = at;
+                    }
+                    if (events['Unflag']) {
+                        const {player_id, at} = events['Unflag'];
+                        const tile = this.tileMap.chunks.getTile(at);
+                        this.tileMap.chunks.updateTile(at, withoutFlag(tile));
+                        this.players.getPlayer(player_id).lastClick = at;
+                    }
+                } catch (e) {
+                }
+            });
             this.socket.on('join', ({ player_id }) => {
                 this.players.setMyUsername(player_id);
             })
@@ -22,24 +53,6 @@ class MineSocket {
                     return;
                 }
                 this.tileMap.chunks.addChunk(new Chunk(chunk.coords, new Uint8Array(chunk.tiles)));
-            });
-            this.socket.on('click', ({ position, player_id, updated_rect }) => {
-                const isDead = this.tileMap.chunks.updateRect(updated_rect["top_left"], updated_rect["updated"]);
-                const player = this.players.getPlayer(player_id);
-                player.lastClick = position;
-                if (isDead) {
-                    player.kill();
-                }
-            });
-            this.socket.on('flag', ({ position, player_id }) => {
-                const tile = this.tileMap.chunks.getTile(position);
-                this.tileMap.chunks.updateTile(position, withFlag(tile));
-                this.players.getPlayer(player_id).lastClick = position;
-            });
-            this.socket.on('unflag', ({ position, player_id }) => {
-                const tile = this.tileMap.chunks.getTile(position);
-                this.tileMap.chunks.updateTile(position, withoutFlag(tile));
-                this.players.getPlayer(player_id).lastClick = position;
             });
         });
     }

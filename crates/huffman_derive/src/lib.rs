@@ -35,7 +35,7 @@ impl Display for HuffmanTree {
 impl HuffmanTree {
     fn probability(&self) -> f64 {
         match self {
-            Tree { left, right, probability } => *probability,
+            Tree { left: _, right: _, probability } => *probability,
             Leaf(_, probability) => *probability,
         }
     }
@@ -46,7 +46,7 @@ impl HuffmanTree {
 
     fn _inverse(&self, prefix: Vec<bool>) -> Vec<(ExprPath, Vec<bool>)> {
         match self {
-            Tree { left, right, probability } => {
+            Tree { left, right, probability: _ } => {
                 let mut with_true = prefix.clone(); with_true.push(true);
                 let mut with_false = prefix.clone(); with_false.push(false);
                 let mut result = left._inverse(with_true);
@@ -78,7 +78,7 @@ impl ToTokens for InverseHuffmanTree {
 impl ToTokens for HuffmanTree {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let stream = match self {
-            Tree { left, right, probability } => {
+            Tree { left, right, probability: _ } => {
                 quote! { if decode_from.read_byte()? {
                     #left
                 } else {

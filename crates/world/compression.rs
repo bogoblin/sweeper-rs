@@ -1,8 +1,6 @@
-use crate::PublicTile::*;
+use PublicTile::*;
 use huffman_derive::huffman_derive;
-use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::js_sys::{Array, Uint8Array};
-use world::Tile;
+use crate::Tile;
 
 #[huffman_derive(
     Hidden => 40,
@@ -19,7 +17,7 @@ use world::Tile;
     Adjacent8 => 0.0001,
     Newline => 15
 )]
-enum PublicTile {
+pub enum PublicTile {
     Hidden,
     Flag,
     Exploded,
@@ -35,7 +33,7 @@ enum PublicTile {
     Newline,
 }
 
-impl Into<PublicTile> for Tile {
+impl Into<PublicTile> for &Tile {
     fn into(self) -> PublicTile {
         if self.is_revealed() {
             if self.is_mine() {
@@ -84,22 +82,3 @@ impl Into<Tile> for PublicTile {
     }
 }
 
-#[wasm_bindgen]
-pub fn decompress(compressed: Uint8Array) -> Array {
-    let tiles = PublicTile::from_huffman_bytes(compressed.to_vec());
-    let result = Array::new();
-    let mut current_line: Vec<u8> = vec![];
-    for tile in tiles {
-        match *tile {
-            Newline => {
-                result.push(Uint8Array::from(&current_line[..]).as_ref());
-                current_line = vec![];
-            },
-            tile => {
-                let tile: Tile = tile.into();
-                current_line.push(tile.into());
-            }
-        }
-    }
-    result
-}
