@@ -1,3 +1,4 @@
+use axum::body::Bytes;
 use axum::Router;
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
@@ -6,13 +7,11 @@ use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use std::{fs, thread};
-use std::string::FromUtf8Error;
-use axum::body::Bytes;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
 use world::client_messages::ClientMessage::*;
-use world::server_messages::{chunk_message, from_event};
+use world::server_messages::chunk_message;
 use world::{Chunk, Position, World};
 
 #[tokio::main]

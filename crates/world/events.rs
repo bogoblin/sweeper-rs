@@ -1,7 +1,7 @@
 use std::i32;
 use serde::{Deserialize, Serialize};
 use huffman::{BitWriter, HuffmanCode};
-use crate::{Position, Tile, UpdatedRect, UpdatedTile};
+use crate::{Position, Tile, UpdatedRect};
 use crate::compression::PublicTile;
 
 #[derive(Debug)]
@@ -144,12 +144,12 @@ fn compression_test() -> Result<(), String> {
         }
         _ => panic!("Wrong event type")
     }
-    
+
     let to_update = vec![
-        UpdatedTile{ position: Position(1, 1), tile: Tile::empty().with_revealed() },
-        UpdatedTile{ position: Position(3, 1), tile: Tile::empty().with_revealed() },
-        UpdatedTile{ position: Position(3, 3), tile: Tile::mine().with_revealed() },
-        UpdatedTile{ position: Position(2, 3), tile: Tile::mine().with_flag() },
+        crate::UpdatedTile { position: Position(1, 1), tile: Tile::empty().with_revealed() },
+        crate::UpdatedTile { position: Position(3, 1), tile: Tile::empty().with_revealed() },
+        crate::UpdatedTile { position: Position(3, 3), tile: Tile::mine().with_revealed() },
+        crate::UpdatedTile { position: Position(2, 3), tile: Tile::mine().with_flag() },
     ];
     let clicked = Event::Clicked {
         player_id: p.to_string(),
@@ -161,10 +161,10 @@ fn compression_test() -> Result<(), String> {
         Event::Clicked { player_id, at, updated } => {
             assert_eq!(player_id, p);
             assert_eq!(at, pos);
-            // assert_eq!(updated.updated, UpdatedRect::new(to_update).updated);
+            assert_eq!(updated.public_tiles(), UpdatedRect::new(to_update).public_tiles());
         }
         _ => panic!("Wrong event type")
     }
-    
+
     Ok(())
 }

@@ -17,6 +17,7 @@ use crate::Tile;
     Adjacent8 => 0.0001,
     Newline => 15
 )]
+#[derive(Eq, PartialEq, Debug)]
 pub enum PublicTile {
     Hidden,
     Flag,
