@@ -6,14 +6,14 @@ use world::server_messages::ServerMessage;
 #[wasm_bindgen]
 pub fn decompress(compressed: Uint8Array) -> JsValue {
     match ServerMessage::from_compressed(compressed.to_vec()) {
-        None => Object::new().into(),
-        Some(ServerMessage::Event(event)) => {
+        Err(_) => Object::new().into(),
+        Ok(ServerMessage::Event(event)) => {
             match serde_json::to_string(&event) {
                 Ok(json) => JsValue::from_str(&json),
                 Err(err) => JsValue::from_str(&err.to_string()),
             }
         }
-        Some(ServerMessage::Chunk(chunk)) => {
+        Ok(ServerMessage::Chunk(chunk)) => {
             match serde_json::to_string(&chunk) {
                 Ok(json) => JsValue::from_str(&json),
                 Err(err) => JsValue::from_str(&err.to_string()),

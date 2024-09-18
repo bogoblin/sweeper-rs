@@ -3,16 +3,6 @@ use crate::compression::PublicTile;
 use crate::events::Event;
 use crate::{Chunk, ChunkPosition, ChunkTiles, Tile};
 use huffman::{BitWriter, HuffmanCode};
-use serde_json::{json, Value};
-
-pub fn chunk_message(chunk: &Chunk) -> (&'static str, Value) {
-    let coords = chunk.position;
-    let tiles = chunk.tiles.0.to_vec();
-    ("chunk", json!({
-                    "coords": [coords.0, coords.1],
-                    "tiles": tiles,
-                }))
-}
 
 // ServerMessage is anything the server sends that gets compressed to bytes
 #[derive(Serialize, Deserialize)]
@@ -35,13 +25,25 @@ impl From<ServerMessage> for Vec<u8> {
     }
 }
 
+pub enum ServerMessageError {
+    BadChunk,
+    BadEvent,
+}
+
 impl ServerMessage {
-    pub fn from_compressed(compressed: Vec<u8>) -> Option<ServerMessage> {
+    pub fn from_compressed(compressed: Vec<u8>) -> Result<ServerMessage, ServerMessageError> {
         let header = String::from_utf8_lossy(&compressed[0..=0]);
         if header == "h" {
-            Some(ServerMessage::Chunk(Chunk::from_compressed(compressed)?))
+            match Chunk::from_compressed(compressed) {
+                Some(chunk) => Ok(ServerMessage::Chunk(chunk)),
+                None => Err(ServerMessageError::BadChunk)
+            }
+            // Some(ServerMessage::Chunk(Chunk::from_compressed(compressed)?))
         } else {
-            Some(ServerMessage::Event(Event::from_compressed(compressed)?))
+            match Event::from_compressed(compressed) {
+                Some(event) => Ok(ServerMessage::Event(event)),
+                None => Err(ServerMessageError::BadEvent)
+            }
         }
     }
 }
@@ -59,12 +61,27 @@ impl Chunk {
         result
     }
 
-    fn public_tiles(&self) -> Vec<PublicTile> {
+    pub fn public_tiles(&self) -> Vec<PublicTile> {
         self.tiles.0.iter().map(|t| {
             t.into()
         }).collect::<Vec<PublicTile>>()
     }
 
+    /// ```
+    /// use world::{Chunk, ChunkPosition, Position, World};
+    /// let mut world = World::new();
+    /// let position = Position(16, 16);
+    /// let chunk_id = world.generate_chunk(position.clone());
+    /// world.generate_surrounding_chunks(position.clone());
+    /// world.click(Position(17, 17), "player");
+    /// let chunk = world.get_chunk(position).unwrap();
+    /// let compressed = chunk.compress();
+    /// let decompressed = Chunk::from_compressed(compressed.clone()).unwrap();
+    /// assert_eq!(decompressed.public_tiles().len(), 256);
+    /// for (decompressed_tile, tile) in decompressed.public_tiles().iter().zip(chunk.public_tiles()) {
+    ///     assert_eq!(decompressed_tile.clone(), tile);
+    /// }
+    /// ```
     pub fn from_compressed(compressed: Vec<u8>) -> Option<Self> {
         let position = ChunkPosition::from_bytes(compressed[1..8].to_vec())?;
         let tiles = PublicTile::from_huffman_bytes(compressed[8..].to_vec());
@@ -77,12 +94,14 @@ impl Chunk {
 }
 
 impl From<Vec<Box<PublicTile>>> for ChunkTiles {
-    fn from(value: Vec<Box<PublicTile>>) -> Self {
+    fn from(tiles: Vec<Box<PublicTile>>) -> Self {
         let mut result = Self {
             0: [Tile::empty(); 256]
         };
-        for (i, tile) in value.iter().enumerate() {
-            result.0[i] = tile.as_ref().clone().into();
+        for i in 0..256 {
+            if let Some(tile) = tiles.get(i) {
+                result.0[i] = tile.as_ref().clone().into();
+            }
         }
         result
     }

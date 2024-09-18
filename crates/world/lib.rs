@@ -390,6 +390,10 @@ impl Chunk {
         }
         new_chunk
     }
+    
+    pub fn should_send(&self) -> bool {
+        self.adjacent_mines_filled
+    }
 
     pub fn get_tile(&self, position: Position) -> Tile {
         self.tiles.0[position.position_in_chunk().index()]

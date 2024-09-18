@@ -11,8 +11,7 @@ use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
 use world::client_messages::ClientMessage::*;
-use world::server_messages::chunk_message;
-use world::{Chunk, Position, World};
+use world::{Position, World};
 
 #[tokio::main]
 async fn main() {
@@ -77,8 +76,19 @@ async fn main() {
                     world.double_click(position, player_id);
                 }
                 Connected => {
+                    let mut chunks_to_send = vec![];
                     for chunk in &world.chunks {
-                        send_chunk(&socket_ref, chunk); // TODO: only send the chunks we need to
+                        if chunk.should_send() {
+                            chunks_to_send.push(chunk.compress());
+                        }
+                    }
+                    match &socket_ref.bin(chunks_to_send)
+                        .emit("hello", "hello") {
+                        Ok(_) => {}
+                        Err(_) => {
+                            socket_ref.disconnect().ok();
+                            continue
+                        }
                     }
                 }
             }
@@ -123,9 +133,4 @@ fn send_recent_events(world: &World, socket_ref: &SocketRef, next_event: usize) 
             .within("default")
             .emit("e", vec![""]).ok();
     }
-}
-
-fn send_chunk(socket_ref: &SocketRef, chunk: &Chunk) -> Option<()> {
-    let (event, data) = chunk_message(chunk);
-    socket_ref.emit(event, &data).ok()
 }

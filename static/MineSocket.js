@@ -17,43 +17,39 @@ export class MineSocket {
         this.tileMap.socket = this;
         this.tileView.socket = this;
 
-        this.socket.on('connect', () => {
-            this.socket.io.engine.on('packet', ({ type, data }) => {
-                try {
-                    const events = JSON.parse(decompress(new Uint8Array(data)));
-                    if (events['Clicked']) {
-                        const {player_id, at, updated} = events['Clicked'];
-                        const isDead = this.tileMap.chunks.updateRect(updated["top_left"], updated["updated"]);
-                        const player = this.players.getPlayer(player_id);
-                        player.lastClick = at;
-                        if (isDead) {
-                            player.kill();
-                        }
+        this.socket.io.engine.on('packet', ({ type, data }) => {
+            try {
+                const events = JSON.parse(decompress(new Uint8Array(data)));
+                if (events['Clicked']) {
+                    const {player_id, at, updated} = events['Clicked'];
+                    const isDead = this.tileMap.chunks.updateRect(updated["top_left"], updated["updated"]);
+                    const player = this.players.getPlayer(player_id);
+                    player.lastClick = at;
+                    if (isDead) {
+                        player.kill();
                     }
-                    if (events['Flag']) {
-                        const {player_id, at} = events['Flag'];
-                        const tile = this.tileMap.chunks.getTile(at);
-                        this.tileMap.chunks.updateTile(at, withFlag(tile));
-                        this.players.getPlayer(player_id).lastClick = at;
-                    }
-                    if (events['Unflag']) {
-                        const {player_id, at} = events['Unflag'];
-                        const tile = this.tileMap.chunks.getTile(at);
-                        this.tileMap.chunks.updateTile(at, withoutFlag(tile));
-                        this.players.getPlayer(player_id).lastClick = at;
-                    }
-                } catch (e) {
                 }
-            });
-            this.socket.on('join', ({ player_id }) => {
-                this.players.setMyUsername(player_id);
-            })
-            this.socket.on('chunk', chunk => {
-                if (!chunk) {
-                    return;
+                else if (events['Flag']) {
+                    const {player_id, at} = events['Flag'];
+                    const tile = this.tileMap.chunks.getTile(at);
+                    this.tileMap.chunks.updateTile(at, withFlag(tile));
+                    this.players.getPlayer(player_id).lastClick = at;
                 }
-                this.tileMap.chunks.addChunk(new Chunk(chunk.coords, new Uint8Array(chunk.tiles)));
-            });
+                else if (events['Unflag']) {
+                    const {player_id, at} = events['Unflag'];
+                    const tile = this.tileMap.chunks.getTile(at);
+                    this.tileMap.chunks.updateTile(at, withoutFlag(tile));
+                    this.players.getPlayer(player_id).lastClick = at;
+                }
+                else {
+                    const chunk = events;
+                    this.tileMap.chunks.addChunk(new Chunk(chunk.position, new Uint8Array(chunk.tiles)));
+                }
+            } catch (e) {
+            }
+        });
+        this.socket.on('join', ({ player_id }) => {
+            this.players.setMyUsername(player_id);
         });
     }
 
