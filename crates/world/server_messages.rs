@@ -1,6 +1,9 @@
-use serde_json::{json, Value};
-use crate::{Chunk, ChunkPosition, Position};
+use serde::{Deserialize, Serialize};
+use crate::compression::PublicTile;
 use crate::events::Event;
+use crate::{Chunk, ChunkPosition, ChunkTiles, Tile};
+use huffman::{BitWriter, HuffmanCode};
+use serde_json::{json, Value};
 
 pub fn chunk_message(chunk: &Chunk) -> (&'static str, Value) {
     let coords = chunk.position;
@@ -12,13 +15,15 @@ pub fn chunk_message(chunk: &Chunk) -> (&'static str, Value) {
 }
 
 // ServerMessage is anything the server sends that gets compressed to bytes
-pub enum ServerMessage<'a> {
-    Event(&'a Event),
-    Chunk(&'a Chunk)
+#[derive(Serialize, Deserialize)]
+#[derive(Debug)]
+pub enum ServerMessage {
+    Event(Event),
+    Chunk(Chunk)
 }
 
-impl <'a> From<ServerMessage<'a>> for Vec<u8> {
-    fn from(value: ServerMessage<'a>) -> Self {
+impl From<ServerMessage> for Vec<u8> {
+    fn from(value: ServerMessage) -> Self {
         match value {
             ServerMessage::Event(event) => {
                 event.compress()
@@ -30,11 +35,55 @@ impl <'a> From<ServerMessage<'a>> for Vec<u8> {
     }
 }
 
+impl ServerMessage {
+    pub fn from_compressed(compressed: Vec<u8>) -> Option<ServerMessage> {
+        let header = String::from_utf8_lossy(&compressed[0..=0]);
+        if header == "h" {
+            Some(ServerMessage::Chunk(Chunk::from_compressed(compressed)?))
+        } else {
+            Some(ServerMessage::Event(Event::from_compressed(compressed)?))
+        }
+    }
+}
+
 impl Chunk {
     pub fn compress(&self) -> Vec<u8> {
         let mut result = vec![];
         result.append(&mut "h".as_bytes().to_vec());
         result.append(&mut self.position.to_bytes());
+        let mut bw = BitWriter::new();
+        for tile in self.public_tiles() {
+            tile.encode(&mut bw);
+        }
+        result.append(&mut bw.to_bytes());
+        result
+    }
+
+    fn public_tiles(&self) -> Vec<PublicTile> {
+        self.tiles.0.iter().map(|t| {
+            t.into()
+        }).collect::<Vec<PublicTile>>()
+    }
+
+    pub fn from_compressed(compressed: Vec<u8>) -> Option<Self> {
+        let position = ChunkPosition::from_bytes(compressed[1..8].to_vec())?;
+        let tiles = PublicTile::from_huffman_bytes(compressed[8..].to_vec());
+        Some(Chunk {
+            tiles: tiles.into(),
+            position,
+            adjacent_mines_filled: true,
+        })
+    }
+}
+
+impl From<Vec<Box<PublicTile>>> for ChunkTiles {
+    fn from(value: Vec<Box<PublicTile>>) -> Self {
+        let mut result = Self {
+            0: [Tile::empty(); 256]
+        };
+        for (i, tile) in value.iter().enumerate() {
+            result.0[i] = tile.as_ref().clone().into();
+        }
         result
     }
 }

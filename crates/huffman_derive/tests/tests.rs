@@ -21,6 +21,6 @@ fn test() {
     }
     let bytes = bits.to_bytes();
     println!("{bytes:?}");
-    let mut decoded = HuffTest::from_huffman_bytes(bytes);
+    let decoded = HuffTest::from_huffman_bytes(bytes);
     println!("{decoded:?}");
 }

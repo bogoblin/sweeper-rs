@@ -1,7 +1,7 @@
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
 
@@ -314,7 +314,7 @@ impl Into<u8> for Tile {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChunkTiles(pub [Tile; 256]);
 
 impl ChunkTiles {
@@ -362,6 +362,7 @@ impl<'de> Deserialize<'de> for ChunkTiles {
 }
 
 #[derive(Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Chunk {
     pub tiles: ChunkTiles,
     pub position: ChunkPosition,

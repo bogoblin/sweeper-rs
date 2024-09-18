@@ -17,7 +17,7 @@ use crate::Tile;
     Adjacent8 => 0.0001,
     Newline => 15
 )]
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum PublicTile {
     Hidden,
     Flag,
@@ -63,9 +63,9 @@ impl Into<PublicTile> for &Tile {
     }
 }
 
-impl Into<Tile> for PublicTile {
-    fn into(self) -> Tile {
-        match self {
+impl From<PublicTile> for Tile {
+    fn from(value: PublicTile) -> Self {
+        match value {
             Hidden => Tile::empty(),
             Flag => Tile::empty().with_flag(),
             Exploded => Tile::mine().with_revealed(),
@@ -82,4 +82,3 @@ impl Into<Tile> for PublicTile {
         }
     }
 }
-
