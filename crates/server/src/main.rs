@@ -12,8 +12,9 @@ use std::{fs, thread};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use world::{Position, World};
+use crate::client_messages::ClientMessage;
 use crate::client_messages::ClientMessage::*;
+use world::World;
 
 #[tokio::main]
 async fn main() {
@@ -41,22 +42,8 @@ async fn main() {
                 "player_id": socket.id
             }));
             socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
-                if let Value::Array(array) = data {
-                    match &array[..] {
-                        [Value::String(message_type), Value::Number(x), Value::Number(y)] => {
-                            let x = x.as_f64().unwrap().floor() as i32;
-                            let y = y.as_f64().unwrap().floor() as i32;
-                            let position = Position(x, y);
-                            let message = match message_type.as_str() {
-                                "click" => Click(position),
-                                "flag" => Flag(position),
-                                "doubleClick" => DoubleClick(position),
-                                _ => return,
-                            };
-                            tx.send((message, socket_ref)).unwrap_or_default();
-                        },
-                        _ => {}
-                    }
+                if let Some(message) = ClientMessage::decode(data) {
+                    tx.send((message, socket_ref)).unwrap_or_default();
                 }
             });
         }
