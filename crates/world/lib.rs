@@ -1,7 +1,7 @@
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
 
@@ -206,7 +206,7 @@ impl World {
     }
 }
 
-#[derive(Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq, Debug)]
 #[derive(Serialize, Deserialize)]
 pub struct ChunkPosition(pub i32, pub i32);
 
