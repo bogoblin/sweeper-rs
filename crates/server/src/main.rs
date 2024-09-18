@@ -1,38 +1,41 @@
 mod client_messages;
+mod backup;
 
 use axum::body::Bytes;
 use axum::Router;
+use clap::Parser;
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
-use std::{fs, thread};
+use std::thread;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
+use crate::backup::Backup;
 use crate::client_messages::ClientMessage;
 use crate::client_messages::ClientMessage::*;
 use world::World;
 
+#[derive(Parser)]
+struct Cli {
+    #[arg(short, long, value_name = "PORT NUMBER")]
+    port: Option<u16>,
+
+    #[arg(short, long, value_name = "PATH")]
+    world_file: Option<PathBuf>
+}
+
 #[tokio::main]
 async fn main() {
-    let saved_world: Option<World> = {
-        if let Ok(saved_world) = fs::read("worldfile") {
-            match postcard::from_bytes::<World>(saved_world.as_slice()) {
-                Ok(world) => Some(world),
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    None
-                }
-            }
-        } else {
-            eprintln!("World file not found. Creating new world...");
-            None
-        }
-    };
-    let mut world = saved_world.unwrap_or(World::new());
+    let cli = Cli::parse();
+    
+    let mut backup = Backup::new(cli.world_file.unwrap_or("worldfile".into()));
+
+    let mut world = backup.load().unwrap_or_else(|_| World::new());
+    
     let (tx, rx) = mpsc::channel();
     let (socket_layer, io) = SocketIo::new_layer();
     io.ns("/", |socket: SocketRef| {
@@ -51,7 +54,6 @@ async fn main() {
 
     let _handle = thread::spawn(move || {
         let mut next_event = 0;
-        let mut last_backup: Option<Instant> = None;
         for (received, socket_ref) in rx {
             let player_id = socket_ref.id.as_str();
             match received {
@@ -83,22 +85,13 @@ async fn main() {
             }
             send_recent_events(&world, &socket_ref, next_event);
             next_event = world.events.len();
-
-            let now = Instant::now();
-            let do_backup = match last_backup {
-                None => true,
-                Some(backup_time) =>
-                    now - backup_time > Duration::from_secs(5)
-            };
-            if do_backup {
-                last_backup = Some(now);
-                if let Ok(serialized) = postcard::to_allocvec(&world) {
-                    let num_bytes = serialized.len();
-                    println!("Writing {num_bytes} bytes to backup file...");
-                    if let Err(err) = fs::write("worldfile", serialized) {
-                        eprintln!("{err}");
-                    }
-                    println!("Done");
+            
+            match backup.save(&world) {
+                Ok(bytes_written) => {
+                    println!("{} bytes written to {}", bytes_written, backup.location().to_string_lossy());
+                }
+                Err(err) => {
+                    eprintln!("Error while writing worldfile: {err}")
                 }
             }
         }
@@ -107,7 +100,9 @@ async fn main() {
     let router: Router<> = Router::new()
         .fallback_service(ServeDir::new("static"))
         .layer(socket_layer);
-    let addr = SocketAddr::from(([0,0,0,0], 8000));
+    let port = cli.port.unwrap_or(80);
+    println!("Hosting on port {port}");
+    let addr = SocketAddr::from(([0,0,0,0], port));
     let tcp = TcpListener::bind(&addr).await.unwrap();
 
     axum::serve(tcp, router).await.unwrap();
