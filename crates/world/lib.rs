@@ -244,9 +244,32 @@ impl PositionInChunk {
     }
 }
 
+#[derive(Debug, Copy, Clone, Default)]
+pub struct Region(pub i32, pub i32);
+
+impl From<Position> for Region {
+    /// ```
+    /// use world::{Position, Region};
+    /// let region = Region::from(Position(0, 0));
+    /// assert_eq!(format!("{:?}", region), "crab");
+    fn from(position: Position) -> Self {
+        let offset = 1 << 17;
+        let x = (((position.0 + offset) >> 16) << 16) - offset;
+        let y = (((position.1 + offset) >> 16) << 16) - offset;
+        Self(x, y)
+    }
+}
+
 #[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Default)]
 #[derive(Serialize, Deserialize)]
 pub struct Position(pub i32, pub i32);
+
+impl Position {
+    pub fn get_region(&self) -> Region {
+        todo!()
+    }
+}
+
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }
 

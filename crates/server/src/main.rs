@@ -49,6 +49,7 @@ async fn main() {
                                 "click" => Click(position),
                                 "flag" => Flag(position),
                                 "doubleClick" => DoubleClick(position),
+                                "move" => Move(position),
                                 _ => return,
                             };
                             tx.send((message, socket_ref)).unwrap_or_default();
@@ -75,7 +76,10 @@ async fn main() {
                 DoubleClick(position) => {
                     world.double_click(position, player_id);
                 }
-                Connected => {
+                Move(position) => {
+                    let region = position.get_region();
+                    &socket_ref.join(region);
+                    
                     let mut chunks_to_send = vec![];
                     for chunk in &world.chunks {
                         if chunk.should_send() {
@@ -90,6 +94,10 @@ async fn main() {
                             continue
                         }
                     }
+                }
+                Connected => {
+                    // TODO: this probably doesn't work and is weird
+                    let _ = tx.send((Move(Position(0, 0)), socket_ref));
                 }
             }
             send_recent_events(&world, &socket_ref, next_event);
