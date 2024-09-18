@@ -14,7 +14,6 @@ use crate::compression::PublicTile;
 use crate::events::Event;
 
 pub mod server_messages;
-pub mod client_messages;
 pub mod events;
 pub mod compression;
 

@@ -1,4 +1,4 @@
-use crate::{Position};
+use world::Position;
 
 #[derive(Debug)]
 pub enum ClientMessage {

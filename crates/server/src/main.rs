@@ -1,3 +1,5 @@
+mod client_messages;
+
 use axum::body::Bytes;
 use axum::Router;
 use serde_json::{json, Value};
@@ -10,8 +12,8 @@ use std::{fs, thread};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-use world::client_messages::ClientMessage::*;
 use world::{Position, World};
+use crate::client_messages::ClientMessage::*;
 
 #[tokio::main]
 async fn main() {
