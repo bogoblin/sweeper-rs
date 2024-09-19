@@ -40,14 +40,6 @@ export class TileView {
 
     getPositionParam(key) {
         let param = parseFloat(this.url.searchParams.get(key)) || 0;
-        console.log(param)
-        if (param > (2<<31)-1) {
-            param = (2<<31)-1;
-        }
-        if (param < -(2<<30)) {
-            param = -(2<<30);
-        }
-        console.log(param)
         return param;
     }
 
