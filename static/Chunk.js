@@ -1,5 +1,5 @@
-const chunkSize = 16;
-class Chunk {
+export const chunkSize = 16;
+export class Chunk {
     coords;
     tiles;
     canvas;
@@ -54,16 +54,16 @@ class Chunk {
  * @param y {number}
  * @returns {number[]}
  */
-const chunkCoords = ([x,y]) => {
+export const chunkCoords = ([x,y]) => {
     return [
         Math.floor(x/chunkSize)*chunkSize,
         Math.floor(y/chunkSize)*chunkSize
     ];
 }
 
-const chunkKey = (worldCoords) => {
+export const chunkKey = (worldCoords) => {
     const worldTopLeft = chunkCoords(worldCoords);
     return `${worldTopLeft[0]},${worldTopLeft[1]}`;
 }
 
-const defaultChunk = new Chunk([0,0]);
+export const defaultChunk = new Chunk([0,0]);

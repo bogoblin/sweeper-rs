@@ -1,4 +1,4 @@
-const vectorSub = (v1, v2) => {
+export const vectorSub = (v1, v2) => {
     let v = [];
     for (let i=0; i<v1.length; i++) {
         v[i] = v1[i] - v2[i];
@@ -6,7 +6,7 @@ const vectorSub = (v1, v2) => {
     return v;
 }
 
-const vectorAdd = (v1, v2) => {
+export const vectorAdd = (v1, v2) => {
     let v = [];
     for (let i=0; i<v1.length; i++) {
         v[i] = v1[i] + v2[i];
@@ -14,7 +14,7 @@ const vectorAdd = (v1, v2) => {
     return v;
 }
 
-const vectorTimesScalar = (v1, s) => {
+export const vectorTimesScalar = (v1, s) => {
     let v = [];
     for (let i=0; i<v1.length; i++)
     {
@@ -23,17 +23,13 @@ const vectorTimesScalar = (v1, s) => {
     return v;
 }
 
-const vectorMagnitudeSquared = (v1) => {
+export const vectorMagnitudeSquared = (v1) => {
     let result = 0;
     for (let i=0; i<v1.length; i++)
     {
         result += v1[i]*v1[i];
     }
     return result;
-}
-
-const vectorFloor = (v1) => {
-    return v1.map(v => Math.floor(v));
 }
 
 /**
@@ -43,7 +39,7 @@ const vectorFloor = (v1) => {
  * @param action {function} Called for each coordinate in the rectangle.
  * @param step {number} Amount to add for each step. Default is 1.
  */
-const forEachInRect = ([topLeft, bottomRight], action, step=1) => {
+export const forEachInRect = ([topLeft, bottomRight], action, step=1) => {
     for (let y = topLeft[1]; y < bottomRight[1]; y+=step) {
         for (let x = topLeft[0]; x < bottomRight[0]; x+=step) {
             action([x, y]);
@@ -51,7 +47,7 @@ const forEachInRect = ([topLeft, bottomRight], action, step=1) => {
     }
 }
 
-const forEachNeighbour = (v, action, step=1) => {
+export const forEachNeighbour = (v, action, step=1) => {
     // because forEachInRect is exclusive for the bottom and right coords, we have to add 1
     forEachInRect([vectorAdd(v, [-step,-step]), vectorAdd(v, [step+1,step+1])], action);
 }

@@ -1,7 +1,9 @@
+import {Player} from "./Player.js";
+
 const cursor = new Image();
 cursor.src = "cursor.png";
 
-class ClientPlayers {
+export class ClientPlayers {
     constructor() {
         this.players = {};
     }

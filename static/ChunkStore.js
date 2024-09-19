@@ -1,4 +1,7 @@
-class ChunkStore {
+import {Chunk, chunkKey} from "./Chunk.js";
+import {mine, revealed} from "./Tile.js";
+
+export class ChunkStore {
     constructor() {
         this.chunks = {};
     }

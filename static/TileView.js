@@ -1,3 +1,6 @@
+import {vectorAdd, vectorMagnitudeSquared, vectorSub, vectorTimesScalar} from "./Vector2.js";
+import {drawText} from "./Text.js";
+
 export class TileView {
     /**
      * @param tileSize {number}
@@ -80,9 +83,8 @@ export class TileView {
                     this.socket.sendMoveMessage(this.viewCenter);
                 }
                 const [x, y] = this.viewCenter;
-                this.url.searchParams.set('x', x);
-                this.url.searchParams.set('y', y);
-                console.log(this.viewCenter)
+                this.url.searchParams.set('x', x.toString());
+                this.url.searchParams.set('y', y.toString());
                 window.history.replaceState(null, '', this.url.toString());
                 return;
             }

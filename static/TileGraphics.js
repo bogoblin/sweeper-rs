@@ -1,9 +1,11 @@
-const tileSize = 16;
+import {mine, revealed, adjacent, flag} from "./Tile.js";
+import {chunkSize} from "./Chunk.js";
+import {forEachInRect, vectorTimesScalar} from "./Vector2.js";
+
+export const tileSize = 16;
 
 const sprites = new Image();
 sprites.src ='./tiles.png';
-
-let debug = false;
 
 const getSpriteIndex = (tile) => {
     if (!revealed(tile)) {
@@ -28,7 +30,7 @@ const drawTileToCanvasContext = (context, [x, y], tile) => {
     );
 }
 
-const drawChunkCanvas = (chunk) => {
+export const drawChunkCanvas = (chunk) => {
     if (!chunk.redraw) {
         return;
     }

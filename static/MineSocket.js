@@ -1,5 +1,10 @@
 import init, {decompress} from "./pkg/client.js";
 import {TileView} from "./TileView.js";
+import {ClientPlayers} from "./ClientPlayers.js";
+import {TileMap} from "./TileMap.js";
+import {Chunk} from "./Chunk.js";
+import {tileSize} from "./TileGraphics.js";
+import {withFlag, withoutFlag} from "./Tile.js";
 
 export class MineSocket {
     constructor(url) {

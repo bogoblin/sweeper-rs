@@ -1,4 +1,7 @@
-class TileMap {
+import {ChunkStore} from "./ChunkStore.js";
+import {chunkCoords, chunkSize, defaultChunk} from "./Chunk.js";
+import {drawChunkCanvas} from "./TileGraphics.js";
+export class TileMap {
     constructor() {
         this.chunks = new ChunkStore();
 

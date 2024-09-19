@@ -1,4 +1,4 @@
-class TextStyle {
+export class TextStyle {
     textBaseline = 'top';
     font = '20px monospace';
     strokeStyle = 'white';
@@ -6,10 +6,9 @@ class TextStyle {
     fillStyle = 'blue';
 }
 
-const BlueText = new TextStyle();
+export const BlueText = new TextStyle();
 
-function drawText(context, text, position) {
-    const style = BlueText;
+export function drawText(context, text, position, style = BlueText) {
     context.textBaseline = style.textBaseline;
     context.font = style.font;
     context.strokeStyle = style.strokeStyle;
