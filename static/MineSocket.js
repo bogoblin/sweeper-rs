@@ -1,4 +1,5 @@
 import init, {decompress} from "./pkg/client.js";
+import {TileView} from "./TileView.js";
 
 export class MineSocket {
     constructor(url) {

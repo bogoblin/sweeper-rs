@@ -1,4 +1,4 @@
-class TileView {
+export class TileView {
     /**
      * @param tileSize {number}
      * @param tileMap {TileMap}
