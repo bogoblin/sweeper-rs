@@ -8,17 +8,6 @@ export class ClientPlayers {
         this.players = {};
     }
 
-    updatePlayer(player) {
-        const username = player.username;
-        if (!this.players[username]) {
-            const newPlayer = new Player(username);
-            this.players[username] = newPlayer;
-        }
-        const existingPlayer = this.players[username];
-        Object.assign(existingPlayer, player);
-        this.players[username] = existingPlayer;
-    }
-
     /**
      * Get the player with the given username
      * @param username
@@ -45,7 +34,6 @@ export class ClientPlayers {
 
     setMyUsername(username) {
         this.myUsername = username;
-        console.log(`set username to ${username}`)
     }
 
 
@@ -93,17 +81,5 @@ export class ClientPlayers {
             context.fillStyle = `rgba(255, 0, 0, ${deathOverlayOpacity})`;
             context.fillRect(0, 0, width, height);
         }
-    }
-
-    removePlayer(username) {
-        delete this.players[username];
-    }
-
-    playersSortedByScore(numberOfPlayers) {
-        const sorted = Object.values(this.players).sort((a, b) => b.points() - a.points());
-        if (sorted.length > numberOfPlayers) {
-            return sorted.slice(0, numberOfPlayers);
-        }
-        return sorted;
     }
 }

@@ -40,7 +40,6 @@ export class TileMap {
 
     doubleClickTime = 100; // milliseconds
     click(worldCoords) {
-        console.log(`Clicked at ${worldCoords}`);
         if (!this.socket) { return }
         const now = performance.now();
         if (now - this.lastClicked < this.doubleClickTime) {
