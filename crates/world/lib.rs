@@ -4,7 +4,6 @@ use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
-
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
@@ -205,7 +204,7 @@ impl World {
     }
 }
 
-#[derive(Copy, Clone, Eq, Hash, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq, Debug, derive_more::Add, derive_more::Sub)]
 #[derive(Serialize, Deserialize)]
 pub struct ChunkPosition(pub i32, pub i32);
 
@@ -218,6 +217,10 @@ impl ChunkPosition {
         (self.0 as u64).overflowing_add(
             (self.1 as u64) << 31
         ).0 + salt
+    }
+    
+    pub fn bottom_right(&self) -> Self {
+        Self::new(self.0+16, self.1+16)
     }
 }
 

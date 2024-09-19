@@ -1,9 +1,11 @@
 import {Chunk, chunkKey} from "./Chunk.js";
 import {mine, revealed} from "./Tile.js";
+import {quadtree_create, quadtree_insert, quadtree_query} from "./pkg/client.js";
 
 export class ChunkStore {
     constructor() {
         this.chunks = {};
+        this.quadtree = quadtree_create();
     }
 
     /**
@@ -11,8 +13,16 @@ export class ChunkStore {
      * @param chunk {Chunk}
      */
     addChunk(chunk) {
+        if (!this.getChunk(chunk.coords)) {
+            console.log("Adding chunk to quadtree...")
+            quadtree_insert(this.quadtree, ...chunk.coords);
+        }
         this.chunks[chunkKey(chunk.coords)] = chunk;
         return chunk;
+    }
+
+    queryChunks(topLeft, bottomRight) {
+        return quadtree_query(this.quadtree, ...topLeft, ...bottomRight);
     }
 
     /**

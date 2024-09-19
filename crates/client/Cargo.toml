@@ -10,5 +10,7 @@ crate-type = ["cdylib", "rlib"]
 huffman = { path = "../huffman" }
 world = { path = "../world" }
 wasm-bindgen = "0.2.93"
+wasm-bindgen-test = "0.3.43"
 web-sys = "0.3.70"
 serde_json = "1.0.128"
+quadtree_rs = "0.1.3"

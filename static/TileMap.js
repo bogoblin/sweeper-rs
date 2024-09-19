@@ -1,5 +1,5 @@
 import {ChunkStore} from "./ChunkStore.js";
-import {chunkCoords, chunkSize, defaultChunk} from "./Chunk.js";
+import {chunkCoords, chunkSize} from "./Chunk.js";
 import {drawChunkCanvas} from "./TileGraphics.js";
 export class TileMap {
     constructor() {
@@ -27,14 +27,19 @@ export class TileMap {
             return;
         }
 
+        context.fillRect(0, 0, 5000, 5000);
+
+        const chunkKeys = this.chunks.queryChunks(firstChunkCoords, lastChunkCoords);
         // Iterate through the chunks and draw them
-        for (let chunkY=firstChunkCoords[1]; chunkY<=lastChunkCoords[1]; chunkY+=chunkSize) {
-            for (let chunkX=firstChunkCoords[0]; chunkX<=lastChunkCoords[0]; chunkX+=chunkSize) {
-                const chunk = this.chunks.getChunk([chunkX, chunkY]) || defaultChunk;
-                const screenCoords = tileView.worldToScreen([chunkX, chunkY]);
-                drawChunkCanvas(chunk);
-                context.drawImage(chunk.canvas, ...screenCoords, tileSize*chunkSize, tileSize*chunkSize);
+        for (const key of chunkKeys) {
+            const chunk = this.chunks.chunks[key];
+            if (!chunk) {
+                console.log("Why no chunk???");
+                continue;
             }
+            const screenCoords = tileView.worldToScreen(chunk.coords);
+            drawChunkCanvas(chunk);
+            context.drawImage(chunk.canvas, ...screenCoords, tileSize*chunkSize, tileSize*chunkSize);
         }
     }
 }
