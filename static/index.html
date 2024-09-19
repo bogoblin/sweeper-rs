@@ -30,6 +30,17 @@
         <button>Go!</button>
     </form>
 </dialog>
+<dialog open="open" style="z-index: 10000">
+    <h1>InfiniteSweeper</h1>
+    <p>Numbered tiles tell you how many mines are adjacent (orthogonally and diagonally) to the tile.</p>
+    <p>Right-click a hidden tile to put a flag on it, or remove an existing flag.</p>
+    <p>Click a hidden tile to reveal it - don't click on mines!</p>
+    <p>Press left click while holding right click to clear around a numbered tile if it has flags equal to its number surrounding it.</p>
+    <p>Click and drag to move around.</p>
+    <form action="#" method="dialog">
+        <button>Close</button>
+    </form>
+</dialog>
 <canvas width="800" height="600" id="gameCanvas"></canvas>
 <script type="module">
     import {MineSocket} from "./MineSocket.js";
@@ -50,5 +61,6 @@
         }
     }, 500);
 </script>
+
 </body>
 </html>
