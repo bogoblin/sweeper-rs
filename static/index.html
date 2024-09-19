@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Onlinesweeper</title>
+    <title>InfiniteSweeper</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
 </head>
 <style>
@@ -20,16 +20,15 @@
         <button>Go!</button>
     </form>
 </dialog>
-<!--TODO: re-enable dialog-->
-<dialog  style="z-index: 10000">
+<dialog open="open" style="z-index: 10000">
     <h1>InfiniteSweeper</h1>
     <p>Numbered tiles tell you how many mines are adjacent (orthogonally and diagonally) to the tile.</p>
     <p>Right-click a hidden tile to put a flag on it, or remove an existing flag.</p>
     <p>Click a hidden tile to reveal it - don't click on mines!</p>
     <p>Press left click while holding right click to clear around a numbered tile if it has flags equal to its number surrounding it.</p>
-    <p>Click and drag to move around.</p>
+    <p>Click and drag to move around. Use the mouse wheel to zoom in or out.</p>
     <form action="#" method="dialog">
-        <button>Close</button>
+        <button>Close this window</button>
     </form>
 </dialog>
 <dialog open="open" style="bottom: 0">
