@@ -128,8 +128,8 @@ export class TileView {
 
     draw() {
         const { width, height } = this.canvas;
-        const topLeftWorldCoords = this.screenToWorldInt([0,0]);
-        const bottomRightWorldCoords = this.screenToWorldInt([width, height]);
+        const topLeftWorldCoords = this.screenToWorld([0,0]);
+        const bottomRightWorldCoords = this.screenToWorld([width, height]);
         this.tileMap.draw(
             topLeftWorldCoords,
             bottomRightWorldCoords,
