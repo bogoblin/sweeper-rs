@@ -1,7 +1,7 @@
 import {vectorAdd, vectorMagnitudeSquared, vectorSub, vectorTimesScalar} from "./Vector2.js";
 import {MouseInput} from "./input/MouseInput.js";
 import {TouchInput} from "./input/TouchInput.js";
-import {revealed, Revealed} from "./Tile.js";
+import {revealed} from "./Tile.js";
 
 export class TileView {
     /**

@@ -1,4 +1,5 @@
 import {Player} from "./Player.js";
+import {vectorAdd, vectorTimesScalar} from "./Vector2.js";
 
 const cursor = new Image();
 cursor.src = "cursor.png";

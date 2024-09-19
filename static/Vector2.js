@@ -46,8 +46,3 @@ export const forEachInRect = ([topLeft, bottomRight], action, step=1) => {
         }
     }
 }
-
-export const forEachNeighbour = (v, action, step=1) => {
-    // because forEachInRect is exclusive for the bottom and right coords, we have to add 1
-    forEachInRect([vectorAdd(v, [-step,-step]), vectorAdd(v, [step+1,step+1])], action);
-}
