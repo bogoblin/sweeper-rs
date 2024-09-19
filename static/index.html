@@ -20,7 +20,8 @@
         <button>Go!</button>
     </form>
 </dialog>
-<dialog open="open" style="z-index: 10000">
+<!--TODO: re-enable dialog-->
+<dialog  style="z-index: 10000">
     <h1>InfiniteSweeper</h1>
     <p>Numbered tiles tell you how many mines are adjacent (orthogonally and diagonally) to the tile.</p>
     <p>Right-click a hidden tile to put a flag on it, or remove an existing flag.</p>
@@ -29,6 +30,18 @@
     <p>Click and drag to move around.</p>
     <form action="#" method="dialog">
         <button>Close</button>
+    </form>
+</dialog>
+<dialog open="open" style="bottom: 0">
+    <form id="touchMode" method="dialog">
+        <label>
+            <input type="radio" name="touchMode" value="click" checked>
+            <span>Click</span>
+        </label>
+        <label>
+            <input type="radio" name="touchMode" value="flag">
+            <span>Flag</span>
+        </label>
     </form>
 </dialog>
 <canvas width="800" height="600" id="gameCanvas"></canvas>

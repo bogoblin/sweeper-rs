@@ -37,28 +37,4 @@ export class TileMap {
             }
         }
     }
-
-    doubleClickTime = 100; // milliseconds
-    click(worldCoords) {
-        if (!this.socket) { return }
-        const now = performance.now();
-        if (now - this.lastClicked < this.doubleClickTime) {
-            this.doubleClick(worldCoords);
-        }
-        else {
-            this.socket.sendClickMessage(worldCoords);
-        }
-        this.lastClicked = now;
-    }
-
-    rightClick(worldCoords) {
-        if (!this.socket) { return }
-        this.socket.sendFlagMessage(worldCoords);
-    }
-
-    doubleClick(worldCoords) {
-        if (!this.socket) { return }
-        this.socket.sendDoubleClickMessage(worldCoords);
-    }
-
 }

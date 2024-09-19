@@ -4,7 +4,7 @@ const LEFT = 0;
 const MIDDLE = 1;
 const RIGHT = 2;
 
-export class Mouse {
+export class MouseInput {
     constructor(tileView) {
         this.tileView = tileView;
         this.canvas = tileView.canvas;

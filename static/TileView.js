@@ -1,5 +1,7 @@
 import {vectorAdd, vectorMagnitudeSquared, vectorSub, vectorTimesScalar} from "./Vector2.js";
-import {Mouse} from "./input/Mouse.js";
+import {MouseInput} from "./input/MouseInput.js";
+import {TouchInput} from "./input/TouchInput.js";
+import {revealed, Revealed} from "./Tile.js";
 
 export class TileView {
     /**
@@ -46,7 +48,8 @@ export class TileView {
         this.canvas = newCanvas;
         this.context = this.canvas.getContext('2d');
 
-        this.mouseInput = new Mouse(this);
+        this.mouseInput = new MouseInput(this);
+        this.touchInput = new TouchInput(this);
 
         this.updateCanvasSize();
         this.draw();
@@ -67,8 +70,17 @@ export class TileView {
         this.socket?.sendClickMessage(worldCoords);
     }
     doubleClickAt(screenCoords) {
+        if (this.isRevealedAt(screenCoords)) {
+            const worldCoords = this.screenToWorldInt(screenCoords);
+            this.socket?.sendDoubleClickMessage(worldCoords);
+        } else {
+            this.clickAt(screenCoords);
+        }
+    }
+
+    isRevealedAt(screenCoords) {
         const worldCoords = this.screenToWorldInt(screenCoords);
-        this.socket?.sendDoubleClickMessage(worldCoords);
+        return revealed(this.socket.tileMap.chunks.getTile(worldCoords));
     }
 
     startDrag(screenCoords) {
