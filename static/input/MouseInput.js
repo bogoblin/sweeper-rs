@@ -1,4 +1,4 @@
-import {vectorAdd, vectorMagnitudeSquared, vectorSub, vectorTimesScalar} from "../Vector2.js";
+import {vectorSub} from "../Vector2.js";
 
 const LEFT = 0;
 const MIDDLE = 1;
@@ -10,6 +10,7 @@ export class MouseInput {
         this.canvas = tileView.canvas;
 
         this.buttonsDown = [false,false,false]; // left, middle, right
+        this.mousePosition = [0, 0];
 
         this.canvas.addEventListener('mousedown', this.mouseDown.bind(this));
         this.canvas.addEventListener('mouseup', this.mouseUp.bind(this));
@@ -76,9 +77,10 @@ export class MouseInput {
         if (this.buttonsDown[LEFT] || this.buttonsDown[MIDDLE]) {
             this.tileView.updateDrag(screenCoords);
         }
+        this.mousePosition = screenCoords;
     }
 
     mouseWheel(event) {
-        this.tileView.zoomIn(event.deltaY);
+        this.tileView.zoomIn(event.deltaY, this.mousePosition);
     }
 }

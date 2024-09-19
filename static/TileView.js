@@ -34,11 +34,12 @@ export class TileView {
         // Set by MineSocket
         this.socket = undefined;
 
-        this.zoom = 2;
+        this.zoomLevel = 8;
     }
 
+    zoomFactor = Math.sqrt(Math.sqrt(Math.sqrt(2)));
     getScreenTileSize() {
-        return this.tileSize * this.zoom;
+        return this.tileSize * Math.pow(this.zoomFactor, this.zoomLevel);
     }
 
     setCanvas(newCanvas) {
@@ -107,8 +108,16 @@ export class TileView {
         return false;
     }
 
-    zoomIn(amount) {
-        // TODO
+    zoomIn(amount, screenCoords) {
+        const mousePositionBeforeZoom = this.screenToWorld(screenCoords);
+        if (amount < 0) {
+            this.zoomLevel += 1;
+        } else {
+            this.zoomLevel -= 1;
+        }
+        const mousePositionAfterZoom = this.screenToWorld(screenCoords);
+        const difference = vectorSub(mousePositionBeforeZoom, mousePositionAfterZoom);
+        this.viewCenter = vectorAdd(this.viewCenter, difference);
     }
 
     draw() {

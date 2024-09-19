@@ -8,19 +8,19 @@ export class TouchInput {
         this.canvas.addEventListener('touchmove', this.touchMove.bind(this));
 
         this.modeChangeForm = document.getElementById('touchMode');
+        this.mode = "flag";
         for (const e of this.modeChangeForm.elements) {
-            e.addEventListener('input', event => {
-                if (e.checked) {
-                    if (e.name === 'touchMode') {
-                        this.mode = e.value;
-                    }
+            e.addEventListener('input', () => {
+                if (e.checked && e.name === 'touchMode') {
+                    this.mode = e.value;
                 }
-            })
+            });
+            if (e.checked && e.name === 'touchMode') {
+                this.mode = e.value;
+            }
         }
 
         this.ongoingTouches = [];
-
-        this.mode = "click";
     }
 
     touchStart(event) {
