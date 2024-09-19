@@ -1,5 +1,5 @@
 import {vectorAdd, vectorMagnitudeSquared, vectorSub, vectorTimesScalar} from "./Vector2.js";
-import {drawText} from "./Text.js";
+import {Mouse} from "./input/Mouse.js";
 
 export class TileView {
     /**
@@ -17,7 +17,6 @@ export class TileView {
         const view_y = parseFloat(this.url.searchParams.get('y')) || 0;
 
         this.viewCenter = [view_x, view_y];
-        this.mouseCoords = [0,0];
 
         this.setCanvas(document.getElementById("gameCanvas"));
 
@@ -47,106 +46,57 @@ export class TileView {
         this.canvas = newCanvas;
         this.context = this.canvas.getContext('2d');
 
-        this.buttonsDown = [false,false,false]; // left, middle, right
-
-        this.canvas.addEventListener('mousedown', this.mouseDown.bind(this));
-        this.canvas.addEventListener('mouseup', this.mouseUp.bind(this));
-        this.canvas.addEventListener('mousemove', this.mouseMove.bind(this));
-        this.canvas.addEventListener('wheel', this.mouseWheel.bind(this));
-
-        this.canvas.oncontextmenu = () => false; // disable right click
+        this.mouseInput = new Mouse(this);
 
         this.updateCanvasSize();
         this.draw();
     }
 
-    mouseDown(event) {
-        const button = event.button;
-        this.buttonsDown[button] = true;
-        const screenCoords = this.getScreenCoords(event);
-
-        switch (button) {
-            case 0:
-            case 1:
-                this.drag.dragStartScreen = screenCoords;
-                this.drag.viewCenterOnDragStart = this.viewCenter;
-                break;
-            case 2:
-                const worldCoords = this.screenToWorld(screenCoords);
-                this.tileMap.rightClick(worldCoords);
-                break;
-        }
-    }
-
-    mouseUp(event) {
-        const button = event.button;
-        this.buttonsDown[button] = false;
-        const screenCoords = this.getScreenCoords(event);
-
-        if (button === 0 || button === 1) {
-            const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
-            if (vectorMagnitudeSquared(dragVector) >= 3) {
-                if (this.socket) {
-                    this.socket.sendMoveMessage(this.viewCenter);
-                }
-                const [x, y] = this.viewCenter;
-                this.url.searchParams.set('x', x.toString());
-                this.url.searchParams.set('y', y.toString());
-                window.history.replaceState(null, '', this.url.toString());
-                return;
-            }
-        }
-
-        const worldCoords = this.screenToWorld(screenCoords);
-        switch (button) {
-            case 0: // left click
-                if (this.buttonsDown[2]) {
-                    this.tileMap.doubleClick(worldCoords);
-                }
-                else if (event.shiftKey) {
-                    this.tileMap.rightClick(worldCoords);
-                }
-                else {
-                    this.tileMap.click(worldCoords);
-                }
-                break;
-            default:
-        }
-    }
-
-    mouseMove(event) {
-        const screenCoords = this.getScreenCoords(event);
-        this.mouseCoords = this.screenToWorldInt(screenCoords);
-        if (this.buttonsDown[0] || this.buttonsDown[1]) {
-            const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
-            const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1 / this.getScreenTileSize());
-            this.viewCenter = vectorAdd(this.drag.viewCenterOnDragStart, dragVectorInWorldSpace);
-        }
-    }
-
-    mouseWheel(event) {
-        if (event.deltaY < 0) {
-            this.zoom += 1;
-        }
-        else if (event.deltaY > 0) {
-            this.zoom -= 1;
-        }
-        if (this.zoom < 1) {
-            this.zoom = 1;
-        }
-        this.draw();
-    }
 
     updateCanvasSize() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
     }
 
-    getScreenCoords(event) {
-        const {left, top} = this.canvas.getBoundingClientRect();
-        const screenCoords = [event.clientX, event.clientY];
+    flagAt(screenCoords) {
+        const worldCoords = this.screenToWorldInt(screenCoords);
+        this.socket?.sendFlagMessage(worldCoords);
+    }
+    clickAt(screenCoords) {
+        const worldCoords = this.screenToWorldInt(screenCoords);
+        this.socket?.sendClickMessage(worldCoords);
+    }
+    doubleClickAt(screenCoords) {
+        const worldCoords = this.screenToWorldInt(screenCoords);
+        this.socket?.sendDoubleClickMessage(worldCoords);
+    }
 
-        return vectorSub(screenCoords, [left, top]);
+    startDrag(screenCoords) {
+        this.drag.dragStartScreen = screenCoords;
+        this.drag.viewCenterOnDragStart = this.viewCenter;
+    }
+    updateDrag(screenCoords) {
+        const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
+        const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1 / this.getScreenTileSize());
+        this.viewCenter = vectorAdd(this.drag.viewCenterOnDragStart, dragVectorInWorldSpace);
+    }
+    endDrag(screenCoords) {
+        const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
+        if (vectorMagnitudeSquared(dragVector) >= 3) {
+            if (this.socket) {
+                this.socket.sendMoveMessage(this.viewCenter);
+            }
+            const [x, y] = this.viewCenter;
+            this.url.searchParams.set('x', x.toString());
+            this.url.searchParams.set('y', y.toString());
+            window.history.replaceState(null, '', this.url.toString());
+            return true;
+        }
+        return false;
+    }
+
+    zoomIn(amount) {
+        // TODO
     }
 
     draw() {
