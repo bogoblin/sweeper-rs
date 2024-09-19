@@ -15,7 +15,7 @@ export class Player {
     }
     
     kill() {
-        this.deadUntil = Date.now() + 10*1000; // TODO: not a magic number
+        this.deadUntil = Date.now() + 3*1000; // TODO: not a magic number
     }
 
     move(newPosition) {
