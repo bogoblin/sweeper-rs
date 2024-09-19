@@ -32,6 +32,12 @@ export class TileView {
 
         // Set by MineSocket
         this.socket = undefined;
+
+        this.zoom = 2;
+    }
+
+    getScreenTileSize() {
+        return this.tileSize * this.zoom;
     }
 
     setCanvas(newCanvas) {
@@ -46,6 +52,7 @@ export class TileView {
         this.canvas.addEventListener('mousedown', this.mouseDown.bind(this));
         this.canvas.addEventListener('mouseup', this.mouseUp.bind(this));
         this.canvas.addEventListener('mousemove', this.mouseMove.bind(this));
+        this.canvas.addEventListener('wheel', this.mouseWheel.bind(this));
 
         this.canvas.oncontextmenu = () => false; // disable right click
 
@@ -112,9 +119,22 @@ export class TileView {
         this.mouseCoords = this.screenToWorldInt(screenCoords);
         if (this.buttonsDown[0] || this.buttonsDown[1]) {
             const dragVector = vectorSub(this.drag.dragStartScreen, screenCoords);
-            const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1 / this.tileSize);
+            const dragVectorInWorldSpace = vectorTimesScalar(dragVector, 1 / this.getScreenTileSize());
             this.viewCenter = vectorAdd(this.drag.viewCenterOnDragStart, dragVectorInWorldSpace);
         }
+    }
+
+    mouseWheel(event) {
+        if (event.deltaY < 0) {
+            this.zoom += 1;
+        }
+        else if (event.deltaY > 0) {
+            this.zoom -= 1;
+        }
+        if (this.zoom < 1) {
+            this.zoom = 1;
+        }
+        this.draw();
     }
 
     updateCanvasSize() {
@@ -137,15 +157,15 @@ export class TileView {
             topLeftWorldCoords,
             bottomRightWorldCoords,
             this.context,
-            this.tileSize,
+            this.getScreenTileSize(),
             this
         );
 
         this.players.draw(this);
 
         // Debug
-        drawText(this.context, `View Centre: ${this.viewCenter}`, [10,10]);
-        drawText(this.context, `Mouse Position: ${this.mouseCoords}`, [10,40]);
+        // drawText(this.context, `View Centre: ${this.viewCenter}`, [10,10]);
+        // drawText(this.context, `Mouse Position: ${this.mouseCoords}`, [10,40]);
 
         requestAnimationFrame(() => {
             this.draw();
@@ -154,7 +174,7 @@ export class TileView {
 
     screenToWorld(screenCoords) {
         const { width, height } = this.canvas;
-        const ts = this.tileSize;
+        const ts = this.getScreenTileSize();
         const screenCenter = [width/2, height/2];
 
         // Calculate the vector that goes from the screen position to the center of the screen
@@ -173,7 +193,7 @@ export class TileView {
 
     worldToScreen(worldCoords) {
         const { width, height } = this.canvas;
-        const ts = this.tileSize;
+        const ts = this.getScreenTileSize();
         const screenCenter = [width/2, height/2];
 
         // Calculate the vector that goes from the world position to the world center

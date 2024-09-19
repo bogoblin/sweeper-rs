@@ -33,7 +33,7 @@ export class TileMap {
                 const chunk = this.chunks.getChunk([chunkX, chunkY]) || defaultChunk;
                 const screenCoords = tileView.worldToScreen([chunkX, chunkY]);
                 drawChunkCanvas(chunk);
-                context.drawImage(chunk.canvas, ...screenCoords);
+                context.drawImage(chunk.canvas, ...screenCoords, tileSize*chunkSize, tileSize*chunkSize);
             }
         }
     }
