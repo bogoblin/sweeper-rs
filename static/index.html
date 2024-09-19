@@ -11,6 +11,26 @@
         padding: 0;
         overflow: hidden;
     }
+
+    .mobile-only {
+        visibility: hidden;
+    }
+    .desktop-only {
+        visibility: visible;
+    }
+
+    @media (hover: none) {
+        body, input, button {
+            font-size: 40px;
+        }
+
+        .mobile-only {
+            visibility: visible;
+        }
+        .desktop-only {
+            visibility: hidden;
+        }
+    }
 </style>
 <body>
 <dialog id="login">
@@ -20,7 +40,7 @@
         <button>Go!</button>
     </form>
 </dialog>
-<dialog open="open" style="z-index: 10000">
+<dialog open="open" style="z-index: 10000" class="desktop-only">
     <h1>InfiniteSweeper</h1>
     <p>Numbered tiles tell you how many mines are adjacent (orthogonally and diagonally) to the tile.</p>
     <p>Right-click a hidden tile to put a flag on it, or remove an existing flag.</p>
@@ -31,7 +51,18 @@
         <button>Close this window</button>
     </form>
 </dialog>
-<dialog open="open" style="bottom: 0">
+<dialog open="open" style="z-index: 10000" class="mobile-only">
+    <h1>InfiniteSweeper</h1>
+    <p>Numbered tiles tell you how many mines are adjacent (orthogonally and diagonally) to the tile.</p>
+    <p>Tap a hidden tile to put a flag on it, or remove an existing flag.</p>
+    <p>Tap on a numbered tile with adjacent flags equal to its number to clear those tiles.</p>
+    <p>Tap 'Click' or 'Flag' to change modes - you should usually be in Flag mode.</p>
+    <p>Tap and drag to move around.</p>
+    <form action="#" method="dialog">
+        <button>Close this window</button>
+    </form>
+</dialog>
+<dialog open="open" style="bottom: 0" class="mobile-only">
     <form id="touchMode" method="dialog">
         <label>
             <input type="radio" name="touchMode" value="click">

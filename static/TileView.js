@@ -34,7 +34,8 @@ export class TileView {
         // Set by MineSocket
         this.socket = undefined;
 
-        this.zoomLevel = 8;
+        const isOnMobile = navigator.userAgent.includes('Android') || navigator.userAgent.includes('iOS');
+        this.zoomLevel = isOnMobile ? 16 : 0;
     }
 
     zoomFactor = Math.sqrt(Math.sqrt(Math.sqrt(2)));
