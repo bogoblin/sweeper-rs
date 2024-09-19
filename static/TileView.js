@@ -9,7 +9,11 @@ class TileView {
         this.tileMap = tileMap;
         this.players = players;
 
-        this.viewCenter = [0,0];
+        this.url = new URL(window.location.href);
+        const view_x = parseFloat(this.url.searchParams.get('x')) || 0;
+        const view_y = parseFloat(this.url.searchParams.get('y')) || 0;
+
+        this.viewCenter = [view_x, view_y];
         this.mouseCoords = [0,0];
 
         this.setCanvas(document.getElementById("gameCanvas"));
@@ -75,6 +79,11 @@ class TileView {
                 if (this.socket) {
                     this.socket.sendMoveMessage(this.viewCenter);
                 }
+                const [x, y] = this.viewCenter;
+                this.url.searchParams.set('x', x);
+                this.url.searchParams.set('y', y);
+                console.log(this.viewCenter)
+                window.history.replaceState(null, '', this.url.toString());
                 return;
             }
         }
