@@ -524,6 +524,12 @@ impl UpdatedRect {
 
         for updated_tile in &updated_tiles {
             let Position(x, y) = updated_tile.position - top_left;
+            // It crashed here at the 2 billion boundary because it was trying to make a huge rect.
+            // This is possible to fix with a wrapping boundary, which I haven't implemented just yet.
+            // Maybe we can configure the boundary size hmm
+            if x > 1000 || y > 1000 || x < 0 || y < 0 {
+                return Self::empty()
+            }
             updated[x as usize][y as usize] = updated_tile.tile;
         }
 

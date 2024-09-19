@@ -15,8 +15,8 @@ export class TileView {
         this.players = players;
 
         this.url = new URL(window.location.href);
-        const view_x = parseFloat(this.url.searchParams.get('x')) || 0;
-        const view_y = parseFloat(this.url.searchParams.get('y')) || 0;
+        const view_x = this.getPositionParam('x');
+        const view_y = this.getPositionParam('y');
 
         this.viewCenter = [view_x, view_y];
 
@@ -36,6 +36,19 @@ export class TileView {
 
         const isOnMobile = navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone');
         this.zoomLevel = isOnMobile ? 16 : 0;
+    }
+
+    getPositionParam(key) {
+        let param = parseFloat(this.url.searchParams.get(key)) || 0;
+        console.log(param)
+        if (param > (2<<31)-1) {
+            param = (2<<31)-1;
+        }
+        if (param < -(2<<30)) {
+            param = -(2<<30);
+        }
+        console.log(param)
+        return param;
     }
 
     zoomFactor = Math.sqrt(Math.sqrt(Math.sqrt(2)));
