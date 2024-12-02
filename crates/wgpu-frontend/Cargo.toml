@@ -11,6 +11,7 @@ wgpu = "22.0"
 cfg-if = "1.0.0"
 pollster = "0.4.0"
 bytemuck = { version = "1.20.0", features = ["derive"] }
+anyhow = "1.0.93"
 
 [dependencies.image]
 version = "0.25.5"
