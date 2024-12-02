@@ -3758,6 +3758,7 @@ dependencies = [
  "web-sys",
  "wgpu",
  "winit",
+ "world",
 ]
 
 [[package]]

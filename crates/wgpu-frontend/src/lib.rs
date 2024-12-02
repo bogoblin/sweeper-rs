@@ -1,4 +1,5 @@
 mod texture;
+mod camera;
 
 use std::default::Default;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
@@ -10,6 +11,7 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
+use crate::camera::Camera;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -105,6 +107,7 @@ struct State<'a> {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    camera: Camera,
 }
 
 impl<'a> State<'a> {
@@ -200,6 +203,7 @@ impl<'a> State<'a> {
             }
         );
 
+        let camera = Camera::new(16.0, &size);
         let camera_uniform = CameraUniform::new([0.0, 0.0], size, 16.0);
         let camera_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -304,6 +308,7 @@ impl<'a> State<'a> {
             diffuse_bind_group,
             diffuse_texture,
             index_buffer,
+            camera,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
@@ -321,6 +326,7 @@ impl<'a> State<'a> {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.camera.resize(&new_size);
         }
     }
 
@@ -338,6 +344,8 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.camera_uniform.update_from(&self.camera);
+        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -438,5 +446,10 @@ impl CameraUniform {
             center,
             tile_size: [tile_size_square*2.0 / size.width as f32, tile_size_square*2.0 / size.height as f32]
         }
+    }
+
+    pub fn update_from(&mut self, camera: &Camera) {
+        self.center = camera.center();
+        self.tile_size = camera.tile_size_clip_space();
     }
 }

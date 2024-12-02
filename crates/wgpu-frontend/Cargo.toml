@@ -5,6 +5,7 @@ edition = "2021"
 resolver = "2"
 
 [dependencies]
+world = { path = "../world" }
 winit = { version = "0.29", features = ["rwh_05"] }
 log = "0.4"
 wgpu = "22.0"
