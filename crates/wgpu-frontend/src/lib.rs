@@ -98,13 +98,10 @@ struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
-
     mouse: MouseState,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
+    index_buffer: wgpu::Buffer,
 }
 
 impl<'a> State<'a> {
@@ -157,7 +154,7 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
-        let diffuse_bytes = include_bytes!("../../../static/tiles.png");
+        let diffuse_bytes = include_bytes!("tiles.png");
         let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "tiles.png").unwrap();
 
         let texture_bind_group_layout =
@@ -200,7 +197,7 @@ impl<'a> State<'a> {
             }
         );
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+        let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -214,7 +211,7 @@ impl<'a> State<'a> {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[
-                    Vertex::desc(),
+                    Tile::desc(),
                 ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -232,7 +229,7 @@ impl<'a> State<'a> {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
@@ -247,21 +244,13 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(VERTICES),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
         let index_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(INDICES),
-                usage: wgpu::BufferUsages::INDEX,
+                contents: bytemuck::cast_slice(TILES.as_slice()),
+                usage: wgpu::BufferUsages::VERTEX,
             }
         );
-        let num_indices = INDICES.len() as u32;
 
         Self {
             window,
@@ -271,11 +260,9 @@ impl<'a> State<'a> {
             config,
             size,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
             diffuse_bind_group,
             diffuse_texture,
+            index_buffer,
             mouse: MouseState::new(),
         }
     }
@@ -335,10 +322,8 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            render_pass.set_vertex_buffer(0, self.index_buffer.slice(..));
+            render_pass.draw(0..6, 0..TILES.len() as u32);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -361,35 +346,36 @@ impl MouseState {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
+struct Tile {
+    position: [f32; 2],
     tex_coords: [f32; 2],
 }
 
-// Changed
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.0868241, 0.49240386, 0.0], tex_coords: [0.4131759, 0.99240386], }, // A
-    Vertex { position: [-0.49513406, 0.06958647, 0.0], tex_coords: [0.0048659444, 0.56958647], }, // B
-    Vertex { position: [-0.21918549, -0.44939706, 0.0], tex_coords: [0.28081453, 0.05060294], }, // C
-    Vertex { position: [0.35966998, -0.3473291, 0.0], tex_coords: [0.85967, 0.1526709], }, // D
-    Vertex { position: [0.44147372, 0.2347359, 0.0], tex_coords: [0.9414737, 0.7347359], }, // E
-];
+impl Tile {
+    pub const fn new(position: [f32; 2], sprite_index: u8) -> Self {
+        Self {
+            position,
+            tex_coords: [(sprite_index as f32)/16.0, 0.0]
+        }
+    }
+}
 
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 2, 4,
-    2, 3, 4,
-];
-
-impl Vertex {
+impl Tile {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
+            array_stride: size_of::<Tile>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
             attributes: &Self::ATTRIBS,
         }
     }
 }
+
+static TILES: [Tile; 4] = [
+    Tile::new([0.0, 0.0], 1),
+    Tile::new([1.0, 0.0], 2),
+    Tile::new([0.0, 1.0], 1),
+    Tile::new([1.0, 1.0], 2),
+];
