@@ -5,6 +5,7 @@ use winit::window::{Window, WindowBuilder};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalPosition;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
@@ -94,6 +95,7 @@ struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
 
     mouse: MouseState,
 }
@@ -161,7 +163,9 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[],
+                buffers: &[
+                    Vertex::desc(),
+                ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -193,6 +197,14 @@ impl<'a> State<'a> {
             cache: None,
         });
 
+        let vertex_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+
         Self {
             window,
             surface,
@@ -201,6 +213,7 @@ impl<'a> State<'a> {
             config,
             size,
             render_pipeline,
+            vertex_buffer,
             mouse: MouseState::new(),
         }
     }
@@ -259,7 +272,8 @@ impl<'a> State<'a> {
             });
 
             _render_pass.set_pipeline(&self.render_pipeline);
-            _render_pass.draw(0..3, 0..1);
+            _render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            _render_pass.draw(0..VERTICES.len() as u32, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -276,6 +290,31 @@ impl MouseState {
     fn new() -> Self {
         Self {
             position: PhysicalPosition::<f64>::default(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+const VERTICES: &[Vertex] = &[
+    Vertex { position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0] },
+    Vertex { position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0] },
+    Vertex { position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0] },
+];
+
+impl Vertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
         }
     }
 }
