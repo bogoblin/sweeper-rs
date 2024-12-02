@@ -9,7 +9,7 @@ use winit::window::{Window, WindowBuilder};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::util::DeviceExt;
-use winit::dpi::PhysicalPosition;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -102,6 +102,9 @@ struct State<'a> {
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
     index_buffer: wgpu::Buffer,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
 }
 
 impl<'a> State<'a> {
@@ -197,11 +200,48 @@ impl<'a> State<'a> {
             }
         );
 
+        let camera_uniform = CameraUniform::new([0.0, 0.0], size, 16.0);
+        let camera_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Camera Buffer"),
+                contents: bytemuck::cast_slice(&[camera_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("camera_bind_group_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+        });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("camera_bind_group"),
+            layout: &camera_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }
+            ]
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -252,6 +292,7 @@ impl<'a> State<'a> {
             }
         );
 
+
         Self {
             window,
             surface,
@@ -263,6 +304,9 @@ impl<'a> State<'a> {
             diffuse_bind_group,
             diffuse_texture,
             index_buffer,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
             mouse: MouseState::new(),
         }
     }
@@ -322,6 +366,7 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.index_buffer.slice(..));
             render_pass.draw(0..6, 0..TILES.len() as u32);
         }
@@ -379,3 +424,19 @@ static TILES: [Tile; 4] = [
     Tile::new([0.0, 1.0], 1),
     Tile::new([1.0, 1.0], 2),
 ];
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, Default)]
+struct CameraUniform {
+    center: [f32; 2],
+    tile_size: [f32; 2],
+}
+
+impl CameraUniform {
+    pub fn new(center: [f32; 2], size: PhysicalSize<u32>, tile_size_square: f32) -> Self {
+        Self {
+            center,
+            tile_size: [tile_size_square*2.0 / size.width as f32, tile_size_square*2.0 / size.height as f32]
+        }
+    }
+}

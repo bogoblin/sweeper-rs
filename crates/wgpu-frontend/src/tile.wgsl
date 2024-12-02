@@ -13,6 +13,13 @@ struct VertexOutput {
     @location(0) tex_coords: vec2<f32>,
 }
 
+struct CameraUniform {
+    @location(0) center: vec2<f32>,
+    @location(1) tile_size: vec2<f32>,
+}
+@group(1) @binding(0)
+var<uniform> camera: CameraUniform;
+
 @vertex
 fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     var offset: vec2<f32>;
@@ -26,9 +33,11 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
         default: { offset = vec2<f32>(0.0, 0.0); }
     }
 
+    var position: vec2<f32> = vec2(instance.position + offset);
+
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(vec2(instance.position + offset)/16.0, 0.0, 1.0);
-    out.tex_coords = instance.tex_coords + offset/16.0;
+    out.clip_position = vec4<f32>(vec2((position - camera.center)*camera.tile_size), 0.0, 1.0);
+    out.tex_coords = instance.tex_coords + vec2(offset.x, 1.0 - offset.y)/16.0;
     return out;
 }
 
