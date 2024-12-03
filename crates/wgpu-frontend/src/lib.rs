@@ -97,17 +97,17 @@ struct State<'a> {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: PhysicalSize<u32>,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     mouse: MouseState,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
-    index_buffer: wgpu::Buffer,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     camera: Camera,
+    tilemap_bind_group: wgpu::BindGroup,
 }
 
 impl<'a> State<'a> {
@@ -132,7 +132,7 @@ impl<'a> State<'a> {
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::BUFFER_BINDING_ARRAY | wgpu::Features::STORAGE_RESOURCE_BINDING_ARRAY,
                 required_limits: if cfg!(target_arch = "wasm32") {
                     wgpu::Limits::downlevel_webgl2_defaults()
                 } else {
@@ -217,7 +217,7 @@ impl<'a> State<'a> {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -238,6 +238,64 @@ impl<'a> State<'a> {
             ]
         });
 
+        // let tilemap_texture = device.create_texture(&wgpu::TextureDescriptor {
+        //     label: Some("tilemap_texture"),
+        //     size: wgpu::Extent3d {
+        //         width: 8096,
+        //         height: 8096,
+        //         depth_or_array_layers: 1,
+        //     },
+        //     mip_level_count: 1,
+        //     sample_count: 1,
+        //     dimension: wgpu::TextureDimension::D2,
+        //     format: wgpu::TextureFormat::R8Uint,
+        //     usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_DST,
+        //     view_formats: &[],
+        // });
+        let tilemap_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("tilemap_buffer"),
+            contents: &[0u8; 256*256],
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+        // let tilemap_view = tilemap_texture.create_view(&Default::default());
+        let tilemap_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("tilemap_bind_group_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage {
+                            read_only: false,
+                        },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None
+                },
+            ],
+        });
+        // let tilemap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        //     label: Some("tilemap_sampler"),
+        //     address_mode_u: Repeat,
+        //     address_mode_v: Repeat,
+        //     address_mode_w: Repeat,
+        //     mag_filter: Nearest,
+        //     min_filter: Nearest,
+        //     mipmap_filter: Nearest,
+        //     ..Default::default()
+        // });
+        let tilemap_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("tilemap_bind_group"),
+            layout: &tilemap_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(tilemap_buffer.as_entire_buffer_binding()),
+                },
+            ]
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -245,6 +303,7 @@ impl<'a> State<'a> {
                 bind_group_layouts: &[
                     &texture_bind_group_layout,
                     &camera_bind_group_layout,
+                    &tilemap_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
@@ -254,9 +313,7 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[
-                    Tile::desc(),
-                ],
+                buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -288,15 +345,6 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(TILES.as_slice()),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
-
-
         Self {
             window,
             surface,
@@ -307,11 +355,11 @@ impl<'a> State<'a> {
             render_pipeline,
             diffuse_bind_group,
             diffuse_texture,
-            index_buffer,
             camera,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
+            tilemap_bind_group,
             mouse: MouseState::new(),
         }
     }
@@ -320,7 +368,7 @@ impl<'a> State<'a> {
         &self.window
     }
 
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -328,6 +376,7 @@ impl<'a> State<'a> {
             self.surface.configure(&self.device, &self.config);
             self.camera.resize(&new_size);
         }
+        println!("{:?}", self.camera.tile_size_clip_space());
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -375,8 +424,8 @@ impl<'a> State<'a> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.index_buffer.slice(..));
-            render_pass.draw(0..6, 0..TILES.len() as u32);
+            render_pass.set_bind_group(2, &self.tilemap_bind_group, &[]);
+            render_pass.draw(0..3, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -396,42 +445,6 @@ impl MouseState {
         }
     }
 }
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Tile {
-    position: [f32; 2],
-    tex_coords: [f32; 2],
-}
-
-impl Tile {
-    pub const fn new(position: [f32; 2], sprite_index: u8) -> Self {
-        Self {
-            position,
-            tex_coords: [(sprite_index as f32)/16.0, 0.0]
-        }
-    }
-}
-
-impl Tile {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
-
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Tile>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
-
-static TILES: [Tile; 4] = [
-    Tile::new([0.0, 0.0], 1),
-    Tile::new([1.0, 0.0], 2),
-    Tile::new([0.0, 1.0], 1),
-    Tile::new([1.0, 1.0], 2),
-];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, Default)]
