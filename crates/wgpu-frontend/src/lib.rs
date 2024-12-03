@@ -1,6 +1,7 @@
 mod texture;
 mod camera;
 
+use std::collections::HashSet;
 use std::default::Default;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -101,11 +102,9 @@ struct State<'a> {
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     mouse: MouseState,
+    keyboard: KeyState,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
-    camera_uniform: CameraUniform,
-    camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
     camera: Camera,
     tilemap_bind_group: wgpu::BindGroup,
 }
@@ -203,41 +202,7 @@ impl<'a> State<'a> {
             }
         );
 
-        let camera = Camera::new(16.0, &size);
-        let camera_uniform = CameraUniform::new([0.0, 0.0], size, 16.0);
-        let camera_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Camera Buffer"),
-                contents: bytemuck::cast_slice(&[camera_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }
-        );
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("camera_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }
-            ],
-        });
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("camera_bind_group"),
-            layout: &camera_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }
-            ]
-        });
-
+        let camera = Camera::new(&device, &size);
         // let tilemap_texture = device.create_texture(&wgpu::TextureDescriptor {
         //     label: Some("tilemap_texture"),
         //     size: wgpu::Extent3d {
@@ -302,7 +267,7 @@ impl<'a> State<'a> {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
                     &texture_bind_group_layout,
-                    &camera_bind_group_layout,
+                    camera.bind_group_layout(),
                     &tilemap_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
@@ -356,11 +321,9 @@ impl<'a> State<'a> {
             diffuse_bind_group,
             diffuse_texture,
             camera,
-            camera_uniform,
-            camera_buffer,
-            camera_bind_group,
             tilemap_bind_group,
             mouse: MouseState::new(),
+            keyboard: KeyState::new()
         }
     }
 
@@ -376,7 +339,6 @@ impl<'a> State<'a> {
             self.surface.configure(&self.device, &self.config);
             self.camera.resize(&new_size);
         }
-        println!("{:?}", self.camera.tile_size_clip_space());
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -385,6 +347,16 @@ impl<'a> State<'a> {
                 self.mouse.position = position.clone();
                 true
             },
+            WindowEvent::KeyboardInput { event, .. } => {
+                match event.state {
+                    ElementState::Pressed => {
+                        self.keyboard.key_down(event.physical_key)
+                    }
+                    ElementState::Released => {
+                        self.keyboard.key_up(event.physical_key)
+                    }
+                }
+            }
             _ => false,
         }
     }
@@ -393,8 +365,29 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        self.camera_uniform.update_from(&self.camera);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        let pan_speed = 1.0/60.0;
+        let zoom_speed = 1.0/60.0;
+        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowRight)) {
+            self.camera.pan_tiles(pan_speed, 0.0);
+        }
+        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowLeft)) {
+            self.camera.pan_tiles(-pan_speed, 0.0);
+        }
+        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowDown)) {
+            self.camera.pan_tiles(0.0, pan_speed);
+        }
+        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowUp)) {
+            self.camera.pan_tiles(0.0, -pan_speed);
+        }
+
+        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Equal)) {
+            self.camera.zoom_level += zoom_speed;
+        }
+        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Minus)) {
+            self.camera.zoom_level -= zoom_speed;
+        }
+
+        self.camera.write_to_queue(&self.queue, 0);
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -423,7 +416,7 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera.bind_group(), &[]);
             render_pass.set_bind_group(2, &self.tilemap_bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
@@ -446,23 +439,26 @@ impl MouseState {
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, Default)]
-struct CameraUniform {
-    center: [f32; 2],
-    tile_size: [f32; 2],
+struct KeyState {
+    keys_down: HashSet<PhysicalKey>
 }
 
-impl CameraUniform {
-    pub fn new(center: [f32; 2], size: PhysicalSize<u32>, tile_size_square: f32) -> Self {
+impl KeyState {
+    fn new() -> KeyState {
         Self {
-            center,
-            tile_size: [tile_size_square*2.0 / size.width as f32, tile_size_square*2.0 / size.height as f32]
+            keys_down: Default::default()
         }
     }
+    pub fn key_down(&mut self, key: PhysicalKey) -> bool {
+        self.keys_down.insert(key);
+        true
+    }
+    pub fn key_up(&mut self, key: PhysicalKey) -> bool {
+        self.keys_down.remove(&key);
+        true
+    }
 
-    pub fn update_from(&mut self, camera: &Camera) {
-        self.center = camera.center();
-        self.tile_size = camera.tile_size_clip_space();
+    pub fn key_is_down(&self, key: PhysicalKey) -> bool {
+        self.keys_down.contains(&key)
     }
 }

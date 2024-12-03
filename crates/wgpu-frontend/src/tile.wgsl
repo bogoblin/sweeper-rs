@@ -1,5 +1,5 @@
 struct CameraUniform {
-    @location(0) center: vec2<f32>,
+    @location(0) top_left: vec2<f32>,
     @location(1) tile_size: vec2<f32>,
 }
 @group(1) @binding(0)
@@ -24,7 +24,7 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
 }
 
 fn screen_to_world(screen: vec2<f32>) -> vec2<f32> {
-    return camera.center + screen / 16.0;
+    return camera.top_left + screen / camera.tile_size;
 }
 
 // Sprites
@@ -40,8 +40,10 @@ var<storage, read_write> tilemap: array<u32>;
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     var world_coords: vec2<f32> = screen_to_world(in.position.xy);
-    var tile_data: u32 = tilemap[u32(world_coords.y * 256 + world_coords.x) % (256*256)];
-//    var tile_data: u32 = u32(floor(world_coords.y) * 256 + floor(world_coords.x)) % 256;
-    var tile_uv: vec2<f32> = (vec2(f32(tile_data % 16), f32(tile_data / 16)) + fract(world_coords))/16.0;
+    var int_world_coords: vec2<i32> = vec2<i32>(floor(world_coords));
+    var tile_data_index: u32 = u32(dot(int_world_coords, vec2(1, 256))) % 256;
+    var tile_data: u32 = tile_data_index;
+//    var tile_data: u32 = tilemap[tile_data_index];
+    var tile_uv: vec2<f32> = (vec2(f32(tile_data % 16), f32(tile_data / 16)) + (world_coords - floor(world_coords)))/16.0;
     return textureSample(t_diffuse, s_diffuse, tile_uv);
 }
