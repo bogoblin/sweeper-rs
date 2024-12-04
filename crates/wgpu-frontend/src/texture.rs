@@ -26,8 +26,7 @@ impl Texture {
         img: &image::DynamicImage,
         label: Option<&str>,
     ) -> Result<Self> {
-        let mip_level_count = img.height().ilog2() + 1;
-        // let mip_level_count = 1;
+        let mip_level_count = 5;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size: wgpu::Extent3d {
@@ -48,7 +47,7 @@ impl Texture {
             let mip = img.resize(
                 img.width().div_ceil(scale),
                 img.height().div_ceil(scale),
-                FilterType::Gaussian,
+                FilterType::CatmullRom,
             );
             let (width, height) = mip.dimensions();
             println!("{:?}", mip.dimensions());
