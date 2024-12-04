@@ -3753,6 +3753,7 @@ dependencies = [
  "image",
  "log",
  "pollster",
+ "rand 0.9.0-alpha.1",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4151,6 +4152,7 @@ name = "world"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytemuck",
  "derive_more 1.0.0",
  "getrandom",
  "huffman",

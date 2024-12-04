@@ -273,8 +273,9 @@ impl Sub<(i32, i32)> for &Position {
     }
 }
 
+#[repr(C)]
 #[derive(Default, Eq, PartialEq, Clone, Copy)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Tile (pub u8);
 
 impl Tile {
@@ -316,7 +317,8 @@ impl Into<u8> for Tile {
     }
 }
 
-#[derive(Clone, Debug)]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChunkTiles(pub [Tile; 256]);
 
 impl ChunkTiles {

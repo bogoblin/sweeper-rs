@@ -1,10 +1,11 @@
 mod texture;
 mod camera;
+pub mod tilemap;
 
 use std::collections::HashSet;
 use std::default::Default;
-use std::os::unix::raw::time_t;
-use std::time::{Duration, SystemTime};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -14,7 +15,11 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
+use world::{Chunk, ChunkPosition, ChunkTiles};
 use crate::camera::Camera;
+use crate::tilemap::Tilemap;
+use rand;
+use rand::{thread_rng, RngCore};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -108,8 +113,8 @@ struct State<'a> {
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
     camera: Camera,
-    tilemap_bind_group: wgpu::BindGroup,
-    last_frame_time: SystemTime,
+    last_frame_time: Instant,
+    tilemap: Tilemap,
 }
 
 impl<'a> State<'a> {
@@ -206,72 +211,15 @@ impl<'a> State<'a> {
         );
 
         let camera = Camera::new(&device, &size);
-        // let tilemap_texture = device.create_texture(&wgpu::TextureDescriptor {
-        //     label: Some("tilemap_texture"),
-        //     size: wgpu::Extent3d {
-        //         width: 8096,
-        //         height: 8096,
-        //         depth_or_array_layers: 1,
-        //     },
-        //     mip_level_count: 1,
-        //     sample_count: 1,
-        //     dimension: wgpu::TextureDimension::D2,
-        //     format: wgpu::TextureFormat::R8Uint,
-        //     usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_DST,
-        //     view_formats: &[],
-        // });
-        let tilemap_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("tilemap_buffer"),
-            contents: &[0u8; 256*256],
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-        // let tilemap_view = tilemap_texture.create_view(&Default::default());
-        let tilemap_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("tilemap_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage {
-                            read_only: false,
-                        },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None
-                },
-            ],
-        });
-        // let tilemap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        //     label: Some("tilemap_sampler"),
-        //     address_mode_u: Repeat,
-        //     address_mode_v: Repeat,
-        //     address_mode_w: Repeat,
-        //     mag_filter: Nearest,
-        //     min_filter: Nearest,
-        //     mipmap_filter: Nearest,
-        //     ..Default::default()
-        // });
-        let tilemap_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("tilemap_bind_group"),
-            layout: &tilemap_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(tilemap_buffer.as_entire_buffer_binding()),
-                },
-            ]
-        });
-
+        let tilemap = Tilemap::new(&device);
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
                     &texture_bind_group_layout,
-                    camera.bind_group_layout(),
-                    &tilemap_bind_group_layout,
+                    &camera.bind_group_layout,
+                    &tilemap.bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
@@ -313,6 +261,16 @@ impl<'a> State<'a> {
             cache: None,
         });
 
+        for x in -100..100 {
+            for y in -100..100 {
+                let mut chunk = Chunk::generate(ChunkPosition::new(x * 16, y * 16), 40, 0);
+                let mut bytes: [u8; 256] = [0; 256];
+                thread_rng().fill_bytes(&mut bytes);
+                chunk.tiles = ChunkTiles::from(bytes);
+                tilemap.update_chunk(&chunk, &queue);
+            }
+        }
+
         Self {
             window,
             surface,
@@ -324,10 +282,10 @@ impl<'a> State<'a> {
             diffuse_bind_group,
             diffuse_texture,
             camera,
-            tilemap_bind_group,
+            tilemap,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
-            last_frame_time: SystemTime::now()
+            last_frame_time: Instant::now()
         }
     }
 
@@ -369,10 +327,10 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let now = SystemTime::now();
-        let dt = now.duration_since(self.last_frame_time).unwrap_or(Duration::ZERO);
-        let pan_speed = 0.1 * dt.as_secs_f32();
-        let zoom_speed = 0.01 * dt.as_secs_f32();
+        let dt = self.last_frame_time.elapsed();
+        self.last_frame_time = Instant::now();
+        let pan_speed = 200.0 * dt.as_secs_f32();
+        let zoom_speed = 16.0 * dt.as_secs_f32();
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowRight)) {
             self.camera.pan_pixels(pan_speed, 0.0);
         }
@@ -422,9 +380,11 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera.bind_group(), &[]);
-            render_pass.set_bind_group(2, &self.tilemap_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
+            render_pass.set_bind_group(2, &self.tilemap.bind_group, &[]);
             render_pass.draw(0..3, 0..1);
+
+            sleep(Duration::from_millis(16));
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

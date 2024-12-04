@@ -8,9 +8,9 @@ pub struct Camera {
     pub zoom_level: f32,
     size: PhysicalSize<u32>,
 
-    buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    bind_group_layout: wgpu::BindGroupLayout,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
     uniform: CameraUniform,
 }
 
@@ -64,14 +64,6 @@ impl Camera {
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
         self.size = new_size.clone();
     }
-
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
-    }
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
     pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
         self.uniform.top_left = self.top_left();
         self.uniform.tile_size = [self.tile_size(), self.tile_size()];
