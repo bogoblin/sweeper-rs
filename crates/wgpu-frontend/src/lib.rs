@@ -3,6 +3,8 @@ mod camera;
 
 use std::collections::HashSet;
 use std::default::Default;
+use std::os::unix::raw::time_t;
+use std::time::{Duration, SystemTime};
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -107,6 +109,7 @@ struct State<'a> {
     diffuse_texture: texture::Texture,
     camera: Camera,
     tilemap_bind_group: wgpu::BindGroup,
+    last_frame_time: SystemTime,
 }
 
 impl<'a> State<'a> {
@@ -323,7 +326,8 @@ impl<'a> State<'a> {
             camera,
             tilemap_bind_group,
             mouse: MouseState::new(),
-            keyboard: KeyState::new()
+            keyboard: KeyState::new(),
+            last_frame_time: SystemTime::now()
         }
     }
 
@@ -365,19 +369,21 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let pan_speed = 1.0/60.0;
-        let zoom_speed = 1.0/60.0;
+        let now = SystemTime::now();
+        let dt = now.duration_since(self.last_frame_time).unwrap_or(Duration::ZERO);
+        let pan_speed = 0.1 * dt.as_secs_f32();
+        let zoom_speed = 0.01 * dt.as_secs_f32();
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowRight)) {
-            self.camera.pan_tiles(pan_speed, 0.0);
+            self.camera.pan_pixels(pan_speed, 0.0);
         }
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowLeft)) {
-            self.camera.pan_tiles(-pan_speed, 0.0);
+            self.camera.pan_pixels(-pan_speed, 0.0);
         }
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowDown)) {
-            self.camera.pan_tiles(0.0, pan_speed);
+            self.camera.pan_pixels(0.0, pan_speed);
         }
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowUp)) {
-            self.camera.pan_tiles(0.0, -pan_speed);
+            self.camera.pan_pixels(0.0, -pan_speed);
         }
 
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Equal)) {

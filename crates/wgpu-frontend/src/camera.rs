@@ -88,9 +88,9 @@ impl Camera {
         ]
     }
 
-    pub fn pan_tiles(&mut self, right: f32, down: f32) {
-        self.center[0] += right * self.tile_size();
-        self.center[1] += down * self.tile_size();
+    pub fn pan_pixels(&mut self, right: f32, down: f32) {
+        self.center[0] += right / self.tile_size();
+        self.center[1] += down / self.tile_size();
     }
 }
 
