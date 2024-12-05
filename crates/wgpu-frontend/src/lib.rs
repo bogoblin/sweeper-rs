@@ -2,11 +2,11 @@ mod texture;
 mod camera;
 pub mod tilemap;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
+use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
@@ -261,8 +261,8 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        for x in -100..100 {
-            for y in -100..100 {
+        for x in -10..10 {
+            for y in -10..10 {
                 let mut chunk = Chunk::generate(ChunkPosition::new(x * 16, y * 16), 40, 0);
                 let mut bytes: [u8; 256] = [0; 256];
                 thread_rng().fill_bytes(&mut bytes);
@@ -304,23 +304,8 @@ impl<'a> State<'a> {
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                self.mouse.position = position.clone();
-                true
-            },
-            WindowEvent::KeyboardInput { event, .. } => {
-                match event.state {
-                    ElementState::Pressed => {
-                        self.keyboard.key_down(event.physical_key)
-                    }
-                    ElementState::Released => {
-                        self.keyboard.key_up(event.physical_key)
-                    }
-                }
-            }
-            _ => false,
-        }
+        self.keyboard.handle(event.clone())
+        || self.mouse.handle(event.clone())
     }
 
     fn update(&mut self) {
@@ -349,6 +334,17 @@ impl<'a> State<'a> {
         }
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Minus)) {
             self.camera.zoom_level -= zoom_speed;
+        }
+        
+        if self.mouse.button_is_down(MouseButton::Left) {
+            self.camera.start_drag(&self.mouse.position);
+        }
+        if !self.mouse.button_is_down(MouseButton::Left) {
+            self.camera.end_drag();
+        }
+        self.camera.update_drag(&self.mouse);
+        if let Some(MouseScrollDelta::LineDelta(_x, y)) = self.mouse.wheel() {
+            self.camera.zoom_around(y, &self.mouse.position);
         }
 
         self.camera.write_to_queue(&self.queue, 0);
@@ -393,15 +389,65 @@ impl<'a> State<'a> {
     }
 }
 
+#[derive(Default)]
 struct MouseState {
-    position: PhysicalPosition<f64>
+    position: PhysicalPosition<f64>,
+    buttons_pressed: HashSet<MouseButton>,
+    buttons_down: HashSet<MouseButton>,
+    delta: Option<MouseScrollDelta>,
+    drag_start: HashMap<MouseButton, PhysicalPosition<f64>>
 }
 
 impl MouseState {
     fn new() -> Self {
-        Self {
-            position: PhysicalPosition::<f64>::default(),
+        Self::default()
+    }
+    
+    pub fn handle(&mut self, event: WindowEvent) -> bool {
+        match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                self.position = position;
+                true
+            }
+            WindowEvent::CursorEntered { .. } => false,
+            WindowEvent::CursorLeft { .. } => false,
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.delta = Some(delta);
+                true
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                match state {
+                    ElementState::Pressed => {
+                        self.drag_start.insert(button.clone(), self.position.clone());
+                        self.buttons_pressed.insert(button.clone());
+                        self.buttons_down.insert(button)
+                    }
+                    ElementState::Released => {
+                        self.drag_start.remove(&button);
+                        self.buttons_pressed.remove(&button);
+                        self.buttons_down.remove(&button)
+                    }
+                }
+            }
+            _ => false
         }
+    }
+    
+    pub fn wheel(&mut self) -> Option<MouseScrollDelta> {
+        match self.delta {
+            None => None,
+            Some(delta) => {
+                self.delta = None;
+                Some(delta)
+            }
+        }
+    }
+    
+    pub fn button_is_down(&self, button: MouseButton) -> bool {
+        self.buttons_down.contains(&button)
+    }
+    pub fn button_is_pressed(&self, button: MouseButton) -> bool {
+        self.buttons_pressed.contains(&button)
     }
 }
 
@@ -415,15 +461,23 @@ impl KeyState {
             keys_down: Default::default()
         }
     }
-    pub fn key_down(&mut self, key: PhysicalKey) -> bool {
-        self.keys_down.insert(key);
-        true
+    
+    pub fn handle(&mut self, event: WindowEvent) -> bool {
+        match event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                match event.state {
+                    ElementState::Pressed => {
+                        self.keys_down.insert(event.physical_key)
+                    }
+                    ElementState::Released => {
+                        self.keys_down.remove(&event.physical_key)
+                    }
+                }
+            }
+            WindowEvent::ModifiersChanged(_) => false,
+            _ => false
+        }
     }
-    pub fn key_up(&mut self, key: PhysicalKey) -> bool {
-        self.keys_down.remove(&key);
-        true
-    }
-
     pub fn key_is_down(&self, key: PhysicalKey) -> bool {
         self.keys_down.contains(&key)
     }
