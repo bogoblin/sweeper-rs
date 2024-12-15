@@ -7,7 +7,7 @@ pub struct Camera {
     pub center: Vector2<f32>,
     pub zoom_level: f32,
     size: Vector2<f32>,
-    pub drag: Option<Drag>,
+    drag: Option<Drag>,
 
     pub buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,

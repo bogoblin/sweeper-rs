@@ -2,7 +2,7 @@ mod texture;
 mod camera;
 pub mod tilemap;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::default::Default;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -13,7 +13,6 @@ use winit::window::{Window, WindowBuilder};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Chunk, ChunkPosition, ChunkTiles};
 use crate::camera::Camera;
@@ -392,10 +391,8 @@ impl<'a> State<'a> {
 #[derive(Default)]
 struct MouseState {
     position: PhysicalPosition<f64>,
-    buttons_pressed: HashSet<MouseButton>,
     buttons_down: HashSet<MouseButton>,
     delta: Option<MouseScrollDelta>,
-    drag_start: HashMap<MouseButton, PhysicalPosition<f64>>
 }
 
 impl MouseState {
@@ -418,13 +415,9 @@ impl MouseState {
             WindowEvent::MouseInput { state, button, .. } => {
                 match state {
                     ElementState::Pressed => {
-                        self.drag_start.insert(button.clone(), self.position.clone());
-                        self.buttons_pressed.insert(button.clone());
                         self.buttons_down.insert(button)
                     }
                     ElementState::Released => {
-                        self.drag_start.remove(&button);
-                        self.buttons_pressed.remove(&button);
                         self.buttons_down.remove(&button)
                     }
                 }
@@ -445,9 +438,6 @@ impl MouseState {
     
     pub fn button_is_down(&self, button: MouseButton) -> bool {
         self.buttons_down.contains(&button)
-    }
-    pub fn button_is_pressed(&self, button: MouseButton) -> bool {
-        self.buttons_pressed.contains(&button)
     }
 }
 
