@@ -1,6 +1,6 @@
 struct CameraUniform {
-    @location(0) top_left: vec2<f32>,
-    @location(1) tile_size: vec2<f32>,
+    @location(0) world_rect: vec4<f32>,
+    @location(1) tile_size: vec4<f32>,
 }
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
@@ -24,7 +24,7 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
 }
 
 fn screen_to_world(screen: vec2<f32>) -> vec2<f32> {
-    return camera.top_left + screen / camera.tile_size;
+    return camera.world_rect.xy + screen / camera.tile_size.xy;
 }
 
 // Sprites

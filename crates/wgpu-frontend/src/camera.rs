@@ -1,4 +1,4 @@
-use cgmath::{Vector2, Zero};
+use cgmath::{Vector2, Vector4, Zero};
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use crate::MouseState;
@@ -71,17 +71,33 @@ impl Camera {
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
         self.size = Vector2::new(new_size.width as f32, new_size.height as f32);
     }
+    
     pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
-        self.uniform.top_left = self.top_left().into();
-        self.uniform.tile_size = [self.tile_size(), self.tile_size()];
+        self.uniform.world_rect = self.rect().into();
+        self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
         queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[self.uniform]));
     }
 
     pub fn tile_size(&self) -> f32 {
         16.0 * 2.0_f32.powf(self.zoom_level / 8.0)
     }
+    pub fn rect(&self) -> Vector4<f32> {
+        let top_left = self.top_left();
+        let bottom_right = self.bottom_right();
+        Vector4::new(
+            top_left.x,
+            top_left.y,
+            bottom_right.x,
+            bottom_right.y,
+        )
+    }
+
     pub fn top_left(&self) -> Vector2<f32> {
         self.center - (self.size/2.0)/self.tile_size()
+    }
+
+    pub fn bottom_right(&self) -> Vector2<f32> {
+        self.center + (self.size/2.0)/self.tile_size()
     }
 
     pub fn pan_pixels(&mut self, right: f32, down: f32) {
@@ -134,8 +150,8 @@ impl Camera {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, Default)]
 struct CameraUniform {
-    top_left: [f32; 2],
-    tile_size: [f32; 2],
+    world_rect: [f32; 4],
+    tile_size: [f32; 4],
 }
 
 fn position_to_vector(position: PhysicalPosition<f64>) -> Vector2<f32> {
