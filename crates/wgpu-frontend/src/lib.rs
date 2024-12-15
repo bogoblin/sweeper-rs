@@ -7,22 +7,19 @@ mod tilerender_texture;
 use std::collections::{HashSet};
 use std::default::Default;
 use std::thread::sleep;
-use std::time::{Duration, Instant};
-use image::DynamicImage;
-use image::imageops::tile;
+use chrono::prelude::*;
+use chrono::TimeDelta;
 use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
+use log::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use wgpu::{CompositeAlphaMode, PresentMode};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Chunk, ChunkPosition, ChunkTiles};
 use crate::camera::Camera;
-use crate::tilemap::Tilemap;
-use rand;
-use rand::{thread_rng, RngCore};
 use crate::tilerender_texture::TilerenderTexture;
 use crate::tilesheet_texture::TileSheetTexture;
 
@@ -31,13 +28,15 @@ pub async fn run() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-            console_log::init_with_level(log::Level::Warn).unwrap();
+            console_log::init().unwrap();
         } else {
             env_logger::init();
         }
     }
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+    info!("even sooner hello");
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -116,8 +115,8 @@ struct State<'a> {
     mouse: MouseState,
     keyboard: KeyState,
     camera: Camera,
-    last_frame_time: Instant,
-    tilemap: Tilemap,
+    last_frame_time: DateTime<Utc>,
+    // tilemap: Tilemap,
     tilesheet_texture: TileSheetTexture,
     tilerender_texture: TilerenderTexture,
 }
@@ -125,6 +124,7 @@ struct State<'a> {
 impl<'a> State<'a> {
     // Creating some of the wgpu types requires async code
     async fn new(window: &'a Window) -> State<'a> {
+        info!("hello");
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch="wasm32"))]
@@ -136,15 +136,16 @@ impl<'a> State<'a> {
         let surface = instance.create_surface(window).unwrap();
         let adapter = instance.request_adapter(
             &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
+                power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             },
         ).await.unwrap();
 
+        info!("{:?}", surface);
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::BUFFER_BINDING_ARRAY | wgpu::Features::STORAGE_RESOURCE_BINDING_ARRAY | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                required_features: wgpu::Features::empty(),
                 required_limits: if cfg!(target_arch = "wasm32") {
                     wgpu::Limits::downlevel_webgl2_defaults()
                 } else {
@@ -157,32 +158,35 @@ impl<'a> State<'a> {
         ).await.unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
+        info!("{:?}", surface_caps);
         let surface_format = surface_caps.formats.iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
+        info!("{:?}", surface_format);
+        info!("{:?}", surface_caps.present_modes);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
+            present_mode: PresentMode::AutoVsync,
+            alpha_mode: CompositeAlphaMode::Auto,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
 
         let tilesheet_texture = TileSheetTexture::new(&device, &queue);
         let camera = Camera::new(&device, &size);
-        let tilemap = Tilemap::new(&device);
+        // let tilemap = Tilemap::new(&device);
         let mut tilerender_texture = TilerenderTexture::new(&device);
-        println!("drawing...");
+        info!("drawing...");
         tilerender_texture.draw_image(
             image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap(),
             &queue,
         );
-        println!("done drawing");
-        
+        info!("done drawing");
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -190,7 +194,6 @@ impl<'a> State<'a> {
                 bind_group_layouts: &[
                     &tilesheet_texture.bind_group_layout,
                     &camera.bind_group_layout,
-                    &tilemap.bind_group_layout,
                     &tilerender_texture.bind_group_layout,
                 ],
                 push_constant_ranges: &[],
@@ -233,15 +236,15 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        for x in -10..10 {
-            for y in -10..10 {
-                let mut chunk = Chunk::generate(ChunkPosition::new(x * 16, y * 16), 40, 0);
-                let mut bytes: [u8; 256] = [0; 256];
-                thread_rng().fill_bytes(&mut bytes);
-                chunk.tiles = ChunkTiles::from(bytes);
-                tilemap.update_chunk(&chunk, &queue);
-            }
-        }
+        // for x in -10..10 {
+        //     for y in -10..10 {
+        //         let mut chunk = Chunk::generate(ChunkPosition::new(x * 16, y * 16), 40, 0);
+        //         let mut bytes: [u8; 256] = [0; 256];
+        //         thread_rng().fill_bytes(&mut bytes);
+        //         chunk.tiles = ChunkTiles::from(bytes);
+        //         tilemap.update_chunk(&chunk, &queue);
+        //     }
+        // }
 
         Self {
             window,
@@ -253,11 +256,11 @@ impl<'a> State<'a> {
             render_pipeline,
             tilesheet_texture,
             camera,
-            tilemap,
+            // tilemap,
             tilerender_texture,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
-            last_frame_time: Instant::now()
+            last_frame_time: Utc::now()
         }
     }
 
@@ -284,10 +287,10 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let dt = self.last_frame_time.elapsed();
-        self.last_frame_time = Instant::now();
-        let pan_speed = 200.0 * dt.as_secs_f32();
-        let zoom_speed = 16.0 * dt.as_secs_f32();
+        let dt = Utc::now() - self.last_frame_time;
+        self.last_frame_time = Utc::now();
+        let pan_speed = 200.0 * dt.num_milliseconds() as f32 / 1000.0;
+        let zoom_speed = 16.0 * dt.num_milliseconds() as f32 / 1000.0;
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowRight)) {
             self.camera.pan_pixels(pan_speed, 0.0);
         }
@@ -320,7 +323,9 @@ impl<'a> State<'a> {
         }
 
         self.camera.write_to_queue(&self.queue, 0);
+        info!("getting output texture");
         let output = self.surface.get_current_texture()?;
+        info!("done");
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
@@ -349,11 +354,10 @@ impl<'a> State<'a> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.tilesheet_texture.bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.tilemap.bind_group, &[]);
-            render_pass.set_bind_group(3, &self.tilerender_texture.bind_group, &[]);
+            render_pass.set_bind_group(2, &self.tilerender_texture.bind_group, &[]);
             render_pass.draw(0..6, 0..1);
 
-            sleep(Duration::from_millis(16));
+            sleep(TimeDelta::milliseconds(16).to_std().unwrap());
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

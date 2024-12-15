@@ -56,26 +56,14 @@ var t_diffuse: texture_2d<f32>;
 @group(0) @binding(1)
 var s_diffuse: sampler;
 
-// Tilemap
-@group(2) @binding(0)
-var<storage, read_write> tilemap: array<u32>;
-
 // Rendered Tiles
-@group(3) @binding(0)
-var rendered: texture_storage_2d<r32uint, read_write>;
-
-fn sampleStorageTexture(texture: texture_storage_2d<r32uint, read_write>, uv: vec2<f32>) -> vec4<f32> {
-    let dims = vec2<f32>(textureDimensions(texture));
-    let local_uv = vec2(uv.x - floor(uv.x), uv.y - floor(uv.y));
-    let texture_coords = vec2<u32>(local_uv * dims);
-    return vec4<f32>(unpack4xU8(textureLoad(
-        texture,
-        texture_coords,
-    ).x))/256.0;
-}
+@group(2) @binding(0)
+var rendered: texture_2d<f32>;
+@group(2) @binding(1)
+var rendered_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered)));
-    return sampleStorageTexture(rendered, tile_uv);
+    return textureSample(rendered, rendered_sampler, tile_uv);
 }
