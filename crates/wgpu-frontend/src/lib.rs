@@ -1,6 +1,8 @@
 mod texture;
 mod camera;
 pub mod tilemap;
+mod tilesheet_texture;
+mod tilerender_texture;
 
 use std::collections::{HashSet};
 use std::default::Default;
@@ -19,6 +21,8 @@ use crate::camera::Camera;
 use crate::tilemap::Tilemap;
 use rand;
 use rand::{thread_rng, RngCore};
+use crate::tilerender_texture::TilerenderTexture;
+use crate::tilesheet_texture::TileSheetTexture;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -109,11 +113,11 @@ struct State<'a> {
     render_pipeline: wgpu::RenderPipeline,
     mouse: MouseState,
     keyboard: KeyState,
-    diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture,
     camera: Camera,
     last_frame_time: Instant,
     tilemap: Tilemap,
+    tilesheet_texture: TileSheetTexture,
+    tilerender_texture: TilerenderTexture,
 }
 
 impl<'a> State<'a> {
@@ -166,59 +170,20 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
-        let diffuse_bytes = include_bytes!("tiles.png");
-        let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "tiles.png").unwrap();
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float {filterable: true},
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
-
-        let diffuse_bind_group = device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                    },
-                ],
-                label: Some("diffuse_bind_group"),
-            }
-        );
-
+        let tilesheet_texture = TileSheetTexture::new(&device, &queue);
         let camera = Camera::new(&device, &size);
         let tilemap = Tilemap::new(&device);
+        let tilerender_texture = TilerenderTexture::new(&device);
+        
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &texture_bind_group_layout,
+                    &tilesheet_texture.bind_group_layout,
                     &camera.bind_group_layout,
                     &tilemap.bind_group_layout,
+                    &tilerender_texture.bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
@@ -278,10 +243,10 @@ impl<'a> State<'a> {
             config,
             size,
             render_pipeline,
-            diffuse_bind_group,
-            diffuse_texture,
+            tilesheet_texture,
             camera,
             tilemap,
+            tilerender_texture,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
             last_frame_time: Instant::now()
@@ -374,9 +339,10 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.tilesheet_texture.bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
             render_pass.set_bind_group(2, &self.tilemap.bind_group, &[]);
+            render_pass.set_bind_group(3, &self.tilerender_texture.bind_group, &[]);
             render_pass.draw(0..6, 0..1);
 
             sleep(Duration::from_millis(16));
