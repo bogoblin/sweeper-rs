@@ -8,6 +8,8 @@ use std::collections::{HashSet};
 use std::default::Default;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use image::DynamicImage;
+use image::imageops::tile;
 use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -142,7 +144,7 @@ impl<'a> State<'a> {
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::BUFFER_BINDING_ARRAY | wgpu::Features::STORAGE_RESOURCE_BINDING_ARRAY,
+                required_features: wgpu::Features::BUFFER_BINDING_ARRAY | wgpu::Features::STORAGE_RESOURCE_BINDING_ARRAY | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                 required_limits: if cfg!(target_arch = "wasm32") {
                     wgpu::Limits::downlevel_webgl2_defaults()
                 } else {
@@ -173,7 +175,13 @@ impl<'a> State<'a> {
         let tilesheet_texture = TileSheetTexture::new(&device, &queue);
         let camera = Camera::new(&device, &size);
         let tilemap = Tilemap::new(&device);
-        let tilerender_texture = TilerenderTexture::new(&device);
+        let mut tilerender_texture = TilerenderTexture::new(&device);
+        println!("drawing...");
+        tilerender_texture.draw_image(
+            image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap(),
+            &queue,
+        );
+        println!("done drawing");
         
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
@@ -192,13 +200,13 @@ impl<'a> State<'a> {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),

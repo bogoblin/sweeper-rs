@@ -43,9 +43,8 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
     return out;
 }
 
-fn world_to_uv(world_coords: vec2<f32>, texture: texture_2d<f32>) -> vec2<f32> {
+fn world_to_uv(world_coords: vec2<f32>, dims: vec2<f32>) -> vec2<f32> {
     let wc_flipped = vec2(world_coords.x, -1*world_coords.y);
-    let dims = vec2<f32>(textureDimensions(texture));
     let top_left_of_uv = floor(world_coords/dims);
     let remaining = (world_coords - dims * top_left_of_uv)/dims;
     return top_left_of_uv + remaining;
@@ -63,12 +62,20 @@ var<storage, read_write> tilemap: array<u32>;
 
 // Rendered Tiles
 @group(3) @binding(0)
-var rendered: texture_2d<f32>; // TODO: try and get this to a smaller texture format
-@group(3) @binding(1)
-var rendered_sampler: sampler;
+var rendered: texture_storage_2d<r32uint, read_write>;
+
+fn sampleStorageTexture(texture: texture_storage_2d<r32uint, read_write>, uv: vec2<f32>) -> vec4<f32> {
+    let dims = vec2<f32>(textureDimensions(texture));
+    let local_uv = vec2(uv.x - floor(uv.x), uv.y - floor(uv.y));
+    let texture_coords = vec2<u32>(local_uv * dims);
+    return vec4<f32>(unpack4xU8(textureLoad(
+        texture,
+        texture_coords,
+    ).x))/256.0;
+}
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let tile_uv = world_to_uv(in.world_coords.xy, rendered);
-    return textureSample(rendered, rendered_sampler, tile_uv);
+    let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered)));
+    return sampleStorageTexture(rendered, tile_uv);
 }
