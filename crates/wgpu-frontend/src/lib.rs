@@ -40,7 +40,7 @@ pub async fn run() {
     #[cfg(target_arch = "wasm32")]
     {
         use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(450, 400));
+        let _ = window.request_inner_size(PhysicalSize::new(1024, 1024));
 
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
@@ -83,10 +83,10 @@ pub async fn run() {
                         physical_size.height = win.inner_height().unwrap().as_f64().unwrap() as u32;
                     };
                     state.resize(physical_size);
-                    state.set_scale_factor(state.window.scale_factor());
+                    // state.set_scale_factor(state.window.scale_factor());
                 },
                 WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                    state.set_scale_factor(*scale_factor);
+                    // state.set_scale_factor(*scale_factor);
                 }
                 WindowEvent::RedrawRequested => {
                     state.window().request_redraw();

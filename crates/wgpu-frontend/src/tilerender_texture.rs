@@ -1,4 +1,4 @@
-use image::DynamicImage;
+use image::{DynamicImage, ImageReader};
 use image::imageops::FilterType;
 use crate::texture::Texture;
 
@@ -13,21 +13,23 @@ pub struct TilerenderTexture {
     renders: Vec<RenderBytes>
 }
 struct RenderBytes {
-    bytes: [u8; RenderBytes::LENGTH],
+    bytes: Vec<u8>
 }
 
 impl RenderBytes {
     const LENGTH: usize = TilerenderTexture::SIZE * TilerenderTexture::SIZE * 4;
     fn new() -> Self {
         Self {
-            bytes: [0; Self::LENGTH]
+            bytes: vec![]
         }
     }
 
     fn tiled_with(mut self, image: DynamicImage) -> Self {
+        self.bytes.resize(RenderBytes::LENGTH, 0);
         let width = image.width() as usize;
         let height = image.height() as usize;
-        let img_rgba = image.as_rgba8().unwrap().as_ref();
+        let img_rgba = image.to_rgba8();
+        let img_rgba = img_rgba.as_ref();
         let tiles_x = width / TilerenderTexture::SIZE;
         let tiles_y = height / TilerenderTexture::SIZE;
         for row in 0..height { // Write each row in the source image...
@@ -53,7 +55,7 @@ impl RenderBytes {
 }
 
 impl TilerenderTexture {
-    const SIZE: usize = 256;
+    const SIZE: usize = 1024;
     
     pub fn new(device: &wgpu::Device) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -73,9 +75,10 @@ impl TilerenderTexture {
 
         let texture = Texture::from_wgpu_texture(texture, device).unwrap();
 
-        let barack = image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap();
         let renders = vec![
-            RenderBytes::new().tiled_with(barack)
+            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid1.png")).expect("Couldn't load image")),
+            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid2.png")).unwrap()),
+            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid3.png")).unwrap()),
         ];
         
         let (bind_group, bind_group_layout) = texture.bind_group_and_layout(device);
