@@ -13,7 +13,6 @@ use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta,
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
-use log::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -36,12 +35,10 @@ pub async fn run() {
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    info!("even sooner hello");
-
     #[cfg(target_arch = "wasm32")]
     {
         use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(800, 600));
+        let _ = window.request_inner_size(PhysicalSize::new(450, 400));
 
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
@@ -56,6 +53,7 @@ pub async fn run() {
     }
 
     let mut state = State::new(&window).await;
+    let mut surface_configured = false;
 
     event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {
@@ -74,10 +72,15 @@ pub async fn run() {
                     ..
                 } => control_flow.exit(),
                 WindowEvent::Resized(physical_size) => {
+                    surface_configured = true;
                     state.resize(*physical_size);
                 },
                 WindowEvent::RedrawRequested => {
                     state.window().request_redraw();
+                    
+                    if !surface_configured {
+                        return;
+                    }
 
                     state.update();
                     match state.render() {
@@ -124,7 +127,6 @@ struct State<'a> {
 impl<'a> State<'a> {
     // Creating some of the wgpu types requires async code
     async fn new(window: &'a Window) -> State<'a> {
-        info!("hello");
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch="wasm32"))]
@@ -142,7 +144,6 @@ impl<'a> State<'a> {
             },
         ).await.unwrap();
 
-        info!("{:?}", surface);
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 required_features: wgpu::Features::empty(),
@@ -158,13 +159,10 @@ impl<'a> State<'a> {
         ).await.unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        info!("{:?}", surface_caps);
         let surface_format = surface_caps.formats.iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
-        info!("{:?}", surface_format);
-        info!("{:?}", surface_caps.present_modes);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -180,12 +178,10 @@ impl<'a> State<'a> {
         let camera = Camera::new(&device, &size);
         // let tilemap = Tilemap::new(&device);
         let mut tilerender_texture = TilerenderTexture::new(&device);
-        info!("drawing...");
         tilerender_texture.draw_image(
             image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap(),
             &queue,
         );
-        info!("done drawing");
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
@@ -313,19 +309,21 @@ impl<'a> State<'a> {
         
         if self.mouse.button_is_down(MouseButton::Left) {
             self.camera.start_drag(&self.mouse.position);
-        }
-        if !self.mouse.button_is_down(MouseButton::Left) {
+        } else {
             self.camera.end_drag();
         }
         self.camera.update_drag(&self.mouse);
-        if let Some(MouseScrollDelta::LineDelta(_x, y)) = self.mouse.wheel() {
+        
+        let wheel = self.mouse.wheel();
+        if let Some(MouseScrollDelta::LineDelta(_x, y)) = wheel {
             self.camera.zoom_around(y, &self.mouse.position);
+        }
+        if let Some(MouseScrollDelta::PixelDelta(position)) = wheel {
+            self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
 
         self.camera.write_to_queue(&self.queue, 0);
-        info!("getting output texture");
         let output = self.surface.get_current_texture()?;
-        info!("done");
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
@@ -357,7 +355,12 @@ impl<'a> State<'a> {
             render_pass.set_bind_group(2, &self.tilerender_texture.bind_group, &[]);
             render_pass.draw(0..6, 0..1);
 
-            sleep(TimeDelta::milliseconds(16).to_std().unwrap());
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "wasm32")] {
+                } else {
+                    sleep(TimeDelta::milliseconds(16).to_std().unwrap());
+                }
+            }
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
