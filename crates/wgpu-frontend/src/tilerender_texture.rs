@@ -8,8 +8,8 @@ pub struct TilerenderTexture {
 }
 
 impl TilerenderTexture {
-    const WIDTH: u32 = 2048;
-    const HEIGHT: u32 = 2048;
+    const WIDTH: u32 = 8192;
+    const HEIGHT: u32 = 8192;
     
     pub fn new(device: &wgpu::Device) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
