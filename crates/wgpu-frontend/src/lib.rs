@@ -164,7 +164,7 @@ impl<'a> State<'a> {
         required_limits.max_texture_dimension_2d = Self::MAX_SIZE;
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::TEXTURE_BINDING_ARRAY,
                 required_limits,
                 label: None,
                 memory_hints: Default::default(),
