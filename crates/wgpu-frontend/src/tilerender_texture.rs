@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use crate::texture::Texture;
 use image::imageops::FilterType;
 use image::DynamicImage;
@@ -150,30 +149,27 @@ impl TilerenderTexture {
     }
 
     pub fn write_renders(&self, queue: &wgpu::Queue) {
-        let mut bytes = vec![];
-        // TODO: fix this because it's stupid to do all of this memcpying
-        for r in &self.renders {
-            bytes.extend_from_slice(r.bytes.as_slice())
+        for i in 0..self.renders.len() {
+            queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.texture.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: 0, y: 0, z: i as u32 },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &self.renders[i].bytes,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some((Self::SIZE * 4) as u32),
+                    rows_per_image: Some(Self::SIZE as u32),
+                },
+                wgpu::Extent3d {
+                    width: Self::SIZE as u32,
+                    height: Self::SIZE as u32,
+                    depth_or_array_layers: 1,
+                }
+            );
         }
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &self.texture.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &bytes,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some((Self::SIZE * 4) as u32),
-                rows_per_image: Some(Self::SIZE as u32),
-            },
-            wgpu::Extent3d {
-                width: Self::SIZE as u32,
-                height: Self::SIZE as u32,
-                depth_or_array_layers: 3,
-            }
-        );
     }
 
     pub fn draw_image(&mut self, image: DynamicImage, queue: &wgpu::Queue) {
