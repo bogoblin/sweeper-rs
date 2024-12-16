@@ -191,11 +191,12 @@ impl<'a> State<'a> {
         let tilesheet_texture = TileSheetTexture::new(&device, &queue);
         let camera = Camera::new(&device, &size);
         // let tilemap = Tilemap::new(&device);
-        let mut tilerender_texture = TilerenderTexture::new(&device);
-        tilerender_texture.draw_image(
-            image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap(),
-            &queue,
-        );
+        let tilerender_texture = TilerenderTexture::new(&device);
+        // tilerender_texture.draw_image(
+        //     image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap(),
+        //     &queue,
+        // );
+        tilerender_texture.write_renders(&queue);
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
