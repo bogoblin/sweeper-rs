@@ -58,12 +58,18 @@ impl TilerenderTexture {
     const SIZE: usize = 1024;
 
     pub fn new(device: &wgpu::Device) -> Self {
+        let renders = vec![
+            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid1.png")).expect("Couldn't load image")),
+            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid2.png")).unwrap()),
+            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid3.png")).unwrap()),
+        ];
+
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
                 width: Self::SIZE as u32,
                 height: Self::SIZE as u32,
-                depth_or_array_layers: 3,
+                depth_or_array_layers: renders.len() as u32,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -75,7 +81,7 @@ impl TilerenderTexture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
-            array_layer_count: Some(3),
+            array_layer_count: Some(renders.len() as u32),
             base_array_layer: 0,
             ..Default::default()
         });
@@ -90,12 +96,6 @@ impl TilerenderTexture {
                 ..Default::default()
             }
         );
-
-        let renders = vec![
-            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid1.png")).expect("Couldn't load image")),
-            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid2.png")).unwrap()),
-            RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid3.png")).unwrap()),
-        ];
 
         let bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
