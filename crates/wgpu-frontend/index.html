@@ -12,12 +12,26 @@
     }
   </style>
 </head>
-
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+</style>
 <body id="wasm-example">
 <script type="module">
   import init from "./pkg/wgpu_frontend.js";
   init().then(() => {
     console.log("WASM Loaded");
+  });
+</script>
+<script>
+  window.addEventListener("resize", () => {
+    const canvas = document.getElementsByTagName("canvas").item(0);
+    if (!canvas) return;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
   });
 </script>
 </body>

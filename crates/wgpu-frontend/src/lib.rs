@@ -7,8 +7,10 @@ mod tilerender_texture;
 use std::collections::{HashSet};
 use std::default::Default;
 use std::thread::sleep;
+use cfg_if::cfg_if;
 use chrono::prelude::*;
 use chrono::TimeDelta;
+use log::info;
 use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -51,7 +53,7 @@ pub async fn run() {
             })
             .expect("Couldn't append canvas to document body.")
     }
-
+    
     let mut state = State::new(&window).await;
     let mut surface_configured = false;
 
@@ -73,8 +75,19 @@ pub async fn run() {
                 } => control_flow.exit(),
                 WindowEvent::Resized(physical_size) => {
                     surface_configured = true;
-                    state.resize(*physical_size);
+                    let mut physical_size = physical_size.clone();
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let win = web_sys::window().unwrap();
+                        physical_size.width = win.inner_width().unwrap().as_f64().unwrap() as u32;
+                        physical_size.height = win.inner_height().unwrap().as_f64().unwrap() as u32;
+                    };
+                    state.resize(physical_size);
+                    state.set_scale_factor(state.window.scale_factor());
                 },
+                WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                    state.set_scale_factor(*scale_factor);
+                }
                 WindowEvent::RedrawRequested => {
                     state.window().request_redraw();
                     
@@ -113,6 +126,7 @@ struct State<'a> {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
+    scale_factor: f64,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     mouse: MouseState,
@@ -125,6 +139,8 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
+    const MAX_SIZE: u32 = 8192;
+    
     // Creating some of the wgpu types requires async code
     async fn new(window: &'a Window) -> State<'a> {
         let size = window.inner_size();
@@ -144,14 +160,12 @@ impl<'a> State<'a> {
             },
         ).await.unwrap();
 
+        let mut required_limits = wgpu::Limits::downlevel_webgl2_defaults();
+        required_limits.max_texture_dimension_2d = Self::MAX_SIZE;
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 required_features: wgpu::Features::empty(),
-                required_limits: if cfg!(target_arch = "wasm32") {
-                    wgpu::Limits::downlevel_webgl2_defaults()
-                } else {
-                    wgpu::Limits::default()
-                },
+                required_limits,
                 label: None,
                 memory_hints: Default::default(),
             },
@@ -249,6 +263,7 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
+            scale_factor: 1.0,
             render_pipeline,
             tilesheet_texture,
             camera,
@@ -265,13 +280,18 @@ impl<'a> State<'a> {
     }
 
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
+        if new_size.width > 0 && new_size.height > 0 && new_size.width < Self::MAX_SIZE && new_size.height < Self::MAX_SIZE {
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.camera.resize(&new_size);
         }
+    }
+    
+    fn set_scale_factor(&mut self, scale_factor: f64) {
+        self.scale_factor = scale_factor;
+        self.mouse.scale_factor = scale_factor;
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -374,17 +394,22 @@ struct MouseState {
     position: PhysicalPosition<f64>,
     buttons_down: HashSet<MouseButton>,
     delta: Option<MouseScrollDelta>,
+    scale_factor: f64,
 }
 
 impl MouseState {
     fn new() -> Self {
-        Self::default()
+        Self {
+            scale_factor: 1.0,
+            ..Default::default()
+        }
     }
     
     pub fn handle(&mut self, event: WindowEvent) -> bool {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                self.position = position;
+                let scale = self.scale_factor;
+                self.position = PhysicalPosition::new(position.x / scale, position.y / scale);
                 true
             }
             WindowEvent::CursorEntered { .. } => false,
