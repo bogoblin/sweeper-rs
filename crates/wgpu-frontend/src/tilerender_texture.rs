@@ -3,14 +3,15 @@ use image::imageops::FilterType;
 use image::DynamicImage;
 
 pub struct TilerenderTexture {
-    pub texture: Texture,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
     
     // Render Scale: 0 - 8
     // 0 = 1X, 1 = 2X, 2 = 4X, 3 = 8X, ...
     // n = 2^nX
-    renders: Vec<RenderBytes>
+    renders: Vec<RenderBytes>,
+    pub textures: Vec<wgpu::Texture>,
+    pub views: Vec<wgpu::TextureView>,
 }
 struct RenderBytes {
     bytes: Vec<u8>
@@ -63,85 +64,67 @@ impl TilerenderTexture {
             RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid2.png")).unwrap()),
             RenderBytes::new().tiled_with(image::load_from_memory(include_bytes!("./test_images/1024grid3.png")).unwrap()),
         ];
-
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: wgpu::Extent3d {
-                width: Self::SIZE as u32,
-                height: Self::SIZE as u32,
-                depth_or_array_layers: renders.len() as u32,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            array_layer_count: Some(renders.len() as u32),
-            base_array_layer: 0,
-            ..Default::default()
-        });
-        let sampler = device.create_sampler(
-            &wgpu::SamplerDescriptor {
-                address_mode_u: wgpu::AddressMode::Repeat,
-                address_mode_v: wgpu::AddressMode::Repeat,
-                address_mode_w: wgpu::AddressMode::Repeat,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Linear,
-                ..Default::default()
+        
+        let textures: Vec<_> = renders.iter().map(|render| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: Self::SIZE as u32,
+                    height: Self::SIZE as u32,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
+        }).collect();
+        
+        let views: Vec<_> = textures.iter().map(|texture| {
+            texture.create_view(&wgpu::TextureViewDescriptor::default())
+        }).collect();
+        
+        let bind_group_entries: Vec<_> = (0..renders.len()).map(|i| {
+            wgpu::BindGroupLayoutEntry {
+                binding: i as u32,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
             }
-        );
+        }).collect();
 
         let bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2Array,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
+                entries: &bind_group_entries,
                 label: None,
             });
+        
+        let mut binding = 0;
+        let bind_group_entries: Vec<_> = views.iter().map(|view| {
+            let result = wgpu::BindGroupEntry {
+                binding,
+                resource: wgpu::BindingResource::TextureView(view),
+            };
+            binding += 1;
+            result
+        }).collect();
 
         let bind_group = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
                 layout: &bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                ],
+                entries: &bind_group_entries,
                 label: None,
             }
         );
         Self {
-            texture: Texture {
-                texture,
-                view,
-                sampler,
-            },
+            textures,
+            views,
             bind_group,
             bind_group_layout,
             renders
@@ -152,9 +135,9 @@ impl TilerenderTexture {
         for i in 0..self.renders.len() {
             queue.write_texture(
                 wgpu::ImageCopyTexture {
-                    texture: &self.texture.texture,
+                    texture: &self.textures[i],
                     mip_level: 0,
-                    origin: wgpu::Origin3d { x: 0, y: 0, z: i as u32 },
+                    origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
                 &self.renders[i].bytes,
@@ -178,7 +161,7 @@ impl TilerenderTexture {
         let resized = image.resize_exact(Self::SIZE as u32, Self::SIZE as u32, FilterType::Nearest);
         queue.write_texture(
             wgpu::ImageCopyTexture {
-                texture: &self.texture.texture,
+                texture: &self.textures[0],
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,

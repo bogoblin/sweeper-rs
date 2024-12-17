@@ -58,12 +58,14 @@ var s_diffuse: sampler;
 
 // Rendered Tiles
 @group(2) @binding(0)
-var rendered: texture_2d_array<f32>;
+var rendered_0: texture_2d<f32>;
 @group(2) @binding(1)
-var rendered_sampler: sampler;
+var rendered_1: texture_2d<f32>;
+@group(2) @binding(2)
+var rendered_2: texture_2d<f32>;
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered)));
-    return textureSample(rendered, rendered_sampler, tile_uv, 2);
+    let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered_0)));
+    return textureSample(rendered_0, s_diffuse, tile_uv);
 }

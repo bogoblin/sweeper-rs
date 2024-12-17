@@ -164,7 +164,7 @@ impl<'a> State<'a> {
         required_limits.max_texture_dimension_2d = Self::MAX_SIZE;
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::TEXTURE_BINDING_ARRAY,
+                required_features: wgpu::Features::empty(),
                 required_limits,
                 label: None,
                 memory_hints: Default::default(),
@@ -185,7 +185,7 @@ impl<'a> State<'a> {
             present_mode: PresentMode::AutoVsync,
             alpha_mode: CompositeAlphaMode::Auto,
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
         };
 
         let tilesheet_texture = TileSheetTexture::new(&device, &queue);
