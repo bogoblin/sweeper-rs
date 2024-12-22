@@ -2,6 +2,7 @@ import {vectorAdd, vectorMagnitudeSquared, vectorSub, vectorTimesScalar} from ".
 import {MouseInput} from "./input/MouseInput.js";
 import {TouchInput} from "./input/TouchInput.js";
 import {revealed} from "./Tile.js";
+import {drawText} from "./Text.js";
 
 export class TileView {
     /**
@@ -17,6 +18,8 @@ export class TileView {
         this.url = new URL(window.location.href);
         const view_x = this.getPositionParam('x');
         const view_y = this.getPositionParam('y');
+
+        this.frameTimes = [];
 
         this.viewCenter = [view_x, view_y];
 
@@ -36,6 +39,7 @@ export class TileView {
 
         const isOnMobile = navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone');
         this.zoomLevel = isOnMobile ? 16 : 0;
+
     }
 
     getPositionParam(key) {
@@ -140,8 +144,16 @@ export class TileView {
 
         this.players.draw(this);
 
+        let secondsPerFrame = 0;
+        if (this.frameTimes.length >= 100) {
+            secondsPerFrame = (performance.now() - this.frameTimes[0]) / (100*1000);
+            this.frameTimes = this.frameTimes.slice(1);
+        }
+        this.frameTimes.push(performance.now())
+
+        const framesPerSecond = 1/secondsPerFrame;
         // Debug
-        // drawText(this.context, `View Centre: ${this.viewCenter}`, [10,10]);
+        drawText(this.context, `Frames per second: ${framesPerSecond.toFixed(2)}`, [10,10]);
         // drawText(this.context, `Mouse Position: ${this.mouseCoords}`, [10,40]);
 
         requestAnimationFrame(() => {
