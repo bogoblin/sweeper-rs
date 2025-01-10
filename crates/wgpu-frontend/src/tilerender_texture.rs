@@ -1,6 +1,7 @@
 use crate::texture::Texture;
 use image::imageops::FilterType;
 use image::DynamicImage;
+use world::{Position, Tile};
 
 pub struct TilerenderTexture {
     pub bind_group: wgpu::BindGroup,
@@ -31,8 +32,8 @@ impl RenderBytes {
         let height = image.height() as usize;
         let img_rgba = image.to_rgba8();
         let img_rgba = img_rgba.as_ref();
-        let tiles_x = width / TilerenderTexture::SIZE;
-        let tiles_y = height / TilerenderTexture::SIZE;
+        let tiles_x = TilerenderTexture::SIZE / width;
+        let tiles_y = TilerenderTexture::SIZE / height;
         for row in 0..height { // Write each row in the source image...
             let img_slice_start = row * width * 4;
             let img_slice_end = img_slice_start + width * 4;
@@ -149,6 +150,34 @@ impl TilerenderTexture {
                 wgpu::Extent3d {
                     width: Self::SIZE as u32,
                     height: Self::SIZE as u32,
+                    depth_or_array_layers: 1,
+                }
+            );
+        }
+        self.write_tile(queue);
+    }
+    
+    // TODO: add tile and position argument - it's just adding a black tile right now
+    pub fn write_tile(&self, queue: &wgpu::Queue) {
+        let tile_bytes: Vec<u8> = (0..16*16*4).map(|_| { 0 }).collect();
+        for i in 0..self.renders.len() {
+            let tile_size = 16 >> i;
+            queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.textures[i],
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &tile_bytes,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(tile_size * 4),
+                    rows_per_image: Some(tile_size),
+                },
+                wgpu::Extent3d {
+                    width: tile_size,
+                    height: tile_size,
                     depth_or_array_layers: 1,
                 }
             );
