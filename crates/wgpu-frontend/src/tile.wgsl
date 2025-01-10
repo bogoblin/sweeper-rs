@@ -43,10 +43,11 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
     return out;
 }
 
-fn world_to_uv(world_coords: vec2<f32>, dims: vec2<f32>) -> vec2<f32> {
+fn world_to_uv(world_coords: vec2<f32>, dims: vec2<f32>, tile_size_at_zoom: f32) -> vec2<f32> {
+    let world_size_of_full_tiles = dims/tile_size_at_zoom;
     let wc_flipped = vec2(world_coords.x, -1*world_coords.y);
-    let top_left_of_uv = floor(world_coords/dims);
-    let remaining = (world_coords - dims * top_left_of_uv)/dims;
+    let top_left_of_uv = floor(world_coords/world_size_of_full_tiles);
+    let remaining = (world_coords - world_size_of_full_tiles * top_left_of_uv)/world_size_of_full_tiles;
     return top_left_of_uv + remaining;
 }
 
@@ -66,6 +67,12 @@ var rendered_2: texture_2d<f32>;
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered_0)));
+    let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered_0)), 16.0);
+    if (camera.tile_size.x < 4.0) {
+        return textureSample(rendered_2, s_diffuse, tile_uv/4.0);
+    }
+    if (camera.tile_size.x < 8.0) {
+        return textureSample(rendered_1, s_diffuse, tile_uv/2.0);
+    }
     return textureSample(rendered_0, s_diffuse, tile_uv);
 }
