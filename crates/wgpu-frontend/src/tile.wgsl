@@ -1,6 +1,8 @@
 struct CameraUniform {
-    @location(0) world_rect: vec4<f32>,
-    @location(1) tile_size: vec4<f32>,
+    @location(0) zoom_render_blend_0: vec4<f32>,
+    @location(1) zoom_render_blend_1: vec4<f32>,
+    @location(2) world_rect: vec4<f32>,
+    @location(3) tile_size: vec4<f32>,
 }
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
@@ -73,17 +75,11 @@ var rendered_4: texture_2d<f32>;
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered_0)), 16.0);
     var tile_color = vec4(0.0, 0.0, 0.0, 0.0);
-    let scale = log2(16.0/camera.tile_size.x);
-    if (scale > 0.0) {
-        tile_color += textureSample(rendered_4, s_diffuse, tile_uv/16.0) * (1.0 - saturate(abs(scale - 4.0)));
-        tile_color += textureSample(rendered_3, s_diffuse, tile_uv/8.0) * (1.0 - saturate(abs(scale - 3.0)));
-        tile_color += textureSample(rendered_2, s_diffuse, tile_uv/4.0) * (1.0 - saturate(abs(scale - 2.0)));
-        tile_color += textureSample(rendered_1, s_diffuse, tile_uv/2.0) * (1.0 - saturate(abs(scale - 1.0)));
-        tile_color += textureSample(rendered_0, s_diffuse, tile_uv) * (1.0 - saturate(abs(scale - 0.0)));
-    } else {
-        tile_color += textureSample(rendered_0, s_diffuse, tile_uv);
-    }
-    // TODO: pass the blend values in
+    tile_color += textureSample(rendered_4, s_diffuse, tile_uv/16.0) * camera.zoom_render_blend_1.x;
+    tile_color += textureSample(rendered_3, s_diffuse, tile_uv/8.0) * camera.zoom_render_blend_0.w;
+    tile_color += textureSample(rendered_2, s_diffuse, tile_uv/4.0) * camera.zoom_render_blend_0.z;
+    tile_color += textureSample(rendered_1, s_diffuse, tile_uv/2.0) * camera.zoom_render_blend_0.y;
+    tile_color += textureSample(rendered_0, s_diffuse, tile_uv) * camera.zoom_render_blend_0.x;
 
     let blend = tile_color.w;
     return tile_color * blend + textureSample(t_diffuse, s_diffuse, in.world_coords.xy) * (1.0 - blend);

@@ -75,6 +75,7 @@ impl Camera {
     pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
         self.uniform.world_rect = self.rect().into();
         self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
+        self.uniform.zoom_render_blend = self.zoom_blend();
         queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[self.uniform]));
     }
 
@@ -90,6 +91,25 @@ impl Camera {
             bottom_right.x,
             bottom_right.y,
         )
+    }
+    
+    fn zoom_blend(&self) -> [f32; 8] {
+        let scale = (16.0/self.tile_size()).log2();
+        if scale < 0.0 {
+            let mut result: [f32; 8] = Default::default();
+            result[0] = 1.0;
+            return result;
+        }
+        for lower_scale in 0..8 {
+            let upper_scale = lower_scale + 1;
+            if scale < upper_scale as f32 {
+                let mut result: [f32; 8] = Default::default();
+                result[lower_scale] = (scale - upper_scale as f32).abs();
+                result[upper_scale] = 1.0 - result[lower_scale];
+                return result;
+            }
+        }
+        Default::default()
     }
 
     pub fn top_left(&self) -> Vector2<f32> {
@@ -140,16 +160,13 @@ impl Camera {
         let distance_from_view_center_in_world_space = screen_to_center/self.tile_size();
         self.center - distance_from_view_center_in_world_space
     }
-    pub fn world_to_screen(&self, position: Vector2<f32>) -> Vector2<f32> {
-        let world_to_center = self.center - position;
-        let distance_from_view_center_in_screen_space = world_to_center*self.tile_size();
-        self.size/2.0 - distance_from_view_center_in_screen_space
-    }
+    
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, Default)]
 struct CameraUniform {
+    zoom_render_blend: [f32; 8],
     world_rect: [f32; 4],
     tile_size: [f32; 4],
 }
