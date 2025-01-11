@@ -11,6 +11,7 @@ use cfg_if::cfg_if;
 use chrono::prelude::*;
 use chrono::TimeDelta;
 use log::info;
+use rand::{thread_rng, RngCore};
 use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -20,7 +21,7 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::{CompositeAlphaMode, PresentMode};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Position, Tile};
+use world::{Chunk, ChunkPosition, Position, Tile};
 use crate::camera::Camera;
 use crate::tilerender_texture::TilerenderTexture;
 use crate::tilesheet_texture::TileSheetTexture;
@@ -326,9 +327,18 @@ impl<'a> State<'a> {
         if let Some(MouseScrollDelta::PixelDelta(position)) = wheel {
             self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
-        
-        let position = Position(self.camera.center.x as i32, self.camera.center.y as i32);
-        self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), position);
+
+        // Temporary code to show that the rendering works:
+        {
+            let position = Position(self.camera.center.x as i32, self.camera.center.y as i32);
+            self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), position);
+
+            let mut chunk = Chunk::generate(ChunkPosition::new(0, 0), 40, 0);
+            for position in chunk.position.position_iter() {
+                chunk.set_tile(position, Tile(thread_rng().next_u32() as u8));
+            }
+            self.tilerender_texture.write_chunk(&self.queue, &chunk);
+        }
 
         self.camera.write_to_queue(&self.queue, 0);
         let output = self.surface.get_current_texture()?;

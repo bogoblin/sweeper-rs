@@ -1,5 +1,5 @@
 use image::imageops::FilterType;
-use world::{Position, Tile};
+use world::{Chunk, Position, Tile};
 
 pub struct TilerenderTexture {
     pub bind_group: wgpu::BindGroup,
@@ -37,7 +37,7 @@ impl TileSprites {
         let sprite_sheet = image::load_from_memory(include_bytes!("./tiles.png")).unwrap();
         let mut sprite_images = vec![];
         let mut sprite_bytes = vec![];
-        for i in 0..16 {
+        for i in 0..12 {
             let sprite = sprite_sheet.crop_imm(16 * i, 0, 16, 16);
             sprite_images.push(sprite);
         }
@@ -158,6 +158,14 @@ impl TilerenderTexture {
                     depth_or_array_layers: 1,
                 }
             );
+        }
+    }
+    
+    pub fn write_chunk(&self, queue: &wgpu::Queue, chunk: &Chunk) {
+        // This works for scales 0-4 (16x)
+        // For higher scales, we need to copy and scale the renders somehow
+        for position in chunk.position.position_iter() {
+            self.write_tile(queue, chunk.get_tile(position), position);
         }
     }
 

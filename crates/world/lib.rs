@@ -1,9 +1,9 @@
-use std::cmp::PartialEq;
+use std::cmp::{min, PartialEq};
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops;
-use std::ops::{AddAssign, Sub};
+use std::ops::{Add, AddAssign, Sub};
 use derive_more::{Div, Mul};
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
@@ -223,6 +223,13 @@ impl ChunkPosition {
     pub fn bottom_right(&self) -> Self {
         Self::new(self.0+16, self.1+16)
     }
+    
+    pub fn position_iter(&self) -> ChunkPositionIter {
+        ChunkPositionIter {
+            position: self.clone(),
+            position_in_chunk_index: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -259,6 +266,10 @@ impl Position {
     fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
 
     pub fn tile_index(&self) -> usize { self.position_in_chunk().index() }
+    
+    pub fn from_chunk_positions(chunk_position: &ChunkPosition, position_in_chunk: &PositionInChunk) -> Self {
+        Self(chunk_position.0 + position_in_chunk.x() as i32, chunk_position.1 + position_in_chunk.y() as i32)
+    }
 }
 impl ops::Add<(i32, i32)> for &Position {
     type Output = Position;
@@ -309,7 +320,8 @@ impl Tile {
         self.0 == self.with_revealed().0
     }
     pub fn adjacent(&self) -> u8 {
-        self.0 & 0b1111
+        let adjacent = self.0 & 0b1111;
+        min(adjacent, 8)
     }
 }
 
@@ -555,5 +567,24 @@ impl UpdatedRect {
             result.push(PublicTile::Newline)
         }
         result
+    }
+}
+
+pub struct ChunkPositionIter {
+    position: ChunkPosition,
+    position_in_chunk_index: usize,
+}
+
+impl Iterator for ChunkPositionIter {
+    type Item = Position;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.position_in_chunk_index < 255 {
+            let result = Some(Position::from_chunk_positions(&self.position, &PositionInChunk(self.position_in_chunk_index as u8)));
+            self.position_in_chunk_index += 1;
+            result
+        } else {
+            None
+        }
     }
 }
