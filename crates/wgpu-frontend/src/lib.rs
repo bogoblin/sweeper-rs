@@ -20,6 +20,7 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::{CompositeAlphaMode, PresentMode};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
+use world::{Position, Tile};
 use crate::camera::Camera;
 use crate::tilerender_texture::TilerenderTexture;
 use crate::tilesheet_texture::TileSheetTexture;
@@ -190,13 +191,7 @@ impl<'a> State<'a> {
 
         let tilesheet_texture = TileSheetTexture::new(&device, &queue);
         let camera = Camera::new(&device, &size);
-        // let tilemap = Tilemap::new(&device);
         let tilerender_texture = TilerenderTexture::new(&device);
-        // tilerender_texture.draw_image(
-        //     image::load_from_memory(include_bytes!("./burgerbarack.png")).unwrap(),
-        //     &queue,
-        // );
-        tilerender_texture.write_renders(&queue);
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
@@ -247,16 +242,6 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        // for x in -10..10 {
-        //     for y in -10..10 {
-        //         let mut chunk = Chunk::generate(ChunkPosition::new(x * 16, y * 16), 40, 0);
-        //         let mut bytes: [u8; 256] = [0; 256];
-        //         thread_rng().fill_bytes(&mut bytes);
-        //         chunk.tiles = ChunkTiles::from(bytes);
-        //         tilemap.update_chunk(&chunk, &queue);
-        //     }
-        // }
-
         Self {
             window,
             surface,
@@ -268,7 +253,6 @@ impl<'a> State<'a> {
             render_pipeline,
             tilesheet_texture,
             camera,
-            // tilemap,
             tilerender_texture,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
@@ -342,6 +326,9 @@ impl<'a> State<'a> {
         if let Some(MouseScrollDelta::PixelDelta(position)) = wheel {
             self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
+        
+        let position = Position(self.camera.center.x as i32, self.camera.center.y as i32);
+        self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), position);
 
         self.camera.write_to_queue(&self.queue, 0);
         let output = self.surface.get_current_texture()?;
@@ -356,12 +343,7 @@ impl<'a> State<'a> {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.mouse.position.x / self.size.width as f64,
-                            g: self.mouse.position.y / self.size.height as f64,
-                            b: 0.3,
-                            a: 1.0
-                        }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     }
                 })],
@@ -464,10 +446,12 @@ impl KeyState {
             WindowEvent::KeyboardInput { event, .. } => {
                 match event.state {
                     ElementState::Pressed => {
-                        self.keys_down.insert(event.physical_key)
+                        self.keys_down.insert(event.physical_key);
+                        false
                     }
                     ElementState::Released => {
-                        self.keys_down.remove(&event.physical_key)
+                        self.keys_down.remove(&event.physical_key);
+                        false
                     }
                 }
             }

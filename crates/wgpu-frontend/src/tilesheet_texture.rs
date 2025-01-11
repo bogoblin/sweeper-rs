@@ -8,8 +8,8 @@ pub struct TileSheetTexture {
 
 impl TileSheetTexture {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let bytes = include_bytes!("tiles.png");
-        let texture = Texture::from_bytes(&device, &queue, bytes, "tiles.png").unwrap();
+        let bytes = include_bytes!("background.png");
+        let texture = Texture::from_bytes(&device, &queue, bytes, "background.png").unwrap();
         let (bind_group, bind_group_layout) = texture.bind_group_and_layout(device);
         
         Self {

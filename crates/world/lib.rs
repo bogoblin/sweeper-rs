@@ -4,6 +4,7 @@ use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops;
 use std::ops::{AddAssign, Sub};
+use derive_more::{Div, Mul};
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
@@ -248,6 +249,7 @@ impl PositionInChunk {
 
 #[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Default)]
 #[derive(Serialize, Deserialize)]
+#[derive(Mul, Div)]
 pub struct Position(pub i32, pub i32);
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }

@@ -64,15 +64,27 @@ var rendered_0: texture_2d<f32>;
 var rendered_1: texture_2d<f32>;
 @group(2) @binding(2)
 var rendered_2: texture_2d<f32>;
+@group(2) @binding(3)
+var rendered_3: texture_2d<f32>;
+@group(2) @binding(4)
+var rendered_4: texture_2d<f32>;
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let tile_uv = world_to_uv(in.world_coords.xy, vec2<f32>(textureDimensions(rendered_0)), 16.0);
-    if (camera.tile_size.x < 4.0) {
-        return textureSample(rendered_2, s_diffuse, tile_uv/4.0);
+    var tile_color = vec4(0.0, 0.0, 0.0, 0.0);
+    let scale = log2(16.0/camera.tile_size.x);
+    if (scale > 0.0) {
+        tile_color += textureSample(rendered_4, s_diffuse, tile_uv/16.0) * (1.0 - saturate(abs(scale - 4.0)));
+        tile_color += textureSample(rendered_3, s_diffuse, tile_uv/8.0) * (1.0 - saturate(abs(scale - 3.0)));
+        tile_color += textureSample(rendered_2, s_diffuse, tile_uv/4.0) * (1.0 - saturate(abs(scale - 2.0)));
+        tile_color += textureSample(rendered_1, s_diffuse, tile_uv/2.0) * (1.0 - saturate(abs(scale - 1.0)));
+        tile_color += textureSample(rendered_0, s_diffuse, tile_uv) * (1.0 - saturate(abs(scale - 0.0)));
+    } else {
+        tile_color += textureSample(rendered_0, s_diffuse, tile_uv);
     }
-    if (camera.tile_size.x < 8.0) {
-        return textureSample(rendered_1, s_diffuse, tile_uv/2.0);
-    }
-    return textureSample(rendered_0, s_diffuse, tile_uv);
+    // TODO: pass the blend values in
+
+    let blend = tile_color.w;
+    return tile_color * blend + textureSample(t_diffuse, s_diffuse, in.world_coords.xy) * (1.0 - blend);
 }
