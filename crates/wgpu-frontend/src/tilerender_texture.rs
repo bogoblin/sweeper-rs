@@ -1,15 +1,16 @@
 use image::imageops::FilterType;
 use world::{Chunk, Position, Tile};
+use crate::shader::HasBindGroup;
 
 pub struct TilerenderTexture {
-    pub bind_group: wgpu::BindGroup,
-    pub bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
+    bind_group_layout: wgpu::BindGroupLayout,
     
     // Render Scale: 0 - 8
     // 0 = 1X, 1 = 2X, 2 = 4X, 3 = 8X, ...
     // n = 2^nX
-    pub textures: Vec<wgpu::Texture>,
-    pub views: Vec<wgpu::TextureView>,
+    textures: Vec<wgpu::Texture>,
+    views: Vec<wgpu::TextureView>,
     tile_sprites: TileSprites
 }
 struct TileSprites {
@@ -169,4 +170,14 @@ impl TilerenderTexture {
         }
     }
 
+}
+
+impl HasBindGroup for TilerenderTexture {
+    fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
 }

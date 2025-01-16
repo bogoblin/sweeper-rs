@@ -2,6 +2,7 @@ use cgmath::{Vector2, Vector4, Zero};
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use crate::MouseState;
+use crate::shader::HasBindGroup;
 
 pub struct Camera {
     pub center: Vector2<f32>,
@@ -9,9 +10,9 @@ pub struct Camera {
     size: Vector2<f32>,
     drag: Option<Drag>,
 
-    pub buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
-    pub bind_group_layout: wgpu::BindGroupLayout,
+    buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    bind_group_layout: wgpu::BindGroupLayout,
     uniform: CameraUniform,
 }
 
@@ -161,6 +162,16 @@ impl Camera {
         self.center - distance_from_view_center_in_world_space
     }
     
+}
+
+impl HasBindGroup for Camera {
+    fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
 }
 
 #[repr(C)]

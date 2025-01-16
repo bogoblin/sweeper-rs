@@ -1,6 +1,7 @@
 mod texture;
 mod camera;
 mod tilerender_texture;
+mod shader;
 
 use std::collections::{HashSet};
 use std::default::Default;
@@ -21,6 +22,7 @@ use wgpu::{CompositeAlphaMode, PresentMode};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Chunk, ChunkPosition, Position, Tile};
 use crate::camera::Camera;
+use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 use crate::tilerender_texture::TilerenderTexture;
 
@@ -199,9 +201,9 @@ impl<'a> State<'a> {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &background_texture.bind_group_layout,
-                    &camera.bind_group_layout,
-                    &tilerender_texture.bind_group_layout,
+                    &background_texture.bind_group_layout(),
+                    &camera.bind_group_layout(),
+                    &tilerender_texture.bind_group_layout(),
                 ],
                 push_constant_ranges: &[],
             });
@@ -363,9 +365,9 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.background_texture.bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.tilerender_texture.bind_group, &[]);
+            render_pass.set_bind_group(0, self.background_texture.bind_group(), &[]);
+            render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
+            render_pass.set_bind_group(2, self.tilerender_texture.bind_group(), &[]);
             render_pass.draw(0..6, 0..1);
 
             cfg_if::cfg_if! {
