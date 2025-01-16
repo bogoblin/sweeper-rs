@@ -85,10 +85,12 @@ pub async fn run() {
                         physical_size.height = win.inner_height().unwrap().as_f64().unwrap() as u32;
                     };
                     state.resize(physical_size);
-                    // state.set_scale_factor(state.window.scale_factor());
+                    #[cfg(target_arch = "wasm32")]
+                    state.set_scale_factor(state.window.scale_factor());
                 },
                 WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                    // state.set_scale_factor(*scale_factor);
+                    #[cfg(target_arch = "wasm32")]
+                    state.set_scale_factor(*scale_factor);
                 }
                 WindowEvent::RedrawRequested => {
                     state.window().request_redraw();
