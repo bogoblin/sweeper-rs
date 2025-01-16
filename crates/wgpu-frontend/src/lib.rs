@@ -1,7 +1,5 @@
 mod texture;
 mod camera;
-pub mod tilemap;
-mod tilesheet_texture;
 mod tilerender_texture;
 
 use std::collections::{HashSet};
@@ -23,8 +21,8 @@ use wgpu::{CompositeAlphaMode, PresentMode};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Chunk, ChunkPosition, Position, Tile};
 use crate::camera::Camera;
+use crate::texture::Texture;
 use crate::tilerender_texture::TilerenderTexture;
-use crate::tilesheet_texture::TileSheetTexture;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -138,7 +136,7 @@ struct State<'a> {
     camera: Camera,
     last_frame_time: DateTime<Utc>,
     // tilemap: Tilemap,
-    tilesheet_texture: TileSheetTexture,
+    background_texture: Texture,
     tilerender_texture: TilerenderTexture,
 }
 
@@ -192,7 +190,7 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 1,
         };
 
-        let tilesheet_texture = TileSheetTexture::new(&device, &queue);
+        let background_texture = Texture::from_bytes(&device, &queue, include_bytes!("background.png"), "background").unwrap();
         let camera = Camera::new(&device, &size);
         let tilerender_texture = TilerenderTexture::new(&device);
 
@@ -201,7 +199,7 @@ impl<'a> State<'a> {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &tilesheet_texture.bind_group_layout,
+                    &background_texture.bind_group_layout,
                     &camera.bind_group_layout,
                     &tilerender_texture.bind_group_layout,
                 ],
@@ -254,7 +252,7 @@ impl<'a> State<'a> {
             size,
             scale_factor: 1.0,
             render_pipeline,
-            tilesheet_texture,
+            background_texture,
             camera,
             tilerender_texture,
             mouse: MouseState::new(),
@@ -365,7 +363,7 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.tilesheet_texture.bind_group, &[]);
+            render_pass.set_bind_group(0, &self.background_texture.bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
             render_pass.set_bind_group(2, &self.tilerender_texture.bind_group, &[]);
             render_pass.draw(0..6, 0..1);
