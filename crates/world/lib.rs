@@ -1,10 +1,8 @@
-use std::cmp::{min, PartialEq};
+use std::cmp::{max, min, PartialEq};
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
-use std::ops;
 use std::ops::{Add, AddAssign, Sub};
-use derive_more::{Div, Mul};
 use rand::{SeedableRng};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
@@ -220,6 +218,9 @@ impl ChunkPosition {
         ).0 + salt
     }
     
+    pub fn position(&self) -> Position {
+        Position(self.0, self.1)
+    }
     pub fn bottom_right(&self) -> Self {
         Self::new(self.0+16, self.1+16)
     }
@@ -256,14 +257,14 @@ impl PositionInChunk {
 
 #[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Default)]
 #[derive(Serialize, Deserialize)]
-#[derive(Mul, Div)]
+#[derive(derive_more::Mul, derive_more::Div, derive_more::Add, derive_more::Sub)]
 pub struct Position(pub i32, pub i32);
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }
 
-    fn chunk_position(&self) -> ChunkPosition { ChunkPosition::new(self.0, self.1) }
+    pub fn chunk_position(&self) -> ChunkPosition { ChunkPosition::new(self.0, self.1) }
 
-    fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
+    pub fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
 
     pub fn tile_index(&self) -> usize { self.position_in_chunk().index() }
     
@@ -271,7 +272,7 @@ impl Position {
         Self(chunk_position.0 + position_in_chunk.x() as i32, chunk_position.1 + position_in_chunk.y() as i32)
     }
 }
-impl ops::Add<(i32, i32)> for &Position {
+impl Add<(i32, i32)> for &Position {
     type Output = Position;
 
     fn add(self, rhs: (i32, i32)) -> Position {
@@ -498,14 +499,6 @@ impl Debug for UpdatedRect {
     }
 }
 
-impl Sub for Position {
-    type Output = Position;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Position(self.0 - rhs.0, self.1 - rhs.1)
-    }
-}
-
 impl UpdatedRect {
     pub fn empty() -> Self {
         Self {top_left: Position::origin(), updated: vec![]}
@@ -579,12 +572,68 @@ impl Iterator for ChunkPositionIter {
     type Item = Position;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.position_in_chunk_index < 255 {
+        if self.position_in_chunk_index < 256 {
             let result = Some(Position::from_chunk_positions(&self.position, &PositionInChunk(self.position_in_chunk_index as u8)));
             self.position_in_chunk_index += 1;
             result
         } else {
             None
         }
+    }
+}
+
+#[derive(Debug)]
+#[derive(Eq, PartialEq)]
+pub struct Rect {
+    left: i32,
+    right: i32,
+    top: i32,
+    bottom: i32,
+}
+
+impl Rect {
+    pub fn from_center_and_size(center: Position, width: i32, height: i32) -> Self {
+        let left = center.0 - width/2;
+        let top = center.1 - height/2;
+        Self {
+            left, top,
+            right: left + width,
+            bottom: top + height,
+        }
+    }
+    
+    pub fn contains(&self, Position(x, y): Position) -> bool {
+        x > self.left &&
+            x < self.right &&
+            y > self.top &&
+            y < self.bottom
+    }
+    
+    pub fn intersection(&self, other: &Rect) -> Option<Self> {
+        let left = max(self.left, other.left);
+        let right = min(self.right, other.right);
+        let top = max(self.top, other.top);
+        let bottom = min(self.bottom, other.bottom);
+        if left <= right && top <= bottom {
+            Some(Self { left, right, top, bottom })
+        } else {
+            None
+        }
+    }
+    
+    pub fn top_left(&self) -> Position {
+        Position(self.left, self.top)
+    }
+    
+    pub fn bottom_right(&self) -> Position {
+        Position(self.right, self.bottom)
+    }
+    
+    pub fn top_right(&self) -> Position {
+        Position(self.right, self.top)
+    }
+    
+    pub fn bottom_left(&self) -> Position {
+        Position(self.left, self.bottom)
     }
 }

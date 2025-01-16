@@ -192,7 +192,7 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 1,
         };
 
-        let background_texture = Texture::from_bytes(&device, &queue, include_bytes!("background.png"), "background").unwrap();
+        let background_texture = Texture::from_bytes(&device, &queue, include_bytes!("backgrounddark.png"), "background").unwrap();
         let camera = Camera::new(&device, &size);
         let tilerender_texture = TilerenderTexture::new(&device);
 
@@ -339,7 +339,7 @@ impl<'a> State<'a> {
             for position in chunk.position.position_iter() {
                 chunk.set_tile(position, Tile(thread_rng().next_u32() as u8));
             }
-            self.tilerender_texture.write_chunk(&self.queue, &chunk);
+            // self.tilerender_texture.write_chunk(&self.queue, &chunk);
         }
 
         self.camera.write_to_queue(&self.queue, 0);

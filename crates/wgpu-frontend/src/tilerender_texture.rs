@@ -1,6 +1,6 @@
-use image::imageops::FilterType;
-use world::{Chunk, Position, Tile};
 use crate::shader::HasBindGroup;
+use image::imageops::FilterType;
+use world::{Chunk, Position, Rect, Tile};
 
 pub struct TilerenderTexture {
     bind_group: wgpu::BindGroup,
@@ -11,7 +11,9 @@ pub struct TilerenderTexture {
     // n = 2^nX
     textures: Vec<wgpu::Texture>,
     views: Vec<wgpu::TextureView>,
-    tile_sprites: TileSprites
+    tile_sprites: TileSprites,
+    
+    draw_areas: Vec<Rect>
 }
 struct TileSprites {
     sprite_bytes: Vec<Vec<Vec<u8>>>,
@@ -35,7 +37,7 @@ impl TileSprites {
 
 impl TileSprites {
     pub fn new() -> Self {
-        let sprite_sheet = image::load_from_memory(include_bytes!("./tiles.png")).unwrap();
+        let sprite_sheet = image::load_from_memory(include_bytes!("./tilesdark.png")).unwrap();
         let mut sprite_images = vec![];
         let mut sprite_bytes = vec![];
         for i in 0..12 {
@@ -121,17 +123,23 @@ impl TilerenderTexture {
                 label: None,
             }
         );
+        let draw_areas = (0..Self::ZOOM_LEVELS).map(|zoom_level| Self::draw_area(Position::origin(), zoom_level))
+            .collect();
         Self {
             textures,
             views,
             bind_group,
             bind_group_layout,
             tile_sprites: TileSprites::new(),
+            draw_areas,
         }
     }
 
     pub fn write_tile(&self, queue: &wgpu::Queue, tile: Tile, position: Position) {
         for i in 0..Self::ZOOM_LEVELS {
+            let draw_area = &self.draw_areas[i];
+            if !draw_area.contains(position) { continue }
+            
             let tile_size = 16 >> i;
             let Position(x, y) = position * tile_size;
             let x = x as usize % Self::SIZE;
@@ -169,7 +177,27 @@ impl TilerenderTexture {
             self.write_tile(queue, chunk.get_tile(position), position);
         }
     }
+    
+    pub fn draw_area(position: Position, scale: usize) -> Rect {
+        let tile_size = 16 >> scale;
+        let tiles_in_texture = (Self::SIZE / tile_size) as i32;
+        let bits_to_zero_out = scale+4; // Make the positions end with this many zeros
+        Rect::from_center_and_size(Position(
+            (position.0 >> (bits_to_zero_out))<<(bits_to_zero_out),
+            (position.1 >> (bits_to_zero_out))<<(bits_to_zero_out),
+        ), tiles_in_texture, tiles_in_texture)
+    }
 
+    pub fn draw_area_difference(&self, scale: usize, new_position: Position) -> Vec<Rect> {
+        let new_draw_area = Self::draw_area(new_position, scale);
+        let old_draw_area = &self.draw_areas[scale];
+        if &new_draw_area == old_draw_area {
+            return vec![];
+        }
+        
+        // todo finish this 
+        todo!()
+    }
 }
 
 impl HasBindGroup for TilerenderTexture {
