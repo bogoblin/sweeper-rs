@@ -1,6 +1,7 @@
 use crate::shader::HasBindGroup;
 use image::imageops::FilterType;
-use world::{Chunk, Position, Rect, Tile};
+use world::{Chunk, ChunkPosition, Position, Rect, Tile, UpdatedRect, World};
+use crate::camera::Camera;
 
 pub struct TilerenderTexture {
     bind_group: wgpu::BindGroup,
@@ -13,7 +14,7 @@ pub struct TilerenderTexture {
     views: Vec<wgpu::TextureView>,
     tile_sprites: TileSprites,
     
-    draw_areas: Vec<Rect>
+    draw_areas: Vec<Rect>,
 }
 struct TileSprites {
     sprite_bytes: Vec<Vec<Vec<u8>>>,
@@ -136,6 +137,7 @@ impl TilerenderTexture {
     }
 
     pub fn write_tile(&self, queue: &wgpu::Queue, tile: Tile, position: Position) {
+        if !tile.is_revealed() && !tile.is_flag() { return }
         for i in 0..Self::ZOOM_LEVELS {
             let draw_area = &self.draw_areas[i];
             if !draw_area.contains(position) { continue }
@@ -170,6 +172,16 @@ impl TilerenderTexture {
         }
     }
     
+    pub fn write_updated_rect(&self, queue: &wgpu::Queue, updated_rect: &UpdatedRect) {
+        for (x, col) in updated_rect.updated.iter().enumerate() {
+            for (y, tile) in col.iter().enumerate() {
+                if tile.0 == 0 { continue }
+                let position = updated_rect.top_left + Position(x as i32, y as i32);
+                self.write_tile(queue, tile.clone(), position);
+            }
+        }
+    }
+    
     pub fn write_chunk(&self, queue: &wgpu::Queue, chunk: &Chunk) {
         // This works for scales 0-4 (16x)
         // For higher scales, we need to copy and scale the renders somehow
@@ -178,9 +190,27 @@ impl TilerenderTexture {
         }
     }
     
+    pub fn update_view_from_camera(&mut self, queue: &wgpu::Queue, camera: &Camera, world: &World) {
+        let mut chunks_to_draw: Vec<ChunkPosition> = vec![];
+        for scale in 0..Self::ZOOM_LEVELS {
+            let (rect1, rect2) = self.update_draw_area(scale, camera.world_center());
+            chunks_to_draw.append(&mut rect1.chunks_contained());
+            chunks_to_draw.append(&mut rect2.chunks_contained());
+        }
+        
+        let n_chunks = chunks_to_draw.len();
+        if n_chunks > 0 {
+            println!("Updating {n_chunks} chunks");
+        }
+        for chunk in chunks_to_draw {
+            if let Some(chunk) = world.get_chunk(chunk.position()) {
+                self.write_chunk(queue, chunk);
+            }
+        }
+    }
+    
     pub fn draw_area(position: Position, scale: usize) -> Rect {
-        let tile_size = 16 >> scale;
-        let tiles_in_texture = (Self::SIZE / tile_size) as i32;
+        let tiles_in_texture = ((Self::SIZE / 16) << scale) as i32;
         let bits_to_zero_out = scale+4; // Make the positions end with this many zeros
         Rect::from_center_and_size(Position(
             (position.0 >> (bits_to_zero_out))<<(bits_to_zero_out),
@@ -188,15 +218,32 @@ impl TilerenderTexture {
         ), tiles_in_texture, tiles_in_texture)
     }
 
-    pub fn draw_area_difference(&self, scale: usize, new_position: Position) -> Vec<Rect> {
-        let new_draw_area = Self::draw_area(new_position, scale);
-        let old_draw_area = &self.draw_areas[scale];
-        if &new_draw_area == old_draw_area {
-            return vec![];
-        }
+    pub fn update_draw_area(&mut self, scale: usize, new_position: Position) -> (Rect, Rect) {
+        let old_draw_area = &self.draw_areas[scale].clone();
+        self.draw_areas[scale] = Self::draw_area(new_position, scale);
+        let new_draw_area = &self.draw_areas[scale];
         
-        // todo finish this 
-        todo!()
+        if let Some(intersection) = &new_draw_area.intersection(old_draw_area) {
+            // Difference is two Rects, one for the vertical and one for the horizontal
+            let mut x_rect = new_draw_area.clone();
+            if intersection.left == new_draw_area.left {
+                x_rect.left = old_draw_area.right;
+            }
+            else if intersection.right == new_draw_area.right {
+                x_rect.right = old_draw_area.left;
+            }
+            
+            let mut y_rect = new_draw_area.clone();
+            if intersection.top == new_draw_area.top {
+                y_rect.top = old_draw_area.bottom;
+            }
+            else if intersection.bottom == new_draw_area.bottom {
+                y_rect.bottom = old_draw_area.top;
+            }
+            (x_rect, y_rect)
+        } else {
+            (new_draw_area.clone(), Rect::default())
+        }
     }
 }
 

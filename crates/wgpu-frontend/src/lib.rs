@@ -7,11 +7,12 @@ use std::collections::{HashSet};
 use std::default::Default;
 use std::thread::sleep;
 use cfg_if::cfg_if;
+use cgmath::Vector2;
 use chrono::prelude::*;
 use chrono::TimeDelta;
 use log::info;
 use rand::{thread_rng, RngCore};
-use winit::event::{ElementState, Event, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
@@ -20,7 +21,8 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::{CompositeAlphaMode, PresentMode};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Chunk, ChunkPosition, Position, Tile};
+use world::{Chunk, ChunkPosition, Position, Tile, World};
+use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
@@ -60,7 +62,7 @@ pub async fn run() {
     let mut surface_configured = false;
 
     event_loop.run(move |event, control_flow| match event {
-        Event::WindowEvent {
+        winit::event::Event::WindowEvent {
             ref event,
             window_id,
         } if window_id == state.window.id() => if !state.input(event) {
@@ -140,6 +142,8 @@ struct State<'a> {
     // tilemap: Tilemap,
     background_texture: Texture,
     tilerender_texture: TilerenderTexture,
+    world: World,
+    next_event: usize,
 }
 
 impl<'a> State<'a> {
@@ -259,7 +263,9 @@ impl<'a> State<'a> {
             tilerender_texture,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
-            last_frame_time: Utc::now()
+            last_frame_time: Utc::now(),
+            world: World::new(),
+            next_event: 0,
         }
     }
 
@@ -314,14 +320,14 @@ impl<'a> State<'a> {
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Minus)) {
             self.camera.zoom_level -= zoom_speed;
         }
-        
+
         if self.mouse.button_is_down(MouseButton::Left) {
             self.camera.start_drag(&self.mouse.position);
         } else {
             self.camera.end_drag();
         }
         self.camera.update_drag(&self.mouse);
-        
+
         let wheel = self.mouse.wheel();
         if let Some(MouseScrollDelta::LineDelta(_x, y)) = wheel {
             self.camera.zoom_around(y, &self.mouse.position);
@@ -329,17 +335,40 @@ impl<'a> State<'a> {
         if let Some(MouseScrollDelta::PixelDelta(position)) = wheel {
             self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
+        
+        self.tilerender_texture.update_view_from_camera(&self.queue, &self.camera, &self.world);
 
-        // Temporary code to show that the rendering works:
-        {
-            let position = Position(self.camera.center.x.floor() as i32, self.camera.center.y.floor() as i32);
-            self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), position);
+        let clicked = self.mouse.clicked();
+        let released = self.mouse.released();
 
-            let mut chunk = Chunk::generate(ChunkPosition::new(0, 0), 40, 0);
-            for position in chunk.position.position_iter() {
-                chunk.set_tile(position, Tile(thread_rng().next_u32() as u8));
+        let position_at_mouse = self.camera.screen_to_world(&self.mouse.position);
+        let position = as_world_position(position_at_mouse);
+        if released.contains(&MouseButton::Left) {
+            if self.mouse.button_is_down(MouseButton::Right) {
+                self.world.double_click(position, "bobby");
+            } else {
+                self.world.click(position, "bobby");
             }
-            // self.tilerender_texture.write_chunk(&self.queue, &chunk);
+        }
+        if clicked.contains(&MouseButton::Right) {
+            self.world.flag(position, "bobby");
+        }
+
+        let new_events = &self.world.events[self.next_event..];
+        self.next_event = self.world.events.len();
+        for event in new_events {
+            match event {
+                Event::Clicked { updated, .. }
+                | Event::DoubleClicked { updated, .. }=> {
+                    self.tilerender_texture.write_updated_rect(&self.queue, updated);
+                }
+                Event::Flag { at, .. } => {
+                    self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
+                }
+                Event::Unflag { at, .. } => {
+                    self.tilerender_texture.write_tile(&self.queue, Tile::empty(), at.clone());
+                }
+            }
         }
 
         self.camera.write_to_queue(&self.queue, 0);
@@ -388,6 +417,8 @@ impl<'a> State<'a> {
 struct MouseState {
     position: PhysicalPosition<f64>,
     buttons_down: HashSet<MouseButton>,
+    buttons_clicked: HashSet<MouseButton>,
+    buttons_released: HashSet<MouseButton>,
     delta: Option<MouseScrollDelta>,
     scale_factor: f64,
 }
@@ -416,15 +447,29 @@ impl MouseState {
             WindowEvent::MouseInput { state, button, .. } => {
                 match state {
                     ElementState::Pressed => {
-                        self.buttons_down.insert(button)
+                        self.buttons_down.insert(button);
+                        self.buttons_clicked.insert(button)
                     }
                     ElementState::Released => {
-                        self.buttons_down.remove(&button)
+                        self.buttons_down.remove(&button);
+                        self.buttons_released.insert(button)
                     }
                 }
             }
             _ => false
         }
+    }
+    
+    pub fn clicked(&mut self) -> HashSet<MouseButton> {
+        let result = self.buttons_clicked.clone();
+        self.buttons_clicked.clear();
+        result
+    }
+    
+    pub fn released(&mut self) -> HashSet<MouseButton> {
+        let result = self.buttons_released.clone();
+        self.buttons_released.clear();
+        result
     }
     
     pub fn wheel(&mut self) -> Option<MouseScrollDelta> {
@@ -474,4 +519,8 @@ impl KeyState {
     pub fn key_is_down(&self, key: PhysicalKey) -> bool {
         self.keys_down.contains(&key)
     }
+}
+
+fn as_world_position(vector: Vector2<f32>) -> Position {
+    Position(vector.x.floor() as i32, vector.y.floor() as i32)
 }

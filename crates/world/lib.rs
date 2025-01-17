@@ -182,6 +182,7 @@ impl World {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
+                    if tile.is_revealed() { return }
                     if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
@@ -582,13 +583,13 @@ impl Iterator for ChunkPositionIter {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 #[derive(Eq, PartialEq)]
 pub struct Rect {
-    left: i32,
-    right: i32,
-    top: i32,
-    bottom: i32,
+    pub left: i32,
+    pub right: i32,
+    pub top: i32,
+    pub bottom: i32,
 }
 
 impl Rect {
@@ -635,5 +636,29 @@ impl Rect {
     
     pub fn bottom_left(&self) -> Position {
         Position(self.left, self.bottom)
+    }
+    
+    pub fn area(&self) -> i64 {
+        (self.right - self.left) as i64 * (self.bottom - self.top) as i64
+    }
+    
+    pub fn chunks_contained(&self) -> Vec<ChunkPosition> {
+        // Adding 15, 15 here so that when it's rounded down, it will always be the first chunk that's totally in it
+        let top_left = (self.top_left() + Position(15, 15)).chunk_position();
+        let bottom_right = self.bottom_right().chunk_position();
+        
+        let mut x = top_left.0;
+        
+        let mut chunks = vec![];
+        while x < bottom_right.0 {
+            let mut y = top_left.1;
+            while y < bottom_right.1 {
+                chunks.push(ChunkPosition(x, y));
+                y += 16;
+            }
+            x += 16;
+        }
+        
+        chunks
     }
 }

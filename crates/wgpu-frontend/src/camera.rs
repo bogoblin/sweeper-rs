@@ -1,7 +1,8 @@
 use cgmath::{Vector2, Vector4, Zero};
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use crate::MouseState;
+use world::Position;
+use crate::{as_world_position, MouseState};
 use crate::shader::HasBindGroup;
 
 pub struct Camera {
@@ -162,6 +163,9 @@ impl Camera {
         self.center - distance_from_view_center_in_world_space
     }
     
+    pub fn world_center(&self) -> Position {
+        as_world_position(self.center)
+    }
 }
 
 impl HasBindGroup for Camera {
