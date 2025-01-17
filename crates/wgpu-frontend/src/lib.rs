@@ -332,7 +332,7 @@ impl<'a> State<'a> {
 
         // Temporary code to show that the rendering works:
         {
-            let position = Position(self.camera.center.x as i32, self.camera.center.y as i32);
+            let position = Position(self.camera.center.x.floor() as i32, self.camera.center.y.floor() as i32);
             self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), position);
 
             let mut chunk = Chunk::generate(ChunkPosition::new(0, 0), 40, 0);
