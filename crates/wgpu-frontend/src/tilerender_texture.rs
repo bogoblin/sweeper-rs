@@ -137,7 +137,6 @@ impl TilerenderTexture {
     }
 
     pub fn write_tile(&self, queue: &wgpu::Queue, tile: Tile, position: Position) {
-        if !tile.is_revealed() && !tile.is_flag() { return }
         for i in 0..Self::ZOOM_LEVELS {
             let draw_area = &self.draw_areas[i];
             if !draw_area.contains(position) { continue }

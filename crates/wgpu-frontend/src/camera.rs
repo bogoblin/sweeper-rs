@@ -102,7 +102,7 @@ impl Camera {
             result[0] = 1.0;
             return result;
         }
-        for lower_scale in 0..8 {
+        for lower_scale in 0..7 {
             let upper_scale = lower_scale + 1;
             if scale < upper_scale as f32 {
                 let mut result: [f32; 8] = Default::default();
