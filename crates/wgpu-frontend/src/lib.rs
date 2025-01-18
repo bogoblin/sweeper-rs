@@ -371,6 +371,8 @@ impl<'a> State<'a> {
             }
         }
 
+        self.tilerender_texture.render_zoom_texture(&self.device, &self.queue);
+
         self.camera.write_to_queue(&self.queue, 0);
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());

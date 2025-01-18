@@ -15,6 +15,7 @@ pub struct TilerenderTexture {
     tile_sprites: TileSprites,
     
     draw_areas: Vec<Rect>,
+    render_pipeline: wgpu::RenderPipeline,
 }
 struct TileSprites {
     sprite_bytes: Vec<Vec<Vec<u8>>>,
@@ -79,7 +80,9 @@ impl TilerenderTexture {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             })
         }).collect();
@@ -126,6 +129,53 @@ impl TilerenderTexture {
         );
         let draw_areas = (0..Self::ZOOM_LEVELS).map(|zoom_level| Self::draw_area(Position::origin(), zoom_level))
             .collect();
+
+        let shader = device.create_shader_module(wgpu::include_wgsl!("zoom_render.wgsl"));
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Zoom Render Pipeline Layout"),
+                bind_group_layouts: &[
+                ],
+                push_constant_ranges: &[],
+            });
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Zoom Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: textures[0].format(),
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             textures,
             views,
@@ -133,7 +183,38 @@ impl TilerenderTexture {
             bind_group_layout,
             tile_sprites: TileSprites::new(),
             draw_areas,
+            render_pipeline,
         }
+    }
+
+    pub fn render_zoom_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        // WIP: Just trying out writing to a texture :)
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: None,
+        });
+        {
+            let render_pass_desc = wgpu::RenderPassDescriptor {
+                label: Some("Zoom Render Pass"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &self.views[0],
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::RED),
+                            store: wgpu::StoreOp::Store,
+                        }
+                    })
+                ],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            };
+            let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..6, 0..1);
+        }
+        queue.submit(std::iter::once(encoder.finish()));
     }
 
     pub fn write_tile(&self, queue: &wgpu::Queue, tile: Tile, position: Position) {
