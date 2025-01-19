@@ -2,6 +2,7 @@ mod texture;
 mod camera;
 mod tilerender_texture;
 mod shader;
+mod tile_sprites;
 
 use std::collections::{HashSet};
 use std::default::Default;
@@ -26,7 +27,7 @@ use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
-use crate::tilerender_texture::TilerenderTexture;
+use crate::tilerender_texture::{TileMapTexture};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -141,7 +142,7 @@ struct State<'a> {
     last_frame_time: DateTime<Utc>,
     // tilemap: Tilemap,
     background_texture: Texture,
-    tilerender_texture: TilerenderTexture,
+    tile_map_texture: TileMapTexture,
     world: World,
     next_event: usize,
 }
@@ -198,16 +199,16 @@ impl<'a> State<'a> {
 
         let background_texture = Texture::from_bytes(&device, &queue, include_bytes!("backgrounddark.png"), "background").unwrap();
         let camera = Camera::new(&device, &size);
-        let tilerender_texture = TilerenderTexture::new(&device);
+
+        let tile_map_texture = TileMapTexture::new(&device, &queue, &camera);
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &background_texture.bind_group_layout(),
                     &camera.bind_group_layout(),
-                    &tilerender_texture.bind_group_layout(),
+                    &tile_map_texture.bind_group_layout(),
                 ],
                 push_constant_ranges: &[],
             });
@@ -260,12 +261,12 @@ impl<'a> State<'a> {
             render_pipeline,
             background_texture,
             camera,
-            tilerender_texture,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
             last_frame_time: Utc::now(),
             world: World::new(),
             next_event: 0,
+            tile_map_texture,
         }
     }
 
@@ -336,8 +337,6 @@ impl<'a> State<'a> {
             self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
         
-        self.tilerender_texture.update_view_from_camera(&self.queue, &self.camera, &self.world);
-
         let clicked = self.mouse.clicked();
         let released = self.mouse.released();
 
@@ -360,20 +359,20 @@ impl<'a> State<'a> {
             match event {
                 Event::Clicked { updated, .. }
                 | Event::DoubleClicked { updated, .. }=> {
-                    self.tilerender_texture.write_updated_rect(&self.queue, updated);
+                    self.tile_map_texture.write_updated_rect(&self.queue, updated);
                 }
                 Event::Flag { at, .. } => {
-                    self.tilerender_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
+                    self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
                 }
                 Event::Unflag { at, .. } => {
-                    self.tilerender_texture.write_tile(&self.queue, Tile::empty(), at.clone());
+                    self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
                 }
             }
         }
 
-        // self.tilerender_texture.render_zoom_texture(&self.device, &self.queue);
-
         self.camera.write_to_queue(&self.queue, 0);
+        self.tile_map_texture.render(&self.camera, &self.device, &self.queue);
+
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -396,9 +395,8 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, self.background_texture.bind_group(), &[]);
-            render_pass.set_bind_group(1, self.camera.bind_group(), &[]);
-            render_pass.set_bind_group(2, self.tilerender_texture.bind_group(), &[]);
+            render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
+            render_pass.set_bind_group(1, self.tile_map_texture.bind_group(), &[]);
             render_pass.draw(0..6, 0..1);
 
             cfg_if::cfg_if! {

@@ -7,9 +7,9 @@ pub struct Texture {
     #[allow(unused)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
-    bind_group: wgpu::BindGroup,
-    bind_group_layout: wgpu::BindGroupLayout,
+    pub sampler: Option<wgpu::Sampler>,
+    pub(crate) bind_group: wgpu::BindGroup,
+    pub(crate) bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl HasBindGroup for Texture {
@@ -87,21 +87,10 @@ impl Texture {
 
         Self::from_wgpu_texture(texture, device)
     }
-    
-    pub fn from_wgpu_texture(texture: wgpu::Texture, device: &wgpu::Device) -> Result<Self> {
+
+    pub fn from_wgpu_texture_and_sampler(texture: wgpu::Texture, sampler: wgpu::Sampler, device: &wgpu::Device) -> Result<Self> {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(
-            &wgpu::SamplerDescriptor {
-                address_mode_u: wgpu::AddressMode::Repeat,
-                address_mode_v: wgpu::AddressMode::Repeat,
-                address_mode_w: wgpu::AddressMode::Repeat,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Linear,
-                mipmap_filter: wgpu::FilterMode::Linear,
-                ..Default::default()
-            }
-        );
-        
+
         let bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -142,6 +131,21 @@ impl Texture {
             }
         );
 
-        Ok(Self { texture, view, sampler, bind_group, bind_group_layout })
+        Ok(Self { texture, view, sampler: Some(sampler), bind_group, bind_group_layout })
+    }
+    
+    pub fn from_wgpu_texture(texture: wgpu::Texture, device: &wgpu::Device) -> Result<Self> {
+        let sampler = device.create_sampler(
+            &wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::Repeat,
+                address_mode_w: wgpu::AddressMode::Repeat,
+                mag_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }
+        );
+        Self::from_wgpu_texture_and_sampler(texture, sampler, device)
     }
 }

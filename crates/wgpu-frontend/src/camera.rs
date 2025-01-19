@@ -1,9 +1,10 @@
+use crate::shader::HasBindGroup;
+use crate::tilerender_texture::{TileMapTexture};
+use crate::{as_world_position, MouseState};
 use cgmath::{Vector2, Vector4, Zero};
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::Position;
-use crate::{as_world_position, MouseState};
-use crate::shader::HasBindGroup;
+use world::{Position, Rect};
 
 pub struct Camera {
     pub center: Vector2<f32>,
@@ -77,7 +78,20 @@ impl Camera {
     pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
         self.uniform.world_rect = self.rect().into();
         self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
-        self.uniform.zoom_render_blend = self.zoom_blend();
+        let scale = (16.0/self.tile_size()).log2().floor() as i32;
+        let tile_map_size = if scale > 0 {
+            16 >> scale
+        } else {
+            16
+        } as f32;
+        self.uniform.tile_map_size = [tile_map_size, tile_map_size, 0.0, 0.0];
+        let tiles_in_texture = (TileMapTexture::SIZE/tile_map_size as usize) as i32;
+        let tile_map_area = Rect::from_center_and_size(Position(
+            (self.world_center().0 >> (4))<<(4),
+            (self.world_center().1 >> (4))<<(4),
+        ), tiles_in_texture, tiles_in_texture);
+        println!("{:?}", tile_map_area);
+        self.uniform.tile_map_rect = [tile_map_area.left as f32, tile_map_area.top as f32, tile_map_area.right as f32, tile_map_area.bottom as f32];
         queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[self.uniform]));
     }
 
@@ -183,9 +197,10 @@ impl HasBindGroup for Camera {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, Default)]
 struct CameraUniform {
-    zoom_render_blend: [f32; 8],
     world_rect: [f32; 4],
     tile_size: [f32; 4],
+    tile_map_rect: [f32; 4],
+    tile_map_size: [f32; 4],
 }
 
 fn position_to_vector(position: PhysicalPosition<f64>) -> Vector2<f32> {
