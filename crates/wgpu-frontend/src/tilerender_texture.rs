@@ -2,7 +2,7 @@ use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 use crate::tile_sprites::TileSprites;
-use wgpu::{BindGroup, BindGroupLayout};
+use wgpu::{BindGroup, BindGroupLayout, ShaderSource};
 use world::{Chunk, Position, Tile, UpdatedRect};
 
 pub struct TileMapTexture {
@@ -89,13 +89,21 @@ impl TileMapTexture {
 
         let sprites = TileSprites::new().create_texture(device, queue);
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("zoom_render.wgsl"));
+        let common_shader = include_str!("common.wgsl");
+        let mut wgsl_source = String::from(common_shader);
+        wgsl_source.push_str(include_str!("zoom_render.wgsl"));
+        let shader = device.create_shader_module(
+            wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: ShaderSource::Wgsl(wgsl_source.into()),
+            }
+        );
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Zoom Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    sprites.bind_group_layout(),
                     camera.bind_group_layout(),
+                    sprites.bind_group_layout(),
                     tiles.bind_group_layout(),
                 ],
                 push_constant_ranges: &[],
@@ -171,8 +179,8 @@ impl TileMapTexture {
             let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, self.sprites.bind_group(), &[]);
-            render_pass.set_bind_group(1, camera.bind_group(), &[]);
+            render_pass.set_bind_group(0, camera.bind_group(), &[]);
+            render_pass.set_bind_group(1, self.sprites.bind_group(), &[]);
             render_pass.set_bind_group(2, self.tiles.bind_group(), &[]);
             render_pass.draw(0..6, 0..1);
         }

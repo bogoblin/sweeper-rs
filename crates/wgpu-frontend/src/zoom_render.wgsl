@@ -1,19 +1,10 @@
-@group(0) @binding(0)
+@group(1) @binding(0)
 var tile_sprites: texture_2d<f32>;
-@group(0) @binding(1)
+@group(1) @binding(1)
 var sprite_sampler: sampler;
 
 @group(2) @binding(0)
 var world_tiles: texture_2d<u32>;
-
-struct CameraUniform {
-    @location(0) world_rect: vec4<f32>,
-    @location(1) tile_size: vec4<f32>,
-    @location(2) tile_map_rect: vec4<f32>,
-    @location(3) tile_map_size: vec4<f32>,
-}
-@group(1) @binding(0)
-var<uniform> camera: CameraUniform;
 
 struct VertexOut {
     @builtin(position) position: vec4<f32>,

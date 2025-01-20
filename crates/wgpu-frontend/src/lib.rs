@@ -20,7 +20,7 @@ use winit::window::{Window, WindowBuilder};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use wgpu::{CompositeAlphaMode, PresentMode};
+use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Chunk, ChunkPosition, Position, Tile, World};
 use world::events::Event;
@@ -202,7 +202,15 @@ impl<'a> State<'a> {
 
         let tile_map_texture = TileMapTexture::new(&device, &queue, &camera);
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("tile.wgsl"));
+        let common_shader = include_str!("common.wgsl");
+        let mut wgsl_source = String::from(common_shader);
+        wgsl_source.push_str(include_str!("tile.wgsl"));
+        let shader = device.create_shader_module(
+            wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: ShaderSource::Wgsl(wgsl_source.into()),
+            }
+        );
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
