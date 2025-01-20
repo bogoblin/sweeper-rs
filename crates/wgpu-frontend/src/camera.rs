@@ -79,18 +79,18 @@ impl Camera {
         self.uniform.world_rect = self.rect().into();
         self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
         let scale = (16.0/self.tile_size()).log2().floor() as i32;
-        let tile_map_size = if scale > 0 {
+        let mut tile_map_size = if scale > 0 {
             16 >> scale
         } else {
             16
         } as f32;
+        if tile_map_size < 1.0 { tile_map_size = 1.0; }
         self.uniform.tile_map_size = [tile_map_size, tile_map_size, 0.0, 0.0];
         let tiles_in_texture = (TileMapTexture::SIZE/tile_map_size as usize) as i32;
         let tile_map_area = Rect::from_center_and_size(Position(
             (self.world_center().0 >> (4))<<(4),
             (self.world_center().1 >> (4))<<(4),
         ), tiles_in_texture, tiles_in_texture);
-        println!("{:?}", tile_map_area);
         self.uniform.tile_map_rect = [tile_map_area.left as f32, tile_map_area.top as f32, tile_map_area.right as f32, tile_map_area.bottom as f32];
         queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[self.uniform]));
     }
