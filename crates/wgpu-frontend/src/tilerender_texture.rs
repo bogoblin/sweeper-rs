@@ -3,13 +3,15 @@ use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 use crate::tile_sprites::TileSprites;
 use wgpu::{BindGroup, BindGroupLayout, ShaderSource};
-use world::{Chunk, Position, Tile, UpdatedRect};
+use world::{Chunk, Position, Rect, Tile, UpdatedRect};
 
 pub struct TileMapTexture {
     tiles: Texture,
     output: Texture,
     sprites: Texture,
-    render_pipeline: wgpu::RenderPipeline
+    render_pipeline: wgpu::RenderPipeline,
+    // TODO: Update this Rect and load and unload chunks when it updates
+    tile_map_area: Rect,
 }
 
 impl TileMapTexture {
@@ -152,6 +154,7 @@ impl TileMapTexture {
             output,
             sprites,
             render_pipeline,
+            tile_map_area: Rect::from_center_and_size(Position::origin(), Self::SIZE as i32, Self::SIZE as i32),
         }
     }
 
@@ -198,15 +201,39 @@ impl TileMapTexture {
     }
 
     pub fn write_chunk(&self, queue: &wgpu::Queue, chunk: &Chunk) {
-        // This works for scales 0-4 (16x)
-        // For higher scales, we need to copy and scale the renders somehow
-        for position in chunk.position.position_iter() {
-            self.write_tile(queue, chunk.get_tile(position), position);
-        }
+        if !self.tile_map_area.contains(chunk.position.position()) { return; }
+        
+        let Position(x, y) = chunk.position.position();
+        let x = x as usize % Self::SIZE;
+        let y = y as usize % Self::SIZE;
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.tiles.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: x as u32,
+                    y: y as u32,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &chunk.tiles.bytes(),
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(16),
+                rows_per_image: Some(16),
+            },
+            wgpu::Extent3d {
+                width: 16,
+                height: 16,
+                depth_or_array_layers: 1,
+            }
+        );
     }
 
     pub fn write_tile(&self, queue: &wgpu::Queue, tile: Tile, position: Position) {
-        // TODO: bounds checking
+        if !self.tile_map_area.contains(position) { return; }
+        
         let Position(x, y) = position;
         let x = x as usize % Self::SIZE;
         let y = y as usize % Self::SIZE;

@@ -10,6 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
 use crate::compression::PublicTile;
 use crate::events::Event;
+use bytes_cast::{BytesCast};
 
 pub mod server_messages;
 pub mod events;
@@ -308,6 +309,7 @@ impl Sub<(i32, i32)> for &Position {
 }
 
 #[repr(C)]
+#[derive(BytesCast)]
 #[derive(Default, Eq, PartialEq, Clone, Copy)]
 #[derive(Serialize, Deserialize, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Tile (pub u8);
@@ -359,6 +361,10 @@ pub struct ChunkTiles(pub [Tile; 256]);
 impl ChunkTiles {
     pub fn from(bytes: [u8; 256]) -> Self {
         Self(bytes.map(|b| Tile(b)))
+    }
+    
+    pub fn bytes(&self) -> &[u8] {
+        self.0.as_bytes()
     }
 }
 

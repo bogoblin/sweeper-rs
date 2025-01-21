@@ -12,6 +12,7 @@ huffman_derive = {path = "../huffman_derive"}
 huffman = {path = "../huffman"}
 derive_more = { version = "1.0.0", features = ["full"] }
 bytemuck = { version = "1.20.0", features = ["derive"] }
+bytes-cast = "0.3.0"
 
 [dependencies.getrandom]
 version = "0.2.15"
