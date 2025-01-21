@@ -16,18 +16,18 @@ use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, Window
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Tile};
 use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
-use crate::sweeper_socket::{LocalWorld, SweeperSocket};
+use crate::sweeper_socket::{SweeperSocket};
 use crate::texture::Texture;
 use crate::tilerender_texture::{TileMapTexture};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -258,6 +258,17 @@ impl<'a> State<'a> {
             multiview: None,
             cache: None,
         });
+        
+        let world;
+        cfg_if::cfg_if! {
+        if #[cfg(target_arch = "wasm32")] {
+            use crate::sweeper_socket::IoWorld;
+            world = Box::new(IoWorld::new("/"))
+        } else {
+            use crate::sweeper_socket::LocalWorld;
+            world = Box::new(LocalWorld::new())
+        }
+    }
 
         Self {
             window,
@@ -273,7 +284,7 @@ impl<'a> State<'a> {
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
             last_frame_time: Utc::now(),
-            world: Box::new(LocalWorld::new()),
+            world,
             tile_map_texture,
         }
     }
@@ -345,6 +356,8 @@ impl<'a> State<'a> {
             self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
         
+        self.world.update();
+        
         let clicked = self.mouse.clicked();
         let released = self.mouse.released();
 
@@ -361,18 +374,29 @@ impl<'a> State<'a> {
             self.world.flag(position);
         }
 
-        if let Some(event) = self.world.next_event() { // TODO: multiple events per frame
-            match event {
-                Event::Clicked { updated, .. }
-                | Event::DoubleClicked { updated, .. }=> {
-                    self.tile_map_texture.write_updated_rect(&self.queue, updated);
+        loop {
+            if let Some(chunk) = self.world.next_chunk() {
+                self.tile_map_texture.write_chunk(&self.queue, chunk);
+            } else {
+                break
+            }
+        }
+        loop {
+            if let Some(event) = self.world.next_message() { // TODO: multiple events per frame
+                match event {
+                    Event::Clicked { updated, .. }
+                    | Event::DoubleClicked { updated, .. } => {
+                        self.tile_map_texture.write_updated_rect(&self.queue, updated);
+                    }
+                    Event::Flag { at, .. } => {
+                        self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
+                    }
+                    Event::Unflag { at, .. } => {
+                        self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
+                    }
                 }
-                Event::Flag { at, .. } => {
-                    self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
-                }
-                Event::Unflag { at, .. } => {
-                    self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
-                }
+            } else {
+                break
             }
         }
 

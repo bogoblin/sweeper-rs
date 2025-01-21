@@ -32,6 +32,9 @@ pub enum ServerMessageError {
 
 impl ServerMessage {
     pub fn from_compressed(compressed: Vec<u8>) -> Result<ServerMessage, ServerMessageError> {
+        if compressed.len() == 0 {
+            return Err(ServerMessageError::BadEvent)
+        }
         let header = String::from_utf8_lossy(&compressed[0..=0]);
         if header == "h" {
             match Chunk::from_compressed(compressed) {

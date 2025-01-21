@@ -20,6 +20,13 @@
   }
 </style>
 <body id="wasm-example">
+<script type="importmap">
+  {
+    "imports": {
+      "socket.io.esm.min.js": "https://cdn.socket.io/4.8.1/socket.io.esm.min.js"
+    }
+  }
+</script>
 <script type="module">
   import init from "./pkg/wgpu_frontend.js";
   init().then(() => {

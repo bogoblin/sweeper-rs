@@ -50,6 +50,25 @@ impl World {
         }
         None
     }
+    
+    pub fn insert_chunk(&mut self, chunk: Chunk) -> usize {
+        let new_id = self.chunk_ids.len();
+        let existing = self.chunk_ids.entry(chunk.position);
+        let position = chunk.position;
+        match existing {
+            Entry::Occupied(entry) => {
+                let chunk_id = *entry.get();
+                self.chunks[chunk_id] = chunk;
+                chunk_id
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(new_id);
+                self.positions.push(position);
+                self.chunks.push(chunk);
+                new_id
+            }
+        }
+    }
 
     pub fn generate_chunk(&mut self, position: Position) -> usize {
         let new_id = self.chunk_ids.len();

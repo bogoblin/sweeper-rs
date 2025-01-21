@@ -98,7 +98,7 @@ async fn main() {
     });
 
     let router: Router<> = Router::new()
-        .fallback_service(ServeDir::new("static"))
+        .fallback_service(ServeDir::new("crates/wgpu-frontend"))
         .layer(socket_layer);
     let port = cli.port.unwrap_or(80);
     println!("Hosting on port {port}");
