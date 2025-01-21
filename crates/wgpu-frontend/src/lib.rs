@@ -22,7 +22,7 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Chunk, ChunkPosition, Position, Tile, World};
+use world::{ChunkPosition, Position, Tile, World};
 use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
@@ -40,7 +40,9 @@ pub async fn run() {
         }
     }
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_inner_size(PhysicalSize::new(1280, 720))
+        .build(&event_loop).unwrap();
 
     #[cfg(target_arch = "wasm32")]
     {
