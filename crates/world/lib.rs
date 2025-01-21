@@ -661,4 +661,13 @@ impl Rect {
         
         chunks
     }
+    
+    pub fn chunks_containing(&self) -> Vec<ChunkPosition> {
+        let mut new_rect = self.clone();
+        new_rect.left -= 15;
+        new_rect.top -= 15;
+        new_rect.right += 15;
+        new_rect.bottom += 15;
+        new_rect.chunks_contained()
+    }
 }

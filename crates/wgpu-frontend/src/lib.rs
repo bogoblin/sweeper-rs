@@ -3,15 +3,14 @@ mod camera;
 mod tilerender_texture;
 mod shader;
 mod tile_sprites;
+mod sweeper_socket;
 
 use std::collections::{HashSet};
 use std::default::Default;
 use std::thread::sleep;
-use cfg_if::cfg_if;
 use cgmath::Vector2;
 use chrono::prelude::*;
 use chrono::TimeDelta;
-use log::info;
 use rand::{thread_rng, RngCore};
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -22,10 +21,11 @@ use winit::window::{Window, WindowBuilder};
 use wasm_bindgen::prelude::*;
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{ChunkPosition, Position, Tile, World};
+use world::{Position, Tile};
 use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
+use crate::sweeper_socket::{LocalWorld, SweeperSocket};
 use crate::texture::Texture;
 use crate::tilerender_texture::{TileMapTexture};
 
@@ -145,8 +145,7 @@ struct State<'a> {
     // tilemap: Tilemap,
     background_texture: Texture,
     tile_map_texture: TileMapTexture,
-    world: World,
-    next_event: usize,
+    world: Box<dyn SweeperSocket>,
 }
 
 impl<'a> State<'a> {
@@ -274,8 +273,7 @@ impl<'a> State<'a> {
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
             last_frame_time: Utc::now(),
-            world: World::new(),
-            next_event: 0,
+            world: Box::new(LocalWorld::new()),
             tile_map_texture,
         }
     }
@@ -354,18 +352,16 @@ impl<'a> State<'a> {
         let position = as_world_position(position_at_mouse);
         if released.contains(&MouseButton::Left) {
             if self.mouse.button_is_down(MouseButton::Right) {
-                self.world.double_click(position, "bobby");
+                self.world.double_click(position);
             } else {
-                self.world.click(position, "bobby");
+                self.world.click(position);
             }
         }
         if clicked.contains(&MouseButton::Right) {
-            self.world.flag(position, "bobby");
+            self.world.flag(position);
         }
 
-        let new_events = &self.world.events[self.next_event..];
-        self.next_event = self.world.events.len();
-        for event in new_events {
+        if let Some(event) = self.world.next_event() { // TODO: multiple events per frame
             match event {
                 Event::Clicked { updated, .. }
                 | Event::DoubleClicked { updated, .. }=> {
