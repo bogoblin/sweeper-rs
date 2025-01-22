@@ -65,15 +65,17 @@ async fn main() {
                 DoubleClick(position) => {
                     world.double_click(position, player_id);
                 }
-                Connected => {
+                Connected => {},
+                QueryChunks(rect) => {
                     let mut chunks_to_send = vec![];
-                    for chunk in &world.chunks {
+                    let query = world.query_chunks(&rect);
+                    for chunk in query {
                         if chunk.should_send() {
                             chunks_to_send.push(chunk.compress());
                         }
                     }
                     match &socket_ref.bin(chunks_to_send)
-                        .emit("hello", "hello") {
+                        .emit("e", vec![""]) {
                         Ok(_) => {}
                         Err(_) => {
                             socket_ref.disconnect().ok();

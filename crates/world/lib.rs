@@ -11,11 +11,13 @@ use serde::de::{Error, Visitor};
 use crate::compression::PublicTile;
 use crate::events::Event;
 use bytes_cast::BytesCast;
+use crate::chunk_store::ChunkStore;
 
 pub mod server_messages;
 pub mod events;
 pub mod compression;
 pub mod client_messages;
+pub mod chunk_store;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {
@@ -26,6 +28,8 @@ pub struct World {
 
     #[serde(skip)]
     pub events: Vec<Event>,
+    #[serde(skip)]
+    pub chunk_store: ChunkStore,
 }
 
 
@@ -37,6 +41,7 @@ impl World {
             chunks: vec![],
             seed: 0,
             events: vec![],
+            chunk_store: ChunkStore::new(),
         };
         world.generate_chunk(Position(0, 0));
         world
@@ -53,6 +58,17 @@ impl World {
         None
     }
     
+    pub fn query_chunks(&self, rect: &Rect) -> Vec<&Chunk> {
+        let query = self.chunk_store.get_chunks(rect);
+        if let Ok(query) = query {
+            query.into_iter()
+                .map(|chunk_id| &self.chunks[chunk_id])
+                .collect()
+        } else {
+            vec![]
+        }
+    }
+    
     pub fn insert_chunk(&mut self, chunk: Chunk) -> usize {
         let new_id = self.chunk_ids.len();
         let existing = self.chunk_ids.entry(chunk.position);
@@ -67,6 +83,7 @@ impl World {
                 entry.insert(new_id);
                 self.positions.push(position);
                 self.chunks.push(chunk);
+                self.chunk_store.insert(position, new_id);
                 new_id
             }
         }
@@ -83,6 +100,7 @@ impl World {
                 entry.insert(new_id);
                 self.positions.push(position);
                 self.chunks.push(new_chunk);
+                self.chunk_store.insert(position, new_id);
                 new_id
             }
         }
@@ -612,6 +630,7 @@ impl Iterator for ChunkPositionIter {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 #[derive(bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Deserialize, Serialize)]
 pub struct Rect {
     pub left: i32,
     pub top: i32,

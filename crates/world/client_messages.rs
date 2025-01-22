@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::Position;
+use crate::{Position, Rect};
 
 #[derive(Debug)]
 #[derive(Serialize, Deserialize)]
@@ -9,6 +9,7 @@ pub enum ClientMessage {
     Click(Position),
     Flag(Position),
     DoubleClick(Position),
+    QueryChunks(Rect)
 }
 
 impl ClientMessage {

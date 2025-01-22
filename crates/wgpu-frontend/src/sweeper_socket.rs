@@ -143,7 +143,8 @@ impl SweeperSocket for IoWorld {
 
     fn get_chunks(&self, rect: Rect) -> Vec<&Chunk> {
         // We should query the server for chunks
-        vec![] // TODO: proper implementation when we need it
+        self.send_message(ClientMessage::QueryChunks(rect));
+        self.world.query_chunks(&rect)
     }
 }
 

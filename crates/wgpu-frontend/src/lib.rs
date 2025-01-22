@@ -360,6 +360,7 @@ impl<'a> State<'a> {
         self.world.update();
         let rects = self.tile_map_texture.update_draw_area(&self.camera);
         for rect in rects {
+            if rect.area() == 0 { continue }
             self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect.clone());
             let chunks = self.world.get_chunks(rect);
             for chunk in chunks {
