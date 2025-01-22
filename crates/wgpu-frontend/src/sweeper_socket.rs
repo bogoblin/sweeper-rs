@@ -1,8 +1,7 @@
 use world::client_messages::ClientMessage;
-use log::info;
-use world::{Chunk, Position, Rect, World};
 use world::events::Event;
 use world::server_messages::ServerMessage;
+use world::{Chunk, Rect, World};
 
 pub trait SweeperSocket {
     fn send(&mut self, message: ClientMessage);
@@ -13,27 +12,19 @@ pub trait SweeperSocket {
 
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
-#[cfg(target_arch = "wasm32")]
-use serde_json::json;
-#[cfg(target_arch = "wasm32")]
-use socketio_local::{SocketIo};
-#[cfg(target_arch = "wasm32")]
 use socketio_local::io;
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::closure::Closure;
+use socketio_local::SocketIo;
 #[cfg(target_arch = "wasm32")]
 use std::collections::VecDeque;
-#[cfg(target_arch = "wasm32")]
-use std::sync::{Arc, Mutex};
 #[cfg(target_arch = "wasm32")]
 use std::sync::mpsc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::mpsc::Receiver;
 #[cfg(target_arch = "wasm32")]
-use web_sys::js_sys::{Object, Array, ArrayBuffer, DataView, Uint8Array};
+use wasm_bindgen::closure::Closure;
 #[cfg(target_arch = "wasm32")]
-use once_cell::unsync::Lazy;
+use web_sys::js_sys::{Array, Object, Uint8Array};
 
 #[cfg(target_arch = "wasm32")]
 pub struct IoWorld {
