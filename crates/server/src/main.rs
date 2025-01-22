@@ -1,8 +1,13 @@
 mod backup;
 
 use axum::body::Bytes;
-use axum::Router;
+use axum::extract::Path;
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use axum::{body, Router};
 use clap::Parser;
+use include_dir::{include_dir, Dir};
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
 use socketioxide::SocketIo;
@@ -10,9 +15,9 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
-use tower_http::services::ServeDir;
-
+use tower_http::services::ServeFile;
 use crate::backup::Backup;
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
@@ -97,15 +102,44 @@ async fn main() {
     });
 
     let router: Router<> = Router::new()
-        .fallback_service(ServeDir::new("crates/wgpu-frontend"))
-        .layer(socket_layer);
+        .layer(socket_layer)
+        .route("/", get(root))
+        .route("/static/*path", get(static_path))
+        ;
     let port = cli.port.unwrap_or(80);
     println!("Hosting on port {port}");
     let addr = SocketAddr::from(([0,0,0,0], port));
     let tcp = TcpListener::bind(&addr).await.unwrap();
 
     axum::serve(tcp, router).await.unwrap();
+}
 
+static STATIC_DIR: Dir<'_> = include_dir!("crates/server/static");
+// Thanks to https://matze.github.io/axum-notes/notes/misc/serve_static_from_binary/index.html
+async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
+    let path = path.trim_start_matches('/');
+    println!("{path}");
+    let mime_type = mime_guess::from_path(path).first_or(TEXT_HTML);
+    println!("{path}: {mime_type}");
+
+    match STATIC_DIR.get_file(path) {
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(body::Body::empty())
+            .unwrap(),
+        Some(file) => Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                header::CONTENT_TYPE,
+                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
+            )
+            .body(body::Body::from(file.contents()))
+            .unwrap(),
+    } 
+}
+
+async fn root() -> impl IntoResponse {
+    static_path(Path("index.html".to_string())).await
 }
 
 fn send_recent_events(world: &mut World, socket_ref: &SocketRef) {
