@@ -16,7 +16,7 @@ extern "C" {
     pub fn io(this: &SocketIo) -> Io;
     
     #[wasm_bindgen(method)]
-    pub fn emit(this: &SocketIo, event: &str, data: Vec<JsValue>);
+    pub fn emit(this: &SocketIo, event: &str, data: JsValue);
     
     #[wasm_bindgen(method, getter)]
     pub fn engine(this: &Io) -> Engine;

@@ -374,7 +374,7 @@ impl<'a> State<'a> {
         let position = as_world_position(position_at_mouse);
         if released.contains(&MouseButton::Left) {
             let drag_length = self.camera.end_drag(&self.mouse.position);
-            if drag_length < 1.0 {
+            if drag_length < 4.0 {
                 if self.mouse.button_is_down(MouseButton::Right) {
                     self.world.double_click(position);
                 } else {

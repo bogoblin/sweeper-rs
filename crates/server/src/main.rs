@@ -1,4 +1,3 @@
-mod client_messages;
 mod backup;
 
 use axum::body::Bytes;
@@ -15,8 +14,8 @@ use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
 use crate::backup::Backup;
-use crate::client_messages::ClientMessage;
-use crate::client_messages::ClientMessage::*;
+use world::client_messages::ClientMessage;
+use world::client_messages::ClientMessage::*;
 use world::World;
 
 #[derive(Parser)]

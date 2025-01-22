@@ -3,18 +3,19 @@ use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Add, AddAssign, Sub};
-use rand::{SeedableRng};
+use rand::SeedableRng;
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
 use crate::compression::PublicTile;
 use crate::events::Event;
-use bytes_cast::{BytesCast};
+use bytes_cast::BytesCast;
 
 pub mod server_messages;
 pub mod events;
 pub mod compression;
+pub mod client_messages;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {

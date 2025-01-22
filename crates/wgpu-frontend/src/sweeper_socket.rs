@@ -36,6 +36,8 @@ use std::sync::mpsc::Receiver;
 use web_sys::js_sys::{Object, Array, ArrayBuffer, DataView, Uint8Array};
 #[cfg(target_arch = "wasm32")]
 use once_cell::unsync::Lazy;
+#[cfg(target_arch = "wasm32")]
+use world::client_messages::ClientMessage;
 
 #[cfg(target_arch = "wasm32")]
 pub struct IoWorld {
@@ -69,9 +71,11 @@ impl IoWorld {
         result.socket.io().engine().on("packet", &result.on_packet);
         result
     }
-    fn position_message(&self, event_type: &str, position: Position) {
-        self.socket.emit("message", vec![event_type.into(), position.0.into(), position.1.into()]);
+    
+    fn send_message(&self, message: ClientMessage) {
+        self.socket.emit("message", serde_wasm_bindgen::to_value(&message).unwrap());
     }
+    
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -107,15 +111,15 @@ impl SweeperSocket for IoWorld {
     }
 
     fn click(&mut self, position: Position) {
-        self.position_message("click", position);
+        self.send_message(ClientMessage::Click(position))
     }
 
     fn double_click(&mut self, position: Position) {
-        self.position_message("doubleClick", position);
+        self.send_message(ClientMessage::DoubleClick(position))
     }
 
     fn flag(&mut self, position: Position) {
-        self.position_message("flag", position);
+        self.send_message(ClientMessage::Flag(position))
     }
 
     fn next_message(&mut self) -> Option<&Event> {
