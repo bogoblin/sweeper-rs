@@ -1,2 +1,2 @@
-wasm-pack build "$(dirname "$0")/crates/wgpu-frontend" --out-dir "$(dirname "$0")/crates/server/static" --release --target=web
-cargo build "$(dirname "$0")/crates/server" --release
+wasm-pack build "crates/wgpu-frontend" --out-dir "../../crates/server/static" --release --target=web --no-typescript --no-pack
+cargo build --bin sweeper-server

@@ -17,7 +17,7 @@ use std::sync::mpsc;
 use std::thread;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
-use tower_http::services::ServeFile;
+use log::debug;
 use crate::backup::Backup;
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
@@ -92,7 +92,7 @@ async fn main() {
             
             match backup.save(&world) {
                 Ok(bytes_written) => {
-                    println!("{} bytes written to {}", bytes_written, backup.location().to_string_lossy());
+                    debug!("{} bytes written to {}", bytes_written, backup.location().to_string_lossy());
                 }
                 Err(err) => {
                     eprintln!("Error while writing worldfile: {err}")
