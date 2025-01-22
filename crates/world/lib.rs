@@ -1,5 +1,5 @@
 use std::cmp::{max, min, PartialEq};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Add, AddAssign, Sub};
@@ -27,7 +27,7 @@ pub struct World {
     pub seed: u64,
 
     #[serde(skip)]
-    pub events: Vec<Event>,
+    pub events: VecDeque<Event>,
     #[serde(skip)]
     pub chunk_store: ChunkStore,
 }
@@ -40,7 +40,7 @@ impl World {
             positions: vec![],
             chunks: vec![],
             seed: 0,
-            events: vec![],
+            events: vec![].into(),
             chunk_store: ChunkStore::new(),
         };
         world.generate_chunk(Position(0, 0));
@@ -136,7 +136,7 @@ impl World {
 
     pub fn click(&mut self, at: Position, by_player_id: &str) {
         let updated = self.reveal(vec![at]);
-        self.events.push(Event::Clicked {
+        self.events.push_back(Event::Clicked {
             player_id: by_player_id.to_string(),
             at,
             updated
@@ -208,7 +208,7 @@ impl World {
         }
         if surrounding_flags == tile.adjacent() {
             let updated = self.reveal(to_reveal);
-            self.events.push(Event::DoubleClicked {
+            self.events.push_back(Event::DoubleClicked {
                 player_id: by_player_id.to_string(),
                 at: position,
                 updated
@@ -225,14 +225,14 @@ impl World {
                     if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
-                        self.events.push(Event::Unflag {
+                        self.events.push_back(Event::Unflag {
                             player_id: by_player_id.to_string(),
                             at: position
                         });
                     } else {
                         // Flag
                         *tile = tile.with_flag();
-                        self.events.push(Event::Flag {
+                        self.events.push_back(Event::Flag {
                             player_id: by_player_id.to_string(),
                             at: position
                         });

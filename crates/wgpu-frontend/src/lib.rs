@@ -28,6 +28,8 @@ use crate::tilerender_texture::{TileMapTexture};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use world::client_messages::ClientMessage;
+use world::server_messages::ServerMessage;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -357,7 +359,6 @@ impl<'a> State<'a> {
         self.camera.write_to_queue(&self.queue, 0);
         
         // Load in any new chunks
-        self.world.update();
         let rects = self.tile_map_texture.update_draw_area(&self.camera);
         for rect in rects {
             if rect.area() == 0 { continue }
@@ -377,39 +378,36 @@ impl<'a> State<'a> {
             let drag_length = self.camera.end_drag(&self.mouse.position);
             if drag_length < 4.0 {
                 if self.mouse.button_is_down(MouseButton::Right) {
-                    self.world.double_click(position);
+                    self.world.send(ClientMessage::DoubleClick(position));
                 } else {
-                    self.world.click(position);
+                    self.world.send(ClientMessage::Click(position));
                 }
             }
         }
         if clicked.contains(&MouseButton::Right) {
-            self.world.flag(position);
+            self.world.send(ClientMessage::Flag(position));
         }
 
-        loop {
-            if let Some(chunk) = self.world.next_chunk() {
-                self.tile_map_texture.write_chunk(&self.queue, chunk);
-            } else {
-                break
-            }
-        }
-        loop {
-            if let Some(event) = self.world.next_message() {
-                match event {
-                    Event::Clicked { updated, .. }
-                    | Event::DoubleClicked { updated, .. } => {
-                        self.tile_map_texture.write_updated_rect(&self.queue, updated);
-                    }
-                    Event::Flag { at, .. } => {
-                        self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
-                    }
-                    Event::Unflag { at, .. } => {
-                        self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
+        while let Some(message) = self.world.next_message() {
+            match message {
+                ServerMessage::Event(event) => {
+                    match event {
+                        Event::Clicked { updated, .. }
+                        | Event::DoubleClicked { updated, .. } => {
+                            self.tile_map_texture.write_updated_rect(&self.queue, &updated);
+                        }
+                        Event::Flag { at, .. } => {
+                            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
+                        }
+                        Event::Unflag { at, .. } => {
+                            self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
+                        }
                     }
                 }
-            } else {
-                break
+                ServerMessage::Chunk(chunk) => {
+                    self.tile_map_texture.write_chunk(&self.queue, &chunk);
+                    self.world.world().insert_chunk(chunk);
+                }
             }
         }
 

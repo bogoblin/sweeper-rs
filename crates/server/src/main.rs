@@ -52,7 +52,6 @@ async fn main() {
     });
 
     let _handle = thread::spawn(move || {
-        let mut next_event = 0;
         for (received, socket_ref) in rx {
             let player_id = socket_ref.id.as_str();
             match received {
@@ -84,8 +83,7 @@ async fn main() {
                     }
                 }
             }
-            send_recent_events(&world, &socket_ref, next_event);
-            next_event = world.events.len();
+            send_recent_events(&mut world, &socket_ref);
             
             match backup.save(&world) {
                 Ok(bytes_written) => {
@@ -110,8 +108,8 @@ async fn main() {
 
 }
 
-fn send_recent_events(world: &World, socket_ref: &SocketRef, next_event: usize) {
-    for event in &world.events[next_event..] {
+fn send_recent_events(world: &mut World, socket_ref: &SocketRef) {
+    while let Some(event) = world.events.pop_front() {
         println!("{:?}", event);
         socket_ref
             .bin(vec![Bytes::from(event.compress())])

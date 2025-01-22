@@ -1,16 +1,14 @@
+use world::client_messages::ClientMessage;
 use log::info;
 use world::{Chunk, Position, Rect, World};
 use world::events::Event;
 use world::server_messages::ServerMessage;
 
 pub trait SweeperSocket {
-    fn update(&mut self);
-    fn click(&mut self, position: Position);
-    fn double_click(&mut self, position: Position);
-    fn flag(&mut self, position: Position);
-    fn next_message(&mut self) -> Option<&Event>;
-    fn next_chunk(&mut self) -> Option<&Chunk>;
+    fn send(&mut self, message: ClientMessage);
+    fn next_message(&mut self) -> Option<ServerMessage>;
     fn get_chunks(&self, rect: Rect) -> Vec<&Chunk>;
+    fn world(&mut self) -> &mut World;
 }
 
 
@@ -36,8 +34,6 @@ use std::sync::mpsc::Receiver;
 use web_sys::js_sys::{Object, Array, ArrayBuffer, DataView, Uint8Array};
 #[cfg(target_arch = "wasm32")]
 use once_cell::unsync::Lazy;
-#[cfg(target_arch = "wasm32")]
-use world::client_messages::ClientMessage;
 
 #[cfg(target_arch = "wasm32")]
 pub struct IoWorld {
@@ -45,6 +41,7 @@ pub struct IoWorld {
     socket: SocketIo,
     events: Vec<Event>,
     chunks: VecDeque<Chunk>,
+    messages: VecDeque<ServerMessage>,
     next_event: usize,
     on_packet: Closure<dyn FnMut(Object)>,
     packet_receiver: Receiver<Object>,
@@ -56,7 +53,6 @@ impl IoWorld {
         let socket = io(url);
         let (tx, rx) = mpsc::channel();
         let on_packet = Closure::new(move |data: Object| {
-            info!("{:?}", data);
             tx.send(data).expect("TODO: panic message");
         });
         let mut result = Self {
@@ -64,6 +60,7 @@ impl IoWorld {
             socket,
             events: vec![],
             chunks: VecDeque::new(),
+            messages: VecDeque::new(),
             next_event: 0,
             on_packet,
             packet_receiver: rx,
@@ -75,11 +72,7 @@ impl IoWorld {
     fn send_message(&self, message: ClientMessage) {
         self.socket.emit("message", serde_wasm_bindgen::to_value(&message).unwrap());
     }
-    
-}
 
-#[cfg(target_arch = "wasm32")]
-impl SweeperSocket for IoWorld {
     fn update(&mut self) {
         for packet in self.packet_receiver.try_iter() {
             let entries: Vec<_> = Object::entries(&packet).iter().collect();
@@ -94,51 +87,22 @@ impl SweeperSocket for IoWorld {
                 }
                 let data = Uint8Array::new(&array.get(1));
                 if let Ok(message) = ServerMessage::from_compressed(data.to_vec()) {
-                    match message {
-                        ServerMessage::Event(event) => {
-                            self.events.push(event);
-                        }
-                        ServerMessage::Chunk(chunk) => {
-                            info!("added chunk: {:?}", chunk.position);
-                            self.chunks.push_back(chunk);
-                        }
-                    }
-                } else {
-                    info!("bad message");
+                    self.messages.push_back(message);
                 }
             }
         }
     }
+}
 
-    fn click(&mut self, position: Position) {
-        self.send_message(ClientMessage::Click(position))
+#[cfg(target_arch = "wasm32")]
+impl SweeperSocket for IoWorld {
+    fn send(&mut self, message: ClientMessage) {
+        self.send_message(message)
     }
 
-    fn double_click(&mut self, position: Position) {
-        self.send_message(ClientMessage::DoubleClick(position))
-    }
-
-    fn flag(&mut self, position: Position) {
-        self.send_message(ClientMessage::Flag(position))
-    }
-
-    fn next_message(&mut self) -> Option<&Event> {
-        if let Some(event) = self.events.get(self.next_event) {
-            self.next_event += 1;
-            Some(event)
-        } else {
-            None
-        }
-    }
-
-    fn next_chunk(&mut self) -> Option<&Chunk> {
-        if let Some(chunk) = self.chunks.pop_front() {
-            let chunk_position = chunk.position.position();
-            self.world.insert_chunk(chunk);
-            self.world.get_chunk(chunk_position)
-        } else {
-            None
-        }
+    fn next_message(&mut self) -> Option<ServerMessage> {
+        self.update();
+        self.messages.pop_front()
     }
 
     fn get_chunks(&self, rect: Rect) -> Vec<&Chunk> {
@@ -146,49 +110,41 @@ impl SweeperSocket for IoWorld {
         self.send_message(ClientMessage::QueryChunks(rect));
         self.world.query_chunks(&rect)
     }
+
+    fn world(&mut self) -> &mut World {
+        &mut self.world
+    }
 }
 
 pub struct LocalWorld {
     world: World,
-    next_event: usize,
 }
 
 impl LocalWorld {
     pub fn new() -> Self {
         Self {
             world: World::new(),
-            next_event: 0,
         }
     }
 }
 
 impl SweeperSocket for LocalWorld {
-    fn update(&mut self) {
-    }
-
-    fn click(&mut self, position: Position) {
-        self.world.click(position, "")
-    }
-
-    fn double_click(&mut self, position: Position) {
-        self.world.double_click(position, "")
-    }
-
-    fn flag(&mut self, position: Position) {
-        self.world.flag(position, "")
-    }
-
-    fn next_message(&mut self) -> Option<&Event> {
-        if let Some(event) = self.world.events.get(self.next_event) {
-            self.next_event += 1;
-            Some(event)
-        } else {
-            None
+    fn send(&mut self, message: ClientMessage) {
+        match message {
+            ClientMessage::Connected => {}
+            ClientMessage::Click(position) => { self.world.click(position, "") }
+            ClientMessage::Flag(position) => { self.world.flag(position, "") }
+            ClientMessage::DoubleClick(position) => { self.world.double_click(position, "") }
+            ClientMessage::QueryChunks(_) => {}
         }
     }
 
-    fn next_chunk(&mut self) -> Option<&Chunk> {
-        None
+    fn next_message(&mut self) -> Option<ServerMessage> {
+        if let Some(event) = self.world.events.pop_front() {
+            Some(ServerMessage::Event(event))
+        } else {
+            None
+        }
     }
 
     fn get_chunks(&self, rect: Rect) -> Vec<&Chunk> {
@@ -197,5 +153,9 @@ impl SweeperSocket for LocalWorld {
             .map(|chunk_position| self.world.get_chunk(chunk_position.position()))
             .filter_map(|v| v)
             .collect()
+    }
+
+    fn world(&mut self) -> &mut World {
+        &mut self.world
     }
 }
