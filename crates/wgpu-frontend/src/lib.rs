@@ -18,7 +18,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Position, Tile};
+use world::{Position, Rect, Tile};
 use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
@@ -343,8 +343,6 @@ impl<'a> State<'a> {
 
         if self.mouse.button_is_down(MouseButton::Left) {
             self.camera.start_drag(&self.mouse.position);
-        } else {
-            self.camera.end_drag();
         }
         self.camera.update_drag(&self.mouse);
 
@@ -356,7 +354,18 @@ impl<'a> State<'a> {
             self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
         }
         
+        self.camera.write_to_queue(&self.queue, 0);
+        
+        // Load in any new chunks
         self.world.update();
+        let rects = self.tile_map_texture.update_draw_area(&self.camera);
+        for rect in rects {
+            self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect.clone());
+            let chunks = self.world.get_chunks(rect);
+            for chunk in chunks {
+                self.tile_map_texture.write_chunk(&self.queue, chunk);
+            }
+        }
         
         let clicked = self.mouse.clicked();
         let released = self.mouse.released();
@@ -364,10 +373,13 @@ impl<'a> State<'a> {
         let position_at_mouse = self.camera.screen_to_world(&self.mouse.position);
         let position = as_world_position(position_at_mouse);
         if released.contains(&MouseButton::Left) {
-            if self.mouse.button_is_down(MouseButton::Right) {
-                self.world.double_click(position);
-            } else {
-                self.world.click(position);
+            let drag_length = self.camera.end_drag(&self.mouse.position);
+            if drag_length < 1.0 {
+                if self.mouse.button_is_down(MouseButton::Right) {
+                    self.world.double_click(position);
+                } else {
+                    self.world.click(position);
+                }
             }
         }
         if clicked.contains(&MouseButton::Right) {
@@ -382,7 +394,7 @@ impl<'a> State<'a> {
             }
         }
         loop {
-            if let Some(event) = self.world.next_message() { // TODO: multiple events per frame
+            if let Some(event) = self.world.next_message() {
                 match event {
                     Event::Clicked { updated, .. }
                     | Event::DoubleClicked { updated, .. } => {
@@ -400,7 +412,6 @@ impl<'a> State<'a> {
             }
         }
 
-        self.camera.write_to_queue(&self.queue, 0);
         self.tile_map_texture.render(&self.camera, &self.device, &self.queue);
 
         let output = self.surface.get_current_texture()?;

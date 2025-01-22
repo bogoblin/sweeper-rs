@@ -608,12 +608,13 @@ impl Iterator for ChunkPositionIter {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(Eq, PartialEq)]
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Rect {
     pub left: i32,
-    pub right: i32,
     pub top: i32,
+    pub right: i32,
     pub bottom: i32,
 }
 
@@ -664,7 +665,15 @@ impl Rect {
     }
     
     pub fn area(&self) -> i64 {
-        (self.right - self.left) as i64 * (self.bottom - self.top) as i64
+        self.width() as i64 * self.height() as i64
+    }
+    
+    pub fn width(&self) -> i32 {
+        self.right - self.left
+    }
+    
+    pub fn height(&self) -> i32 {
+        self.bottom - self.top
     }
     
     pub fn chunks_contained(&self) -> Vec<ChunkPosition> {
