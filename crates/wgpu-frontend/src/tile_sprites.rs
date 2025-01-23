@@ -99,9 +99,13 @@ impl TileSprites {
         let mut scale = 0;
         while 16 >> scale >= 1 {
             let mut scale_vec = vec![];
-            for sprite in &sprite_images {
-                let scaled = sprite.resize(16 >> scale, 16 >> scale, FilterType::Triangle);
-                scale_vec.push(scaled.as_bytes().to_vec());
+            for image_index in 0..sprite_images.len() {
+                let sprite = &sprite_images[image_index];
+                scale_vec.push(sprite.as_bytes().to_vec());
+                if sprite.width() > 1 {
+                    let scaled = sprite.resize(sprite.width() / 2, sprite.height() / 2, FilterType::Triangle);
+                    sprite_images[image_index] = scaled;
+                }
             }
             sprite_bytes.push(scale_vec);
             scale += 1;
