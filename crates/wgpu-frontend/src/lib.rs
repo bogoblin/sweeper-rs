@@ -342,6 +342,11 @@ impl<'a> State<'a> {
         if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Minus)) {
             self.camera.zoom_level -= zoom_speed;
         }
+        
+        let pressed = self.keyboard.pressed();
+        if pressed.contains(&PhysicalKey::Code(KeyCode::KeyL)) {
+            self.tile_map_texture.sprites.toggle_dark_mode(&self.queue);
+        }
 
         if self.mouse.button_is_down(MouseButton::Left) {
             self.camera.start_drag(&self.mouse.position);
@@ -527,14 +532,17 @@ impl MouseState {
     }
 }
 
+#[derive(Default)]
 struct KeyState {
-    keys_down: HashSet<PhysicalKey>
+    keys_down: HashSet<PhysicalKey>,
+    keys_pressed: HashSet<PhysicalKey>,
+    keys_released: HashSet<PhysicalKey>,
 }
 
 impl KeyState {
     fn new() -> KeyState {
         Self {
-            keys_down: Default::default()
+            ..Default::default()
         }
     }
     
@@ -544,10 +552,12 @@ impl KeyState {
                 match event.state {
                     ElementState::Pressed => {
                         self.keys_down.insert(event.physical_key);
+                        self.keys_pressed.insert(event.physical_key);
                         false
                     }
                     ElementState::Released => {
                         self.keys_down.remove(&event.physical_key);
+                        self.keys_released.insert(event.physical_key);
                         false
                     }
                 }
@@ -559,6 +569,19 @@ impl KeyState {
     pub fn key_is_down(&self, key: PhysicalKey) -> bool {
         self.keys_down.contains(&key)
     }
+    
+    pub fn pressed(&mut self) -> HashSet<PhysicalKey> {
+        let result = self.keys_pressed.clone();
+        self.keys_pressed.clear();
+        result
+    }
+    
+    pub fn released(&mut self) -> HashSet<PhysicalKey> {
+        let result = self.keys_released.clone();
+        self.keys_released.clear();
+        result
+    }
+    
 }
 
 fn as_world_position(vector: Vector2<f32>) -> Position {

@@ -9,7 +9,7 @@ use world::{Chunk, Position, Rect, Tile, UpdatedRect};
 pub struct TileMapTexture {
     tiles: Texture,
     output: Texture,
-    sprites: Texture,
+    pub sprites: TileSprites,
     zoom_render_pipeline: wgpu::RenderPipeline,
     tile_blank_pipeline: wgpu::RenderPipeline,
     blanking_rect: BlankingRect,
@@ -94,7 +94,7 @@ impl TileMapTexture {
         });
         let output = Texture::from_wgpu_texture(output, device).unwrap();
 
-        let sprites = TileSprites::new().create_texture(device, queue);
+        let sprites = TileSprites::new(&device, &queue, true);
 
         let common_shader = include_str!("common.wgsl");
         let mut wgsl_source = String::from(common_shader);
