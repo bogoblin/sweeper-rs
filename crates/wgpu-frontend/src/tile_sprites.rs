@@ -1,14 +1,14 @@
 use image::imageops::FilterType;
+use log::info;
 use wgpu::{BindGroup, BindGroupLayout};
 use world::Tile;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 
 pub struct TileSprites {
-    pub light: Vec<Vec<Vec<u8>>>,
-    pub dark: Vec<Vec<Vec<u8>>>,
     pub texture: Texture,
-    pub dark_mode: DarkMode
+    pub dark_mode: DarkMode,
+    pub filter_type: FilterType,
 }
 
 #[derive(Clone, Debug)]
@@ -22,17 +22,50 @@ impl TileSprites {
         match self.dark_mode {
             DarkMode::Light => {
                 self.dark_mode = DarkMode::Dark;
-                self.write_texture(queue, true);
             }
             DarkMode::Dark => {
                 self.dark_mode = DarkMode::Light;
-                self.write_texture(queue, false);
             }
         }
+        self.write_texture(queue);
         self.dark_mode.clone()
     }
     
-    pub fn write_texture(&self, queue: &wgpu::Queue, dark_mode: bool) {
+    fn source_image(&self) -> &'static[u8] {
+        match self.dark_mode {
+            DarkMode::Light => Self::LIGHT,
+            DarkMode::Dark => Self::DARK
+        }
+    }
+    
+    pub fn change_filter(&mut self, queue: &wgpu::Queue) {
+        self.filter_type = match self.filter_type {
+            FilterType::Nearest    => FilterType::Triangle,
+            FilterType::Triangle   => FilterType::CatmullRom,
+            FilterType::CatmullRom => FilterType::Gaussian,
+            FilterType::Gaussian   => FilterType::Lanczos3,
+            FilterType::Lanczos3   => FilterType::Nearest,
+        };
+        self.write_texture(queue);
+    }
+    
+    pub fn write_texture(&self, queue: &wgpu::Queue) {
+        info!("Creating texture using {:?}", self.filter_type);
+        let mipmaps = create_sprite_mipmaps(self.source_image(), self.filter_type);
+        let get_bytes = |tile: Tile, mip_level: usize| -> &[u8] {
+            let scaled_bytes = &mipmaps[mip_level];
+            if tile.is_revealed() {
+                if tile.is_mine() {
+                    return &scaled_bytes[11];
+                }
+                return &scaled_bytes[tile.adjacent() as usize];
+            }
+            if tile.is_flag() {
+                return &scaled_bytes[10];
+            }
+            &scaled_bytes[9]
+        };
+        
         for tile_index in 0..=255 {
             for mip_level in 0..5 {
                 let x = tile_index & 0b1111;
@@ -51,7 +84,7 @@ impl TileSprites {
                         },
                         aspect: wgpu::TextureAspect::All,
                     },
-                    self.get_bytes(tile, mip_level as usize, dark_mode),
+                    get_bytes(tile, mip_level as usize),
                     wgpu::ImageDataLayout {
                         offset: 0,
                         bytes_per_row: Some((tile_size * 4) as u32),
@@ -67,26 +100,9 @@ impl TileSprites {
         }
     }
     
-    pub fn get_bytes(&self, tile: Tile, scale: usize, dark_mode: bool) -> &[u8] {
-        let scaled_bytes = if dark_mode { &self.dark[scale] } else { &self.light[scale] };
-        if tile.is_revealed() {
-            if tile.is_mine() {
-                return &scaled_bytes[11];
-            }
-            return &scaled_bytes[tile.adjacent() as usize];
-        }
-        if tile.is_flag() {
-            return &scaled_bytes[10];
-        }
-        &scaled_bytes[9]
-    }
-}
-
-impl TileSprites {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, dark_mode: bool) -> Self {
-        let light = create_sprite_mipmaps(include_bytes!("./tiles.png"));
-        let dark = create_sprite_mipmaps(include_bytes!("./tilesdark.png"));
-
+    const LIGHT: &'static[u8] = include_bytes!("./tiles.png");
+    const DARK: &'static[u8] = include_bytes!("./tilesdark.png");
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Sprite Atlas"),
             size: wgpu::Extent3d {
@@ -117,9 +133,9 @@ impl TileSprites {
         let texture = Texture::from_wgpu_texture_and_sampler(texture, sampler, device).expect("Couldn't create sprite atlas texture");
 
         let result = Self {
-            light, dark, texture, dark_mode: DarkMode::Dark
+            texture, dark_mode: DarkMode::Dark, filter_type: FilterType::Triangle,
         };
-        result.write_texture(queue, dark_mode);
+        result.write_texture(queue);
         
         result
     }
@@ -135,7 +151,7 @@ impl HasBindGroup for TileSprites {
     }
 }
 
-fn create_sprite_mipmaps(image_bytes: &[u8]) -> Vec<Vec<Vec<u8>>> {
+fn create_sprite_mipmaps(image_bytes: &[u8], filter_type: FilterType) -> Vec<Vec<Vec<u8>>> {
     let sprite_sheet = image::load_from_memory(image_bytes).unwrap();
     let mut sprite_images = vec![];
     let mut sprite_bytes = vec![];
@@ -150,7 +166,7 @@ fn create_sprite_mipmaps(image_bytes: &[u8]) -> Vec<Vec<Vec<u8>>> {
             let sprite = &sprite_images[image_index];
             scale_vec.push(sprite.as_bytes().to_vec());
             if sprite.width() > 1 {
-                let scaled = sprite.resize(sprite.width() / 2, sprite.height() / 2, FilterType::Triangle);
+                let scaled = sprite.resize(sprite.width() / 2, sprite.height() / 2, filter_type);
                 sprite_images[image_index] = scaled;
             }
         }

@@ -94,7 +94,7 @@ impl TileMapTexture {
         });
         let output = Texture::from_wgpu_texture(output, device).unwrap();
 
-        let sprites = TileSprites::new(&device, &queue, true);
+        let sprites = TileSprites::new(&device, &queue);
 
         let common_shader = include_str!("common.wgsl");
         let mut wgsl_source = String::from(common_shader);

@@ -16,6 +16,7 @@ pub struct Camera {
     bind_group: wgpu::BindGroup,
     bind_group_layout: wgpu::BindGroupLayout,
     uniform: CameraUniform,
+    scale_factor: f64
 }
 
 struct Drag {
@@ -67,12 +68,14 @@ impl Camera {
             buffer,
             bind_group,
             bind_group_layout,
-            uniform
+            uniform,
+            scale_factor: 1.0,
         }
     }
 
-    pub fn resize(&mut self, new_size: &PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: &PhysicalSize<u32>, scale_factor: f64) {
         self.size = Vector2::new(new_size.width as f32, new_size.height as f32);
+        self.scale_factor = scale_factor;
     }
     
     pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
@@ -114,27 +117,6 @@ impl Camera {
         )
     }
     
-    fn zoom_blend(&self) -> [f32; 8] {
-        let scale = (16.0/self.tile_size()).log2();
-        if scale < 0.0 {
-            let mut result: [f32; 8] = Default::default();
-            result[0] = 1.0;
-            return result;
-        }
-        for lower_scale in 0..7 {
-            let upper_scale = lower_scale + 1;
-            if scale < upper_scale as f32 {
-                let mut result: [f32; 8] = Default::default();
-                // result[lower_scale] = (scale - upper_scale as f32).abs();
-                // result[upper_scale] = 1.0 - result[lower_scale];
-                result[lower_scale] = 1.0;
-                result[upper_scale] = 0.0;
-                return result;
-            }
-        }
-        Default::default()
-    }
-
     pub fn top_left(&self) -> Vector2<f32> {
         self.center - (self.size/2.0)/self.tile_size()
     }
@@ -175,13 +157,13 @@ impl Camera {
     pub fn update_drag(&mut self, mouse: &MouseState) {
         if let Some(drag) = &self.drag {
             let drag_vector = position_to_vector(mouse.position.clone()) - drag.screen_start;
-            let drag_vector_in_world_space = drag_vector/self.tile_size();
+            let drag_vector_in_world_space = self.scale_factor as f32 * drag_vector/self.tile_size();
             self.center = drag.center - drag_vector_in_world_space;
         }
     }
 
     pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
-        let position = position_to_vector(*position);
+        let position = position_to_vector(*position) * self.scale_factor as f32;
         let screen_to_center = self.size/2.0 - position;
         let distance_from_view_center_in_world_space = screen_to_center/self.tile_size();
         self.center - distance_from_view_center_in_world_space

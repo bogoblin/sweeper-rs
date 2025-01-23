@@ -11,19 +11,18 @@ use std::thread::sleep;
 use cgmath::Vector2;
 use chrono::prelude::*;
 use chrono::TimeDelta;
-use rand::{thread_rng, RngCore};
+use log::info;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Position, Rect, Tile};
+use world::{Position, Tile};
 use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::sweeper_socket::{SweeperSocket};
-use crate::texture::Texture;
 use crate::tilerender_texture::{TileMapTexture};
 
 #[cfg(target_arch = "wasm32")]
@@ -84,19 +83,20 @@ pub async fn run() {
                 } => control_flow.exit(),
                 WindowEvent::Resized(physical_size) => {
                     surface_configured = true;
-                    let mut physical_size = physical_size.clone();
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let win = web_sys::window().unwrap();
-                        physical_size.width = win.inner_width().unwrap().as_f64().unwrap() as u32;
-                        physical_size.height = win.inner_height().unwrap().as_f64().unwrap() as u32;
-                    };
-                    state.resize(physical_size);
-                    #[cfg(target_arch = "wasm32")]
-                    state.set_scale_factor(state.window.scale_factor());
+                    cfg_if::cfg_if! {
+                        if #[cfg(target_arch = "wasm32")] {
+                            let win = web_sys::window().unwrap();
+                            let width = win.inner_width().unwrap().as_f64().unwrap() as u32;
+                            let height = win.inner_height().unwrap().as_f64().unwrap() as u32;
+                            state.set_scale_factor(state.window.scale_factor());
+                            state.resize(PhysicalSize::new(width, height));
+                        } else {
+                            state.resize(*physical_size);
+                        }
+                    }
                 },
+                #[cfg(target_arch = "wasm32")]
                 WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                    #[cfg(target_arch = "wasm32")]
                     state.set_scale_factor(*scale_factor);
                 }
                 WindowEvent::RedrawRequested => {
@@ -106,7 +106,6 @@ pub async fn run() {
                         return;
                     }
 
-                    state.update();
                     match state.render() {
                         Ok(_) => {},
                         Err(
@@ -144,8 +143,6 @@ struct State<'a> {
     keyboard: KeyState,
     camera: Camera,
     last_frame_time: DateTime<Utc>,
-    // tilemap: Tilemap,
-    background_texture: Texture,
     tile_map_texture: TileMapTexture,
     world: Box<dyn SweeperSocket>,
 }
@@ -200,7 +197,6 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 1,
         };
 
-        let background_texture = Texture::from_bytes(&device, &queue, include_bytes!("backgrounddark.png"), "background").unwrap();
         let camera = Camera::new(&device, &size);
 
         let tile_map_texture = TileMapTexture::new(&device, &queue, &camera);
@@ -281,7 +277,6 @@ impl<'a> State<'a> {
             size,
             scale_factor: 1.0,
             render_pipeline,
-            background_texture,
             camera,
             mouse: MouseState::new(),
             keyboard: KeyState::new(),
@@ -296,15 +291,20 @@ impl<'a> State<'a> {
     }
 
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        info!("rendering at {} x {}, scaling is {}%", new_size.width, new_size.height, self.scale_factor*100.0);
         if new_size.width > 0 && new_size.height > 0 && new_size.width < Self::MAX_SIZE && new_size.height < Self::MAX_SIZE {
-            self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            self.size = PhysicalSize::new(
+                (new_size.width as f64 * self.scale_factor) as u32,
+                (new_size.height as f64 * self.scale_factor) as u32,
+            );
+            self.config.width = self.size.width;
+            self.config.height = self.size.height;
             self.surface.configure(&self.device, &self.config);
-            self.camera.resize(&new_size);
+            self.camera.resize(&self.size, self.scale_factor);
         }
     }
-    
+
+    #[cfg(target_arch = "wasm32")]
     fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
         self.mouse.scale_factor = scale_factor;
@@ -313,9 +313,6 @@ impl<'a> State<'a> {
     fn input(&mut self, event: &WindowEvent) -> bool {
         self.keyboard.handle(event.clone())
         || self.mouse.handle(event.clone())
-    }
-
-    fn update(&mut self) {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -346,6 +343,9 @@ impl<'a> State<'a> {
         let pressed = self.keyboard.pressed();
         if pressed.contains(&PhysicalKey::Code(KeyCode::KeyL)) {
             self.tile_map_texture.sprites.toggle_dark_mode(&self.queue);
+        }
+        if pressed.contains(&PhysicalKey::Code(KeyCode::KeyF)) {
+            self.tile_map_texture.sprites.change_filter(&self.queue);
         }
 
         if self.mouse.button_is_down(MouseButton::Left) {

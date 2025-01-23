@@ -60,30 +60,8 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     ) {
         return vec4(0.0, 0.0, 0.0, 1.0);
     }
+    
     let dims = vec2<f32>(textureDimensions(zoom_render));
-    let pixel_in_world_space = 0.25*vec2(1.0, 1.0) / camera.tile_size.xy;
-    var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-
-    color += textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(1.0, 0.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-    color += textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(-1.0, 0.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-    color += textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(0.0, 1.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-    color += textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(0.0, -1.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-
-    color += 0.5*textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(1.0, 1.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-    color += 0.5*textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(-1.0, 1.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-    color += 0.5*textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(-1.0, -1.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-    color += 0.5*textureSample(zoom_render, zoom_sampler,
-        world_to_uv(vec2(1.0, -1.0)*pixel_in_world_space + in.world_coords.xy, dims, camera.tile_map_size.x));
-
-    color += 4 * textureSample(zoom_render, zoom_sampler,
+    return textureSample(zoom_render, zoom_sampler,
         world_to_uv(in.world_coords.xy, dims, camera.tile_map_size.x));
-
-    return color / color.a;
 }
