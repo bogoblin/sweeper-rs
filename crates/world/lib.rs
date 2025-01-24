@@ -1,23 +1,25 @@
-use std::cmp::{max, min, PartialEq};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::collections::hash_map::Entry;
-use std::fmt::{Debug, Formatter};
-use std::ops::{Add, AddAssign, Sub};
-use rand::SeedableRng;
-use rand::prelude::IteratorRandom;
-use rand::rngs::StdRng;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{Error, Visitor};
+use crate::chunk_store::ChunkStore;
 use crate::compression::PublicTile;
 use crate::events::Event;
+use crate::player::Player;
 use bytes_cast::BytesCast;
-use crate::chunk_store::ChunkStore;
+use rand::prelude::IteratorRandom;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::cmp::{max, min, PartialEq};
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::{Debug, Formatter};
+use std::ops::{Add, AddAssign, Sub};
 
 pub mod server_messages;
 pub mod events;
 pub mod compression;
 pub mod client_messages;
 pub mod chunk_store;
+pub mod player;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {
@@ -30,6 +32,8 @@ pub struct World {
     pub events: VecDeque<Event>,
     #[serde(skip)]
     pub chunk_store: ChunkStore,
+    #[serde(skip)]
+    pub players: HashMap<String, Player>,
 }
 
 
@@ -42,9 +46,34 @@ impl World {
             seed: 0,
             events: vec![].into(),
             chunk_store: ChunkStore::new(),
+            players: Default::default(),
         };
         world.generate_chunk(Position(0, 0));
         world
+    }
+    
+    pub fn create_or_update_player(&mut self, event: &Event) -> String {
+        let player_id = match event {
+            Event::Clicked { player_id,.. } |
+            Event::DoubleClicked { player_id,.. } |
+            Event::Flag { player_id,.. } |
+            Event::Unflag { player_id,.. } => {
+                player_id.clone()
+            }
+        };
+        let player_entry = self.players.get_mut(&player_id);
+        match player_entry {
+            None => {
+                let mut new_player = Player::new(player_id.clone());
+                new_player.update(event);
+                self.players.insert(player_id.clone(), new_player);
+                player_id
+            }
+            Some(player) => {
+                player.update(event);
+                player_id
+            }
+        }
     }
 
     pub fn get_chunk_id(&self, position: Position) -> Option<&usize> {
@@ -136,11 +165,16 @@ impl World {
 
     pub fn click(&mut self, at: Position, by_player_id: &str) {
         let updated = self.reveal(vec![at]);
-        self.events.push_back(Event::Clicked {
+        self.push_event(Event::Clicked {
             player_id: by_player_id.to_string(),
             at,
             updated
         });
+    }
+    
+    fn push_event(&mut self, event: Event) {
+        self.create_or_update_player(&event);
+        self.events.push_back(event);
     }
 
     fn reveal(&mut self, mut to_reveal: Vec<Position>) -> UpdatedRect {
@@ -208,7 +242,7 @@ impl World {
         }
         if surrounding_flags == tile.adjacent() {
             let updated = self.reveal(to_reveal);
-            self.events.push_back(Event::DoubleClicked {
+            self.push_event(Event::DoubleClicked {
                 player_id: by_player_id.to_string(),
                 at: position,
                 updated
@@ -225,14 +259,14 @@ impl World {
                     if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
-                        self.events.push_back(Event::Unflag {
+                        self.push_event(Event::Unflag {
                             player_id: by_player_id.to_string(),
                             at: position
                         });
                     } else {
                         // Flag
                         *tile = tile.with_flag();
-                        self.events.push_back(Event::Flag {
+                        self.push_event(Event::Flag {
                             player_id: by_player_id.to_string(),
                             at: position
                         });

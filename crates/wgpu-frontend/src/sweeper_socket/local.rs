@@ -22,7 +22,8 @@ impl SweeperSocket for LocalWorld {
             ClientMessage::Click(position) => { self.world.click(position, "") }
             ClientMessage::Flag(position) => { self.world.flag(position, "") }
             ClientMessage::DoubleClick(position) => { self.world.double_click(position, "") }
-            ClientMessage::QueryChunks(_) => {}
+            ClientMessage::Query(_) => {}
+            ClientMessage::Disconnected(player_id) => { self.world.players.remove(&player_id); }
         }
     }
 

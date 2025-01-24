@@ -60,7 +60,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     ) {
         return vec4(0.0, 0.0, 0.0, 1.0);
     }
-    
+
     let dims = vec2<f32>(textureDimensions(zoom_render));
     return textureSample(zoom_render, zoom_sampler,
         world_to_uv(in.world_coords.xy, dims, camera.tile_map_size.x));

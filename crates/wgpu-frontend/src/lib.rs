@@ -4,6 +4,7 @@ mod tilerender_texture;
 mod shader;
 mod tile_sprites;
 mod sweeper_socket;
+mod cursors;
 
 use std::collections::{HashSet};
 use std::default::Default;
@@ -29,6 +30,7 @@ use crate::tilerender_texture::{TileMapTexture};
 use wasm_bindgen::prelude::*;
 use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
+use crate::cursors::Cursors;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -145,6 +147,7 @@ struct State<'a> {
     last_frame_time: DateTime<Utc>,
     tile_map_texture: TileMapTexture,
     world: Box<dyn SweeperSocket>,
+    cursors: Cursors
 }
 
 impl<'a> State<'a> {
@@ -267,6 +270,7 @@ impl<'a> State<'a> {
                 world = Box::new(LocalWorld::new())
             }
         }
+        let cursors = Cursors::new(&device, &queue, surface_format, &camera);
 
         Self {
             window,
@@ -283,6 +287,7 @@ impl<'a> State<'a> {
             last_frame_time: Utc::now(),
             world,
             tile_map_texture,
+            cursors,
         }
     }
 
@@ -396,6 +401,10 @@ impl<'a> State<'a> {
         while let Some(message) = self.world.next_message() {
             match message {
                 ServerMessage::Event(event) => {
+                    let player_id = self.world.world().create_or_update_player(&event);
+                    if let Some(player) = self.world.world().players.get(&player_id) {
+                        self.cursors.update_player(player, &self.queue);
+                    }
                     match event {
                         Event::Clicked { updated, .. }
                         | Event::DoubleClicked { updated, .. } => {
@@ -413,6 +422,15 @@ impl<'a> State<'a> {
                     self.tile_map_texture.write_chunk(&self.queue, &chunk);
                     self.world.world().insert_chunk(chunk);
                 }
+                ServerMessage::Player(player) => {
+                    info!("got player {:?}", player);
+                    self.cursors.update_player(&player, &self.queue);
+                    self.world.world().players.insert(player.player_id.clone(), player);
+                }
+                ServerMessage::Welcome(player) => {
+                    info!("Welcome {}", player.player_id);
+                    self.cursors.set_you(player.player_id.clone(), &player, &self.queue);
+                }
             }
         }
 
@@ -420,38 +438,43 @@ impl<'a> State<'a> {
 
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    }
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
+        if true {
+            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
             });
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        }
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
-            render_pass.set_bind_group(1, self.tile_map_texture.bind_group(), &[]);
-            render_pass.draw(0..6, 0..1);
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
+                render_pass.set_bind_group(1, self.tile_map_texture.bind_group(), &[]);
+                render_pass.draw(0..6, 0..1);
 
-            cfg_if::cfg_if! {
-                if #[cfg(target_arch = "wasm32")] {
-                } else {
-                    sleep(TimeDelta::milliseconds(16).to_std().unwrap());
+                cfg_if::cfg_if! {
+                    if #[cfg(target_arch = "wasm32")] {
+                    } else {
+                        sleep(TimeDelta::milliseconds(16).to_std().unwrap());
+                    }
                 }
             }
+            self.queue.submit(std::iter::once(encoder.finish()));
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
+
+        self.cursors.render(&self.device, &self.queue, &view, &self.camera);
+        
         output.present();
 
         Ok(())

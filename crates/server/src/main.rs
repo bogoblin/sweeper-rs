@@ -10,17 +10,18 @@ use clap::Parser;
 use include_dir::{include_dir, Dir};
 use serde_json::{json, Value};
 use socketioxide::extract::{Data, SocketRef};
-use socketioxide::SocketIo;
+use socketioxide::{SendError, SocketIo};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
-use log::debug;
+use log::{debug, info};
 use crate::backup::Backup;
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
+use world::player::Player;
 use world::World;
 
 #[derive(Parser)]
@@ -48,10 +49,14 @@ async fn main() {
             let _ = socket.emit("join", json!({
                 "player_id": socket.id
             }));
+            let tx2 = tx.clone();
             socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
                 if let Some(message) = ClientMessage::decode(data) {
                     tx.send((message, socket_ref)).unwrap_or_default();
                 }
+            });
+            socket.on_disconnect(move |socket_ref: SocketRef| {
+                tx2.send((Disconnected(socket_ref.id.to_string()), socket_ref)).unwrap_or_default();
             });
         }
     });
@@ -69,8 +74,27 @@ async fn main() {
                 DoubleClick(position) => {
                     world.double_click(position, player_id);
                 }
-                Connected => {},
-                QueryChunks(rect) => {
+                Connected => {
+                    // TODO? Move this to the query and put the players in a quadtree? Possible improvement, may be worse
+                    let mut players_to_send = vec![];
+                    for (_player_id, player) in &world.players {
+                        players_to_send.push(player.compress("p"));
+                    }
+                    println!("Sending {} players", players_to_send.len());
+                    players_to_send.push(Player::new(socket_ref.id.to_string()).compress("w"));
+                    match &socket_ref.bin(players_to_send)
+                        .emit("e", vec![""]) {
+                        Ok(_) => {}
+                        Err(_) => {
+                            socket_ref.disconnect().ok();
+                            continue
+                        }
+                    }
+                },
+                Disconnected(player_id) => {
+                    world.players.remove(&player_id);
+                }
+                Query(rect) => {
                     let mut chunks_to_send = vec![];
                     let query = world.query_chunks(&rect);
                     for chunk in query {

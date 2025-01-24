@@ -3,13 +3,17 @@ use crate::compression::PublicTile;
 use crate::events::Event;
 use crate::{Chunk, ChunkPosition, ChunkTiles, Tile};
 use huffman::{BitWriter, HuffmanCode};
+use log::info;
+use crate::player::Player;
 
 // ServerMessage is anything the server sends that gets compressed to bytes
 #[derive(Serialize, Deserialize)]
 #[derive(Debug)]
 pub enum ServerMessage {
     Event(Event),
-    Chunk(Chunk)
+    Chunk(Chunk),
+    Player(Player),
+    Welcome(Player),
 }
 
 impl From<ServerMessage> for Vec<u8> {
@@ -21,6 +25,12 @@ impl From<ServerMessage> for Vec<u8> {
             ServerMessage::Chunk(chunk) => {
                 chunk.compress()
             }
+            ServerMessage::Player(player) => {
+                player.compress("p")
+            }
+            ServerMessage::Welcome(player) => {
+                player.compress("w")
+            }
         }
     }
 }
@@ -28,6 +38,7 @@ impl From<ServerMessage> for Vec<u8> {
 pub enum ServerMessageError {
     BadChunk,
     BadEvent,
+    BadPlayer,
 }
 
 impl ServerMessage {
@@ -42,7 +53,21 @@ impl ServerMessage {
                 None => Err(ServerMessageError::BadChunk)
             }
             // Some(ServerMessage::Chunk(Chunk::from_compressed(compressed)?))
-        } else {
+        }
+        else if header == "p" {
+            info!("hello");
+            match Player::from_compressed(compressed) {
+                Some(player) => Ok(ServerMessage::Player(player)),
+                None => Err(ServerMessageError::BadPlayer)
+            }
+        }
+        else if header == "w" {
+            match Player::from_compressed(compressed) {
+                Some(player) => Ok(ServerMessage::Welcome(player)),
+                None => Err(ServerMessageError::BadPlayer)
+            }
+        }
+        else {
             match Event::from_compressed(compressed) {
                 Some(event) => Ok(ServerMessage::Event(event)),
                 None => Err(ServerMessageError::BadEvent)

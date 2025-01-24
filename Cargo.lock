@@ -3553,6 +3553,7 @@ dependencies = [
  "getrandom",
  "huffman",
  "huffman_derive",
+ "log",
  "quadtree_rs",
  "rand 0.9.0-alpha.1",
  "serde",
