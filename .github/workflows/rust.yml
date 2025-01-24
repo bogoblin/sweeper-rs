@@ -16,7 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - run: rustup toolchain install stable --profile minimal --no-self-update
     - uses: Swatinem/rust-cache@v2
+      with:
+        cache-all-crates: 'true'
+        cache-on-failure: 'true'
     - name: Install wasm-pack
       run: cargo install wasm-pack
     - name: Build WASM
