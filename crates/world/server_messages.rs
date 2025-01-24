@@ -3,13 +3,17 @@ use crate::compression::PublicTile;
 use crate::events::Event;
 use crate::{Chunk, ChunkPosition, ChunkTiles, Tile};
 use huffman::{BitWriter, HuffmanCode};
+use crate::player::Player;
 
 // ServerMessage is anything the server sends that gets compressed to bytes
 #[derive(Serialize, Deserialize)]
 #[derive(Debug)]
 pub enum ServerMessage {
     Event(Event),
-    Chunk(Chunk)
+    Chunk(Chunk),
+    Player(Player),
+    Welcome(Player),
+    Disconnected(String),
 }
 
 impl From<ServerMessage> for Vec<u8> {
@@ -21,6 +25,18 @@ impl From<ServerMessage> for Vec<u8> {
             ServerMessage::Chunk(chunk) => {
                 chunk.compress()
             }
+            ServerMessage::Player(player) => {
+                player.compress("p")
+            }
+            ServerMessage::Welcome(player) => {
+                player.compress("w")
+            }
+            ServerMessage::Disconnected(player_id) => {
+                let mut result = vec![];
+                result.append(&mut "x".as_bytes().to_vec());
+                result.append(&mut player_id.as_bytes().to_vec());
+                result
+            }
         }
     }
 }
@@ -28,18 +44,38 @@ impl From<ServerMessage> for Vec<u8> {
 pub enum ServerMessageError {
     BadChunk,
     BadEvent,
+    BadPlayer,
 }
 
 impl ServerMessage {
     pub fn from_compressed(compressed: Vec<u8>) -> Result<ServerMessage, ServerMessageError> {
+        if compressed.len() == 0 {
+            return Err(ServerMessageError::BadEvent)
+        }
         let header = String::from_utf8_lossy(&compressed[0..=0]);
         if header == "h" {
             match Chunk::from_compressed(compressed) {
                 Some(chunk) => Ok(ServerMessage::Chunk(chunk)),
                 None => Err(ServerMessageError::BadChunk)
             }
-            // Some(ServerMessage::Chunk(Chunk::from_compressed(compressed)?))
-        } else {
+        }
+        else if header == "p" {
+            match Player::from_compressed(compressed) {
+                Some(player) => Ok(ServerMessage::Player(player)),
+                None => Err(ServerMessageError::BadPlayer)
+            }
+        }
+        else if header == "w" {
+            match Player::from_compressed(compressed) {
+                Some(player) => Ok(ServerMessage::Welcome(player)),
+                None => Err(ServerMessageError::BadPlayer)
+            }
+        }
+        else if header == "x" { 
+            let player_id = String::from_utf8_lossy(&compressed[1..]);
+            Ok(ServerMessage::Disconnected(player_id.into()))
+        }
+        else {
             match Event::from_compressed(compressed) {
                 Some(event) => Ok(ServerMessage::Event(event)),
                 None => Err(ServerMessageError::BadEvent)

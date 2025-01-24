@@ -10,6 +10,8 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/huffman_derive/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/huffman_derive/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/quadtree/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/wgpu-frontend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/socketio-local/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

@@ -27,7 +27,10 @@ impl Backup {
         match fs::read(self.file.as_path()) {
             Ok(saved_world) => {
                 match postcard::from_bytes::<World>(saved_world.as_slice()) {
-                    Ok(world) => Ok(world),
+                    Ok(mut world) => {
+                        world.chunk_store.insert_chunks(&world.chunks);
+                        Ok(world)
+                    },
                     Err(err) => Err(BackupError::PostcardError(err))
                 }
             },

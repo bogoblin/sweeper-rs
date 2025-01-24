@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use huffman::{BitWriter, HuffmanCode};
 use crate::{Position, Tile, UpdatedRect};
 use crate::compression::PublicTile;
+use crate::player::Player;
 
 #[derive(Debug)]
 #[derive(Serialize, Deserialize)]
@@ -127,6 +128,7 @@ impl Event {
         None
     }
 }
+
 
 #[test]
 fn compression_test() -> Result<(), String> {

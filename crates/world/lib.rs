@@ -1,20 +1,25 @@
-use std::cmp::PartialEq;
-use std::collections::{HashMap, HashSet};
-use std::collections::hash_map::Entry;
-use std::fmt::{Debug, Formatter};
-use std::ops;
-use std::ops::{AddAssign, Sub};
-use rand::{SeedableRng};
-use rand::prelude::IteratorRandom;
-use rand::rngs::StdRng;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{Error, Visitor};
+use crate::chunk_store::ChunkStore;
 use crate::compression::PublicTile;
 use crate::events::Event;
+use crate::player::Player;
+use bytes_cast::BytesCast;
+use rand::prelude::IteratorRandom;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::cmp::{max, min, PartialEq};
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::{Debug, Formatter};
+use std::ops::{Add, AddAssign, Sub};
 
 pub mod server_messages;
 pub mod events;
 pub mod compression;
+pub mod client_messages;
+pub mod chunk_store;
+pub mod player;
 
 #[derive(Serialize, Deserialize)]
 pub struct World {
@@ -24,7 +29,11 @@ pub struct World {
     pub seed: u64,
 
     #[serde(skip)]
-    pub events: Vec<Event>,
+    pub events: VecDeque<Event>,
+    #[serde(skip)]
+    pub chunk_store: ChunkStore,
+    #[serde(skip)]
+    pub players: HashMap<String, Player>,
 }
 
 
@@ -35,10 +44,36 @@ impl World {
             positions: vec![],
             chunks: vec![],
             seed: 0,
-            events: vec![],
+            events: vec![].into(),
+            chunk_store: ChunkStore::new(),
+            players: Default::default(),
         };
         world.generate_chunk(Position(0, 0));
         world
+    }
+    
+    pub fn create_or_update_player(&mut self, event: &Event) -> String {
+        let player_id = match event {
+            Event::Clicked { player_id,.. } |
+            Event::DoubleClicked { player_id,.. } |
+            Event::Flag { player_id,.. } |
+            Event::Unflag { player_id,.. } => {
+                player_id.clone()
+            }
+        };
+        let player_entry = self.players.get_mut(&player_id);
+        match player_entry {
+            None => {
+                let mut new_player = Player::new(player_id.clone());
+                new_player.update(event);
+                self.players.insert(player_id.clone(), new_player);
+                player_id
+            }
+            Some(player) => {
+                player.update(event);
+                player_id
+            }
+        }
     }
 
     pub fn get_chunk_id(&self, position: Position) -> Option<&usize> {
@@ -50,6 +85,37 @@ impl World {
             return self.chunks.get(chunk_id);
         }
         None
+    }
+    
+    pub fn query_chunks(&self, rect: &Rect) -> Vec<&Chunk> {
+        let query = self.chunk_store.get_chunks(rect);
+        if let Ok(query) = query {
+            query.into_iter()
+                .map(|chunk_id| &self.chunks[chunk_id])
+                .collect()
+        } else {
+            vec![]
+        }
+    }
+    
+    pub fn insert_chunk(&mut self, chunk: Chunk) -> usize {
+        let new_id = self.chunk_ids.len();
+        let existing = self.chunk_ids.entry(chunk.position);
+        let position = chunk.position;
+        match existing {
+            Entry::Occupied(entry) => {
+                let chunk_id = *entry.get();
+                self.chunks[chunk_id] = chunk;
+                chunk_id
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(new_id);
+                self.positions.push(position);
+                self.chunks.push(chunk);
+                self.chunk_store.insert(position, new_id);
+                new_id
+            }
+        }
     }
 
     pub fn generate_chunk(&mut self, position: Position) -> usize {
@@ -63,6 +129,7 @@ impl World {
                 entry.insert(new_id);
                 self.positions.push(position);
                 self.chunks.push(new_chunk);
+                self.chunk_store.insert(position, new_id);
                 new_id
             }
         }
@@ -98,11 +165,16 @@ impl World {
 
     pub fn click(&mut self, at: Position, by_player_id: &str) {
         let updated = self.reveal(vec![at]);
-        self.events.push(Event::Clicked {
+        self.push_event(Event::Clicked {
             player_id: by_player_id.to_string(),
             at,
             updated
         });
+    }
+    
+    fn push_event(&mut self, event: Event) {
+        self.create_or_update_player(&event);
+        self.events.push_back(event);
     }
 
     fn reveal(&mut self, mut to_reveal: Vec<Position>) -> UpdatedRect {
@@ -170,7 +242,7 @@ impl World {
         }
         if surrounding_flags == tile.adjacent() {
             let updated = self.reveal(to_reveal);
-            self.events.push(Event::DoubleClicked {
+            self.push_event(Event::DoubleClicked {
                 player_id: by_player_id.to_string(),
                 at: position,
                 updated
@@ -183,17 +255,18 @@ impl World {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
+                    if tile.is_revealed() { return }
                     if tile.is_flag() {
                         // Unflag
                         *tile = tile.without_flag();
-                        self.events.push(Event::Unflag {
+                        self.push_event(Event::Unflag {
                             player_id: by_player_id.to_string(),
                             at: position
                         });
                     } else {
                         // Flag
                         *tile = tile.with_flag();
-                        self.events.push(Event::Flag {
+                        self.push_event(Event::Flag {
                             player_id: by_player_id.to_string(),
                             at: position
                         });
@@ -219,8 +292,18 @@ impl ChunkPosition {
         ).0 + salt
     }
     
+    pub fn position(&self) -> Position {
+        Position(self.0, self.1)
+    }
     pub fn bottom_right(&self) -> Self {
         Self::new(self.0+16, self.1+16)
+    }
+    
+    pub fn position_iter(&self) -> ChunkPositionIter {
+        ChunkPositionIter {
+            position: self.clone(),
+            position_in_chunk_index: 0,
+        }
     }
 }
 
@@ -248,17 +331,22 @@ impl PositionInChunk {
 
 #[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Default)]
 #[derive(Serialize, Deserialize)]
+#[derive(derive_more::Mul, derive_more::Div, derive_more::Add, derive_more::Sub)]
 pub struct Position(pub i32, pub i32);
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }
 
-    fn chunk_position(&self) -> ChunkPosition { ChunkPosition::new(self.0, self.1) }
+    pub fn chunk_position(&self) -> ChunkPosition { ChunkPosition::new(self.0, self.1) }
 
-    fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
+    pub fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
 
     pub fn tile_index(&self) -> usize { self.position_in_chunk().index() }
+    
+    pub fn from_chunk_positions(chunk_position: &ChunkPosition, position_in_chunk: &PositionInChunk) -> Self {
+        Self(chunk_position.0 + position_in_chunk.x() as i32, chunk_position.1 + position_in_chunk.y() as i32)
+    }
 }
-impl ops::Add<(i32, i32)> for &Position {
+impl Add<(i32, i32)> for &Position {
     type Output = Position;
 
     fn add(self, rhs: (i32, i32)) -> Position {
@@ -273,8 +361,10 @@ impl Sub<(i32, i32)> for &Position {
     }
 }
 
+#[repr(C)]
+#[derive(BytesCast)]
 #[derive(Default, Eq, PartialEq, Clone, Copy)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Tile (pub u8);
 
 impl Tile {
@@ -306,7 +396,8 @@ impl Tile {
         self.0 == self.with_revealed().0
     }
     pub fn adjacent(&self) -> u8 {
-        self.0 & 0b1111
+        let adjacent = self.0 & 0b1111;
+        min(adjacent, 8)
     }
 }
 
@@ -316,12 +407,17 @@ impl Into<u8> for Tile {
     }
 }
 
-#[derive(Clone, Debug)]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChunkTiles(pub [Tile; 256]);
 
 impl ChunkTiles {
     pub fn from(bytes: [u8; 256]) -> Self {
         Self(bytes.map(|b| Tile(b)))
+    }
+    
+    pub fn bytes(&self) -> &[u8] {
+        self.0.as_bytes()
     }
 }
 
@@ -482,14 +578,6 @@ impl Debug for UpdatedRect {
     }
 }
 
-impl Sub for Position {
-    type Output = Position;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Position(self.0 - rhs.0, self.1 - rhs.1)
-    }
-}
-
 impl UpdatedRect {
     pub fn empty() -> Self {
         Self {top_left: Position::origin(), updated: vec![]}
@@ -551,5 +639,123 @@ impl UpdatedRect {
             result.push(PublicTile::Newline)
         }
         result
+    }
+}
+
+pub struct ChunkPositionIter {
+    position: ChunkPosition,
+    position_in_chunk_index: usize,
+}
+
+impl Iterator for ChunkPositionIter {
+    type Item = Position;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.position_in_chunk_index < 256 {
+            let result = Some(Position::from_chunk_positions(&self.position, &PositionInChunk(self.position_in_chunk_index as u8)));
+            self.position_in_chunk_index += 1;
+            result
+        } else {
+            None
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Deserialize, Serialize)]
+pub struct Rect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+impl Rect {
+    pub fn from_center_and_size(center: Position, width: i32, height: i32) -> Self {
+        let left = center.0 - width/2;
+        let top = center.1 - height/2;
+        Self {
+            left, top,
+            right: left + width,
+            bottom: top + height,
+        }
+    }
+    
+    pub fn contains(&self, Position(x, y): Position) -> bool {
+        x > self.left &&
+            x < self.right &&
+            y > self.top &&
+            y < self.bottom
+    }
+    
+    pub fn intersection(&self, other: &Rect) -> Option<Self> {
+        let left = max(self.left, other.left);
+        let right = min(self.right, other.right);
+        let top = max(self.top, other.top);
+        let bottom = min(self.bottom, other.bottom);
+        if left <= right && top <= bottom {
+            Some(Self { left, right, top, bottom })
+        } else {
+            None
+        }
+    }
+    
+    pub fn top_left(&self) -> Position {
+        Position(self.left, self.top)
+    }
+    
+    pub fn bottom_right(&self) -> Position {
+        Position(self.right, self.bottom)
+    }
+    
+    pub fn top_right(&self) -> Position {
+        Position(self.right, self.top)
+    }
+    
+    pub fn bottom_left(&self) -> Position {
+        Position(self.left, self.bottom)
+    }
+    
+    pub fn area(&self) -> i64 {
+        self.width() as i64 * self.height() as i64
+    }
+    
+    pub fn width(&self) -> i32 {
+        self.right - self.left
+    }
+    
+    pub fn height(&self) -> i32 {
+        self.bottom - self.top
+    }
+    
+    pub fn chunks_contained(&self) -> Vec<ChunkPosition> {
+        // Adding 15, 15 here so that when it's rounded down, it will always be the first chunk that's totally in it
+        let top_left = (self.top_left() + Position(15, 15)).chunk_position();
+        let bottom_right = self.bottom_right().chunk_position();
+        
+        let mut x = top_left.0;
+        
+        let mut chunks = vec![];
+        while x < bottom_right.0 {
+            let mut y = top_left.1;
+            while y < bottom_right.1 {
+                chunks.push(ChunkPosition(x, y));
+                y += 16;
+            }
+            x += 16;
+        }
+        
+        chunks
+    }
+    
+    pub fn chunks_containing(&self) -> Vec<ChunkPosition> {
+        let mut new_rect = self.clone();
+        new_rect.left -= 15;
+        new_rect.top -= 15;
+        new_rect.right += 15;
+        new_rect.bottom += 15;
+        new_rect.chunks_contained()
     }
 }
