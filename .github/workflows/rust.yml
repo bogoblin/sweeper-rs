@@ -2,9 +2,8 @@ name: Rust
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    tags:
+      - "*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,3 +39,4 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./target/release/sweeper-server
         asset_name: sweeper-server
+        asset_content_type: 'application/binary'

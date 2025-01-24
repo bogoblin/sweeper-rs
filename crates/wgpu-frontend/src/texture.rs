@@ -1,13 +1,10 @@
-use image::imageops::FilterType;
-use image::{GenericImageView};
-use anyhow::*;
 use crate::shader::HasBindGroup;
+use anyhow::*;
 
 pub struct Texture {
     #[allow(unused)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    pub sampler: Option<wgpu::Sampler>,
     pub(crate) bind_group: wgpu::BindGroup,
     pub(crate) bind_group_layout: wgpu::BindGroupLayout,
 }
@@ -122,7 +119,7 @@ impl Texture {
             }
         );
 
-        Ok(Self { texture, view, sampler: Some(sampler), bind_group, bind_group_layout })
+        Ok(Self { texture, view, bind_group, bind_group_layout })
     }
     
     pub fn from_wgpu_texture(texture: wgpu::Texture, device: &wgpu::Device) -> Result<Self> {

@@ -71,7 +71,6 @@ impl TileMapTexture {
         let tiles = Texture {
             texture: tiles,
             view,
-            sampler: None,
             bind_group,
             bind_group_layout,
         };

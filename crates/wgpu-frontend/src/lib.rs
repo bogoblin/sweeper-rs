@@ -8,10 +8,8 @@ mod cursors;
 
 use std::collections::{HashSet};
 use std::default::Default;
-use std::thread::sleep;
 use cgmath::Vector2;
 use chrono::prelude::*;
-use chrono::TimeDelta;
 use log::info;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -468,6 +466,8 @@ impl<'a> State<'a> {
                 cfg_if::cfg_if! {
                     if #[cfg(target_arch = "wasm32")] {
                     } else {
+                        use std::thread::sleep;
+                        use chrono::TimeDelta;
                         sleep(TimeDelta::milliseconds(16).to_std().unwrap());
                     }
                 }
