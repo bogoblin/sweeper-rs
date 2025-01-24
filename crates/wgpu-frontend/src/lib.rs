@@ -81,7 +81,7 @@ pub async fn run() {
                     },
                     ..
                 } => control_flow.exit(),
-                WindowEvent::Resized(physical_size) => {
+                WindowEvent::Resized(..) => {
                     surface_configured = true;
                     cfg_if::cfg_if! {
                         if #[cfg(target_arch = "wasm32")] {
@@ -91,7 +91,7 @@ pub async fn run() {
                             state.set_scale_factor(state.window.scale_factor());
                             state.resize(PhysicalSize::new(width, height));
                         } else {
-                            state.resize(*physical_size);
+                            state.resize(state.window.inner_size());
                         }
                     }
                 },
@@ -256,17 +256,17 @@ impl<'a> State<'a> {
             multiview: None,
             cache: None,
         });
-        
+
         let world;
         cfg_if::cfg_if! {
-        if #[cfg(target_arch = "wasm32")] {
-            use crate::sweeper_socket::IoWorld;
-            world = Box::new(IoWorld::new("/"))
-        } else {
-            use crate::sweeper_socket::LocalWorld;
-            world = Box::new(LocalWorld::new())
+            if #[cfg(target_arch = "wasm32")] {
+                use crate::sweeper_socket::socketio::IoWorld;
+                world = Box::new(IoWorld::new("/"))
+            } else {
+                use crate::sweeper_socket::local::LocalWorld;
+                world = Box::new(LocalWorld::new())
+            }
         }
-    }
 
         Self {
             window,
@@ -536,7 +536,6 @@ impl MouseState {
 struct KeyState {
     keys_down: HashSet<PhysicalKey>,
     keys_pressed: HashSet<PhysicalKey>,
-    keys_released: HashSet<PhysicalKey>,
 }
 
 impl KeyState {
@@ -557,7 +556,6 @@ impl KeyState {
                     }
                     ElementState::Released => {
                         self.keys_down.remove(&event.physical_key);
-                        self.keys_released.insert(event.physical_key);
                         false
                     }
                 }
@@ -573,12 +571,6 @@ impl KeyState {
     pub fn pressed(&mut self) -> HashSet<PhysicalKey> {
         let result = self.keys_pressed.clone();
         self.keys_pressed.clear();
-        result
-    }
-    
-    pub fn released(&mut self) -> HashSet<PhysicalKey> {
-        let result = self.keys_released.clone();
-        self.keys_released.clear();
         result
     }
     
