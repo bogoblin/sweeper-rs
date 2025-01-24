@@ -22,6 +22,7 @@ use crate::backup::Backup;
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
 use world::player::Player;
+use world::server_messages::ServerMessage;
 use world::World;
 
 #[derive(Parser)]
@@ -93,6 +94,10 @@ async fn main() {
                 },
                 Disconnected(player_id) => {
                     world.players.remove(&player_id);
+                    socket_ref.broadcast()
+                        .bin(vec!(Vec::<u8>::from(ServerMessage::Disconnected(player_id))))
+                        .within("default")
+                        .emit("e", vec![""]).ok();
                 }
                 Query(rect) => {
                     let mut chunks_to_send = vec![];
@@ -113,7 +118,7 @@ async fn main() {
                 }
             }
             send_recent_events(&mut world, &socket_ref);
-            
+
             match backup.save(&world) {
                 Ok(bytes_written) => {
                     debug!("{} bytes written to {}", bytes_written, backup.location().to_string_lossy());

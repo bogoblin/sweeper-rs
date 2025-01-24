@@ -423,13 +423,15 @@ impl<'a> State<'a> {
                     self.world.world().insert_chunk(chunk);
                 }
                 ServerMessage::Player(player) => {
-                    info!("got player {:?}", player);
                     self.cursors.update_player(&player, &self.queue);
                     self.world.world().players.insert(player.player_id.clone(), player);
                 }
                 ServerMessage::Welcome(player) => {
-                    info!("Welcome {}", player.player_id);
                     self.cursors.set_you(player.player_id.clone(), &player, &self.queue);
+                }
+                ServerMessage::Disconnected(player_id) => {
+                    self.cursors.delete_player(&player_id, &self.queue);
+                    self.world.world().players.remove(&player_id);
                 }
             }
         }

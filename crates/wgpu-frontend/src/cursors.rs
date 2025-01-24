@@ -15,6 +15,9 @@ pub struct Cursors {
 }
 
 impl Cursors {
+}
+
+impl Cursors {
     const N_CURSORS: usize = 1024;
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat, camera: &Camera) -> Self {
         let cursor_texture = Texture::from_bytes(device, queue, include_bytes!("cursor.png"), "Cursor Texture").unwrap();
@@ -129,7 +132,7 @@ impl Cursors {
     }
     
     pub fn update_player(&self, player: &Player, queue: &wgpu::Queue) {
-        let offset = (mem::size_of::<CursorInstance>() * player.numeric_hash(Self::N_CURSORS)) as BufferAddress;
+        let offset = (mem::size_of::<CursorInstance>() * Player::numeric_hash(&player.player_id, Self::N_CURSORS)) as BufferAddress;
         let is_you = match &self.your_player_id {
             None => false,
             Some(player_id) => {
@@ -137,6 +140,11 @@ impl Cursors {
             }
         };
         queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&[CursorInstance::from_player(player, is_you)]));
+    }
+    
+    pub fn delete_player(&self, player_id: &String, queue: &wgpu::Queue) {
+        let offset = (mem::size_of::<CursorInstance>() * Player::numeric_hash(player_id, Self::N_CURSORS)) as BufferAddress;
+        queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&[CursorInstance::deleted()]));
     }
 }
 
@@ -165,6 +173,10 @@ impl CursorProperties {
         props |= Self::CONNECTED;
         Self(props)
     }
+    
+    fn deleted() -> Self {
+        Self(0)
+    }
 }
 
 impl CursorInstance {
@@ -174,9 +186,15 @@ impl CursorInstance {
         Self {
             position: [player.position.0 as f32, player.position.1 as f32],
             prev_position: [player.position.0 as f32, player.position.1 as f32], // TODO: figure out how to architect this
-            time_moved: 0.0,
             properties: CursorProperties::new(is_you),
-            _pad: Default::default(),
+            ..Default::default()
+        }
+    }
+    
+    fn deleted() -> Self {
+        Self {
+            properties: CursorProperties::deleted(),
+            ..Default::default()
         }
     }
 

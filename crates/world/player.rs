@@ -16,7 +16,7 @@ impl Player {
             position: Position::origin(),
         }
     }
-    
+
     pub fn update(&mut self, event: &Event) {
         match event {
             Event::Clicked { at, .. } |
@@ -27,16 +27,18 @@ impl Player {
             }
         }
     }
-    
-    pub fn numeric_hash(&self, max: usize) -> usize {
+
+    pub fn numeric_hash(player_id: &str, max: usize) -> usize {
         let mut result: usize = 0;
-        for (i, char) in self.player_id.chars().enumerate() {
-            result += (char.to_digit(1 << 5).unwrap_or(0) * (1 << (5*i))) as usize;
+        let mut buf: [u8; 4] = Default::default();
+        for char in player_id.chars() {
+            result <<= 5;
+            result += (char.encode_utf8(&mut buf).as_bytes()[0] & 0b11111) as usize;
             if result > max { break }
         }
         result % max
     }
-    
+
     pub fn compress(&self, header: &str) -> Vec<u8> {
         let mut binary = vec![];
         binary.append(&mut header.as_bytes().to_vec());
