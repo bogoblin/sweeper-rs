@@ -387,10 +387,12 @@ impl<'a> State<'a> {
             if drag_length < 4.0 {
                 if self.mouse.button_is_down(MouseButton::Right) {
                     if let Some(to_reveal) = self.world.world().check_double_click(&position) {
-                        for position_to_reveal in to_reveal {
-                            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position_to_reveal);
+                        for position_to_reveal in &to_reveal {
+                            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), *position_to_reveal);
                         }
-                        self.world.send(ClientMessage::DoubleClick(position));
+                        if to_reveal.len() > 0 {
+                            self.world.send(ClientMessage::DoubleClick(position));
+                        }
                     }
                 } else {
                     if !self.world.world().get_tile(&position).is_revealed() {
