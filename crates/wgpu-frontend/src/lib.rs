@@ -386,9 +386,17 @@ impl<'a> State<'a> {
             let drag_length = self.camera.end_drag(&self.mouse.position);
             if drag_length < 4.0 {
                 if self.mouse.button_is_down(MouseButton::Right) {
-                    self.world.send(ClientMessage::DoubleClick(position));
+                    if let Some(to_reveal) = self.world.world().check_double_click(&position) {
+                        for position_to_reveal in to_reveal {
+                            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position_to_reveal);
+                        }
+                        self.world.send(ClientMessage::DoubleClick(position));
+                    }
                 } else {
-                    self.world.send(ClientMessage::Click(position));
+                    if !self.world.world().get_tile(&position).is_revealed() {
+                        self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position);
+                        self.world.send(ClientMessage::Click(position));
+                    }
                 }
             }
         }
@@ -401,6 +409,7 @@ impl<'a> State<'a> {
                 info!("flagging");
                 self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
             }
+            self.world.world().flag(position, "");
             self.world.send(ClientMessage::Flag(position));
         }
 

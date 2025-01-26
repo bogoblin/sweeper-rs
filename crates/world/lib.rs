@@ -242,15 +242,11 @@ impl World {
 
         UpdatedRect::new(updated_tiles)
     }
-
-    pub fn double_click(&mut self, position: Position, by_player_id: &str) {
-        let chunk = match self.get_chunk(position) {
-            Some(chunk) => chunk,
-            None => return,
-        };
-        let tile = chunk.get_tile(position);
+    
+    pub fn check_double_click(&self, position: &Position) -> Option<Vec<Position>> {
+        let tile = self.get_tile(position);
         if !tile.is_revealed() || tile.adjacent() == 0 {
-            return;
+            return None;
         }
         let mut surrounding_flags = 0;
         let mut to_reveal = vec![];
@@ -273,6 +269,14 @@ impl World {
             }
         }
         if surrounding_flags == tile.adjacent() {
+            Some(to_reveal)
+        } else {
+            None
+        }
+    }
+
+    pub fn double_click(&mut self, position: Position, by_player_id: &str) {
+        if let Some(to_reveal) = self.check_double_click(&position) {
             let updated = self.reveal(to_reveal);
             self.push_event(Event::DoubleClicked {
                 player_id: by_player_id.to_string(),

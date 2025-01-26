@@ -35,6 +35,9 @@ impl Event {
                 let mut result = vec![];
                 for (x, col) in updated.updated.iter().enumerate() {
                     for (y, tile) in col.iter().enumerate() {
+                        if *tile == Tile::empty() {
+                            continue
+                        }
                         let position = updated.top_left + Position(x as i32, y as i32);
                         result.push(UpdatedTile {
                             position,

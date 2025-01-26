@@ -54,7 +54,7 @@ async fn main() {
             }));
             let tx2 = tx.clone();
             socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
-                // sleep(Duration::from_millis(500)); Can uncomment this to add simulated lag
+                // sleep(Duration::from_millis(500)); // Can uncomment this to add simulated lag
                 if let Some(message) = ClientMessage::decode(data) {
                     tx.send((message, socket_ref)).unwrap_or_default();
                 }
