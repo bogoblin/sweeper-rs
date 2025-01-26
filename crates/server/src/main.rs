@@ -15,6 +15,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use std::thread::sleep;
+use std::time::Duration;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
 use log::{debug};
@@ -52,6 +54,7 @@ async fn main() {
             }));
             let tx2 = tx.clone();
             socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
+                // sleep(Duration::from_millis(500)); Can uncomment this to add simulated lag
                 if let Some(message) = ClientMessage::decode(data) {
                     tx.send((message, socket_ref)).unwrap_or_default();
                 }

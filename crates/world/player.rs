@@ -3,7 +3,7 @@ use crate::events::Event;
 use crate::Position;
 
 #[derive(Serialize, Deserialize)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Player {
     pub player_id: String,
     pub position: Position,

@@ -1,7 +1,7 @@
 use std::i32;
 use serde::{Deserialize, Serialize};
 use huffman::{BitWriter, HuffmanCode};
-use crate::{Position, Tile, UpdatedRect};
+use crate::{Position, Tile, UpdatedRect, UpdatedTile};
 use crate::compression::PublicTile;
 
 #[derive(Debug)]
@@ -27,6 +27,38 @@ pub enum Event {
     }
 }
 
+impl Event {
+    pub fn tiles_updated(&self) -> Vec<UpdatedTile> {
+        match self {
+            Event::Clicked { updated, .. } |
+            Event::DoubleClicked { updated, .. } => {
+                let mut result = vec![];
+                for (x, col) in updated.updated.iter().enumerate() {
+                    for (y, tile) in col.iter().enumerate() {
+                        let position = updated.top_left + Position(x as i32, y as i32);
+                        result.push(UpdatedTile {
+                            position,
+                            tile: tile.clone()
+                        });
+                    }
+                }
+                result
+            }
+            Event::Flag { at, .. } => {
+                vec![UpdatedTile {
+                    position: at.clone(),
+                    tile: Tile::empty().with_flag()
+                }]
+            }
+            Event::Unflag { at, .. } => {
+                vec![UpdatedTile {
+                    position: at.clone(),
+                    tile: Tile::empty()
+                }]
+            }
+        }
+    }
+}
 impl Event {
     pub fn compress(&self) -> Vec<u8> {
         let mut binary = vec![];
@@ -147,10 +179,10 @@ fn compression_test() -> Result<(), String> {
     }
 
     let to_update = vec![
-        crate::UpdatedTile { position: Position(1, 1), tile: Tile::empty().with_revealed() },
-        crate::UpdatedTile { position: Position(3, 1), tile: Tile::empty().with_revealed() },
-        crate::UpdatedTile { position: Position(3, 3), tile: Tile::mine().with_revealed() },
-        crate::UpdatedTile { position: Position(2, 3), tile: Tile::mine().with_flag() },
+        UpdatedTile { position: Position(1, 1), tile: Tile::empty().with_revealed() },
+        UpdatedTile { position: Position(3, 1), tile: Tile::empty().with_revealed() },
+        UpdatedTile { position: Position(3, 3), tile: Tile::mine().with_revealed() },
+        UpdatedTile { position: Position(2, 3), tile: Tile::mine().with_flag() },
     ];
     let clicked = Event::Clicked {
         player_id: p.to_string(),

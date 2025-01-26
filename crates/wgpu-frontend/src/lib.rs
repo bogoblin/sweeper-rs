@@ -393,10 +393,19 @@ impl<'a> State<'a> {
             }
         }
         if clicked.contains(&MouseButton::Right) {
+            let tile = self.world.world().get_tile(&position);
+            if tile.is_flag() {
+                info!("unflagging");
+                self.tile_map_texture.write_tile(&self.queue, tile.without_flag(), position);
+            } else {
+                info!("flagging");
+                self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
+            }
             self.world.send(ClientMessage::Flag(position));
         }
 
         while let Some(message) = self.world.next_message() {
+            self.world.world().apply_server_message(&message);
             match message {
                 ServerMessage::Event(event) => {
                     let player_id = self.world.world().create_or_update_player(&event);

@@ -13,6 +13,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Add, AddAssign, Sub};
+use crate::server_messages::ServerMessage;
 
 pub mod server_messages;
 pub mod events;
@@ -36,6 +37,37 @@ pub struct World {
     pub players: HashMap<String, Player>,
 }
 
+impl World {
+    pub fn get_tile(&self, position: &Position) -> Tile {
+        if let Some(&chunk_id) = self.get_chunk_id(position.clone()) {
+            self.chunks[chunk_id].get_tile(position.clone())
+        } else {
+            Tile::empty()
+        }
+    }
+}
+
+impl World {
+    pub fn apply_server_message(&mut self, message: &ServerMessage) {
+        match message {
+            ServerMessage::Event(event) => {
+                self.create_or_update_player(event);
+                for UpdatedTile {position, tile} in event.tiles_updated() {
+                    let chunk_id = self.generate_chunk(position);
+                    self.chunks[chunk_id].set_tile(position, tile);
+                }
+            }
+            ServerMessage::Chunk(chunk) => {
+                self.insert_chunk(chunk.clone());
+            }
+            ServerMessage::Player(player) => {
+                self.players.insert(player.player_id.clone(), player.clone());
+            }
+            ServerMessage::Welcome(_) => {}
+            ServerMessage::Disconnected(_) => {}
+        }
+    }
+}
 
 impl World {
     pub fn new() -> World {
@@ -460,7 +492,7 @@ impl<'de> Deserialize<'de> for ChunkTiles {
 }
 
 #[derive(Serialize, Deserialize)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunk {
     pub tiles: ChunkTiles,
     pub position: ChunkPosition,

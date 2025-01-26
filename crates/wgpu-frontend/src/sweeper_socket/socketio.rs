@@ -58,6 +58,9 @@ impl IoWorld {
                 }
             }
         }
+        for message in &self.messages {
+            self.world.apply_server_message(&message);
+        }
     }
 }
 
