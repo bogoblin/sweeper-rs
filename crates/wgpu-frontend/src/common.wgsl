@@ -4,6 +4,7 @@ struct CameraUniform {
     @location(2) tile_map_rect: vec4<f32>,
     @location(3) tile_map_size: vec4<f32>,
     @location(4) full_tile_map_rect: vec4<i32>,
+    @location(5) time: i32,
 }
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;

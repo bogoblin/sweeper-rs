@@ -2,6 +2,8 @@ use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
 use crate::{as_world_position, MouseState};
 use cgmath::{MetricSpace, Vector2, Vector4, Zero};
+#[cfg(target_arch = "wasm32")]
+use web_sys::Performance;
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Rect};
@@ -16,7 +18,9 @@ pub struct Camera {
     bind_group: wgpu::BindGroup,
     bind_group_layout: wgpu::BindGroupLayout,
     uniform: CameraUniform,
-    scale_factor: f64
+    scale_factor: f64,
+    #[cfg(target_arch = "wasm32")]
+    performance: Performance,
 }
 
 struct Drag {
@@ -70,6 +74,8 @@ impl Camera {
             bind_group_layout,
             uniform,
             scale_factor: 1.0,
+            #[cfg(target_arch = "wasm32")]
+            performance: web_sys::window().unwrap().performance().unwrap(),
         }
     }
 
@@ -100,6 +106,9 @@ impl Camera {
             TileMapTexture::SIZE as i32,
             TileMapTexture::SIZE as i32,
         );
+        #[cfg(target_arch = "wasm32")] {
+            self.uniform.time = self.performance.now() as i32;
+        }
         queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[self.uniform]));
     }
 
@@ -192,6 +201,8 @@ struct CameraUniform {
     tile_map_rect: [f32; 4],
     tile_map_size: [f32; 4],
     full_tile_map_rect: Rect,
+    time: i32,
+    _pad: [f32; 3]
 }
 
 fn position_to_vector(position: PhysicalPosition<f64>) -> Vector2<f32> {

@@ -2,7 +2,9 @@ use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 use std::mem;
-use wgpu::VertexFormat::{Float32, Float32x2, Uint32};
+#[cfg(target_arch = "wasm32")]
+use web_sys::Performance;
+use wgpu::VertexFormat::{Float32x2, Sint32, Uint32};
 use wgpu::{BufferAddress, RenderPipeline, ShaderLocation, ShaderSource, VertexBufferLayout};
 use world::player::Player;
 
@@ -11,7 +13,9 @@ pub struct Cursors {
     cursors: [CursorInstance; Cursors::N_CURSORS],
     render_pipeline: RenderPipeline,
     instance_buffer: wgpu::Buffer,
-    your_player_id: Option<String>
+    your_player_id: Option<String>,
+    #[cfg(target_arch = "wasm32")]
+    performance: Performance,
 }
 
 impl Cursors {
@@ -93,7 +97,9 @@ impl Cursors {
             cursors,
             render_pipeline,
             instance_buffer,
-            your_player_id: None
+            your_player_id: None,
+            #[cfg(target_arch = "wasm32")]
+            performance: web_sys::window().unwrap().performance().unwrap(),
         }
     }
     
@@ -131,15 +137,26 @@ impl Cursors {
         self.update_player(player, queue);
     }
     
-    pub fn update_player(&self, player: &Player, queue: &wgpu::Queue) {
-        let offset = (mem::size_of::<CursorInstance>() * Player::numeric_hash(&player.player_id, Self::N_CURSORS)) as BufferAddress;
+    pub fn update_player(&mut self, player: &Player, queue: &wgpu::Queue) {
+        let index = Player::numeric_hash(&player.player_id, Self::N_CURSORS);
+        let cursor_instance = &mut self.cursors[index];
+        cursor_instance.prev_position = cursor_instance.position;
+        cursor_instance.position = [player.position.0 as f32, player.position.1 as f32];
+        if cursor_instance.prev_position.eq(&[0.0, 0.0]) {
+            cursor_instance.prev_position = cursor_instance.position;
+        }
+        #[cfg(target_arch = "wasm32")] {
+            cursor_instance.time_moved = self.performance.now() as i32;
+        }
+        let offset = (mem::size_of::<CursorInstance>() * index) as BufferAddress;
         let is_you = match &self.your_player_id {
             None => false,
             Some(player_id) => {
                 player.player_id.eq(player_id)
             }
         };
-        queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&[CursorInstance::from_player(player, is_you)]));
+        cursor_instance.properties = CursorProperties::new(is_you);
+        queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&self.cursors[index..index+1]));
     }
     
     pub fn delete_player(&self, player_id: &String, queue: &wgpu::Queue) {
@@ -154,7 +171,7 @@ impl Cursors {
 struct CursorInstance {
     position: [f32; 2],
     prev_position: [f32; 2],
-    time_moved: f32,
+    time_moved: i32,
     properties: CursorProperties,
     _pad: [f32; 2],
 }
@@ -182,15 +199,6 @@ impl CursorProperties {
 impl CursorInstance {
     const SHADER_LOCATION_OFFSET: ShaderLocation = 0;
     
-    fn from_player(player: &Player, is_you: bool) -> Self {
-        Self {
-            position: [player.position.0 as f32, player.position.1 as f32],
-            prev_position: [player.position.0 as f32, player.position.1 as f32], // TODO: figure out how to architect this
-            properties: CursorProperties::new(is_you),
-            ..Default::default()
-        }
-    }
-    
     fn deleted() -> Self {
         Self {
             properties: CursorProperties::deleted(),
@@ -216,7 +224,7 @@ impl CursorInstance {
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 4]>() as BufferAddress,
                     shader_location: Self::SHADER_LOCATION_OFFSET + 2,
-                    format: Float32,
+                    format: Sint32,
                 },
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 5]>() as BufferAddress,

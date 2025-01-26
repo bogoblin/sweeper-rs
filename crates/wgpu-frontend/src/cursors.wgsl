@@ -7,7 +7,7 @@ struct VertexOut {
 struct CursorInstance {
     @location(0) position: vec2<f32>,
     @location(1) prev_position: vec2<f32>,
-    @location(2) time_moved: f32,
+    @location(2) time_moved: i32,
     @location(3) properties: u32,
 }
 
@@ -36,7 +36,9 @@ fn vs_main(@builtin(vertex_index) idx: u32, instance: CursorInstance) -> VertexO
         default: {}
     }
     var out: VertexOut;
-    out.position = vec4<f32>(world_to_clip(instance.position + 2.0*texture_coords), 0.0, 1.0);
+    let animation_t = saturate(f32(camera.time - instance.time_moved)/200.0);
+    let animated_position = animation_t * instance.position + (1.0 - animation_t) * instance.prev_position;
+    out.position = vec4<f32>(world_to_clip(animated_position + 2.0*texture_coords), 0.0, 1.0);
     out.texture_coords = texture_coords;
     if (bool(instance.properties & 2)) { // Is this player connected?
         if (bool(instance.properties & 1)) { // Is it you?
