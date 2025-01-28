@@ -247,9 +247,42 @@ impl TileMapTexture {
             render_pass.set_bind_group(0, camera.bind_group(), &[]);
             render_pass.set_bind_group(1, self.sprites.bind_group(), &[]);
             render_pass.set_bind_group(2, self.tiles.bind_group(), &[]);
-            render_pass.draw(0..6, 0..1);
+
+            let tile_width = camera.tile_map_size() as i32;
+            let tile_map_extent = Self::SIZE as i32 / tile_width;
+            
+            // We only want to render the stuff that's going to appear on the screen.
+            // This will consist of up to four rectangles because the screen area is not continuous.
+            let rects = self.split_rect_along_boundaries(camera.visible_world_rect().modulo(tile_map_extent));
+            for rect in rects {
+                if rect.area() == 0 { continue }
+                let mut r = rect.modulo(tile_map_extent);
+                if r.left < 0 { r.shift(tile_map_extent, 0) }
+                if r.top < 0 { r.shift(0, tile_map_extent) }
+                render_pass.set_scissor_rect(
+                    (tile_width * r.left) as u32,
+                    (tile_width * r.top) as u32,
+                    (tile_width * r.width()) as u32,
+                    (tile_width * r.height()) as u32,
+                );
+                render_pass.draw(0..6, 0..1);
+            }
         }
         queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    fn split_rect_along_boundaries(&self, rect: Rect) -> Vec<Rect> {
+        let rects = rect.split_x(0)
+            .iter().map(|r| r.split_y(0))
+            .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
+            .unwrap()
+            .iter().map(|r| r.split_x(Self::SIZE as i32))
+            .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
+            .unwrap()
+            .iter().map(|r| r.split_y(Self::SIZE as i32))
+            .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
+            .unwrap();
+        rects
     }
     
     pub fn blank_rect(&self, device: &wgpu::Device, queue: &wgpu::Queue, camera: &Camera, rect: Rect) {

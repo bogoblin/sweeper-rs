@@ -709,6 +709,48 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub fn split_x(&self, split: i32) -> Vec<Rect> {
+        if split > self.left && split < self.right {
+            let mut r1 = self.clone();
+            let mut r2 = self.clone();
+            r1.right = split;
+            r2.left = split;
+            vec![r1, r2]
+        } else {
+            vec![self.clone()]
+        }
+    }
+    
+    pub fn split_y(&self, split: i32) -> Vec<Rect> {
+        if split > self.top && split < self.bottom {
+            let mut r1 = self.clone();
+            let mut r2 = self.clone();
+            r1.bottom = split;
+            r2.top = split;
+            vec![r1, r2]
+        } else {
+            vec![self.clone()]
+        }       
+    }
+    
+    pub fn shift(&mut self, x: i32, y: i32) {
+        self.left += x;
+        self.right += x;
+        self.top += y;
+        self.bottom += y;
+    }
+    
+    pub fn modulo(&self, modulo: i32) -> Rect {
+        let mut result = self.clone();
+        result.left %= modulo;
+        result.right %= modulo;
+        result.top %= modulo;
+        result.bottom %= modulo;
+        result
+    }
+}
+
+impl Rect {
     pub fn from_center_and_size(center: Position, width: i32, height: i32) -> Self {
         let left = center.0 - width/2;
         let top = center.1 - height/2;

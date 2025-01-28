@@ -23,6 +23,18 @@ pub struct Camera {
     performance: Performance,
 }
 
+impl Camera {
+    pub(crate) fn visible_world_rect(&self) -> Rect {
+        let world_rect = self.rect();
+        Rect {
+            left: world_rect.x.floor() as i32,
+            top: world_rect.y.floor() as i32,
+            right: world_rect.z.ceil() as i32,
+            bottom: world_rect.w.ceil() as i32,
+        }
+    }
+}
+
 struct Drag {
     center: Vector2<f32>,
     screen_start: Vector2<f32>
@@ -84,16 +96,25 @@ impl Camera {
         self.scale_factor = scale_factor;
     }
     
-    pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
-        self.uniform.world_rect = self.rect().into();
-        self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
-        let scale = (16.0/self.tile_size()).log2().floor() as i32;
+    pub fn scale(&self) -> i32 {
+        (16.0/self.tile_size()).log2().floor() as i32
+    }
+    
+    pub fn tile_map_size(&self) -> u32 {
+        let scale = self.scale();
         let mut tile_map_size = if scale > 0 {
             16 >> scale
         } else {
             16
-        } as f32;
-        if tile_map_size < 1.0 { tile_map_size = 1.0; }
+        };
+        if tile_map_size < 1 { tile_map_size = 1; }
+        tile_map_size
+    }
+    
+    pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
+        self.uniform.world_rect = self.rect().into();
+        self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
+        let tile_map_size = self.tile_map_size() as f32;
         self.uniform.tile_map_size = [tile_map_size, tile_map_size, 0.0, 0.0];
         let tiles_in_texture = (TileMapTexture::SIZE/tile_map_size as usize) as i32;
         let tile_map_area = Rect::from_center_and_size(Position(
