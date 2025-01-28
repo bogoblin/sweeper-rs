@@ -23,4 +23,10 @@ extern "C" {
     
     #[wasm_bindgen(method)]
     pub fn on(this: &Engine, event: &str, closure: &Closure<dyn FnMut(Object)>);
+
+    #[wasm_bindgen(method)]
+    pub fn off(this: &Engine, event: &str);
+
+    #[wasm_bindgen(method)]
+    pub fn listeners(this: &Engine, event: &str) -> Vec<JsValue>;
 }

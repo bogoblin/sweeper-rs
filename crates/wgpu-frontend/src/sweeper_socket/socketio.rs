@@ -3,6 +3,7 @@ use socketio_local::SocketIo;
 use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
+use log::info;
 use wasm_bindgen::closure::Closure;
 use web_sys::js_sys::{Array, Object, Uint8Array};
 use world::client_messages::ClientMessage;
@@ -23,6 +24,7 @@ impl IoWorld {
         let socket = io(url);
         let (tx, rx) = mpsc::channel();
         let on_packet = Closure::new(move |data: Object| {
+            info!("{:?}", data);
             tx.send(data).expect("TODO: panic message");
         });
         let result = Self {
@@ -41,6 +43,12 @@ impl IoWorld {
     }
 
     fn update(&mut self) {
+        // In Chrome, the socket disconnects and then reconnects, so we need to set up the
+        // listener again if it disappears.
+        if self.socket.io().engine().listeners("packet").len() == 0 {
+            self.socket.io().engine().on("packet", &self.on_packet);
+        }
+        
         for packet in self.packet_receiver.try_iter() {
             let entries: Vec<_> = Object::entries(&packet).iter().collect();
             for entry in entries {
