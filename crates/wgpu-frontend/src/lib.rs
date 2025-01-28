@@ -6,14 +6,14 @@ mod tile_sprites;
 mod sweeper_socket;
 mod cursors;
 
-use std::collections::{HashSet};
+use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use cgmath::Vector2;
 use chrono::prelude::*;
 use log::info;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Window, WindowBuilder};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -64,12 +64,15 @@ pub async fn run() {
     
     let mut state = State::new(&window).await;
     let mut surface_configured = false;
+    let mut mouse_position = PhysicalPosition::new(0.0, 0.0);
+    let mut fingers = HashMap::new();
+    let mut right_mouse_button_down = false;
 
     event_loop.run(move |event, control_flow| match event {
         winit::event::Event::WindowEvent {
             ref event,
             window_id,
-        } if window_id == state.window.id() => if !state.input(event) {
+        } if window_id == state.window.id() => {
             match event {
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
@@ -122,7 +125,99 @@ pub async fn run() {
                             log::warn!("Surface timeout")
                         }
                     }
-                },
+                }
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    state.camera.start_drag(&mouse_position);
+                }
+                WindowEvent::MouseInput {
+                    state: ElementState::Released,
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    let drag_distance = state.camera.end_drag(&mouse_position);
+                    if drag_distance < 4.0 {
+                        if right_mouse_button_down {
+                            state.double_click_at(&mouse_position);
+                        } else {
+                            state.click_at(&mouse_position);
+                        }
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    mouse_position = position.clone();
+                    state.camera.update_drag(&mouse_position);
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    match delta {
+                        MouseScrollDelta::LineDelta(_x, y) => {
+                            state.camera.zoom_around(*y, &mouse_position);
+                        }
+                        MouseScrollDelta::PixelDelta(position) => {
+                            state.camera.zoom_around((position.y / 100.0) as f32, &mouse_position);
+                        }
+                    }
+                }
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Right,
+                    ..
+                } => {
+                    right_mouse_button_down = true;
+                    state.toggle_flag_at(&mouse_position);
+                }
+                WindowEvent::MouseInput {
+                    state: ElementState::Released,
+                    button: MouseButton::Right,
+                    ..
+                } => {
+                    right_mouse_button_down = false;
+                }
+                WindowEvent::Touch(
+                    Touch {
+                        phase: TouchPhase::Started | TouchPhase::Moved,
+                        location,
+                        id,
+                        ..
+                    }
+                ) => {
+                    // TODO: find out how much to zoom if we're pinching
+                    fingers.insert(*id, location.clone());
+                    if fingers.len() == 1 {
+                        state.camera.start_drag(&location);
+                        state.camera.update_drag(&location);
+                    }
+                }
+                WindowEvent::Touch(
+                    Touch {
+                        phase: TouchPhase::Ended | TouchPhase::Cancelled,
+                        location,
+                        id,
+                        ..
+                    }
+                ) => {
+                    fingers.remove(id);
+                    state.camera.end_drag(&location);
+                }
+                WindowEvent::KeyboardInput { event: KeyEvent {
+                    state: ElementState::Pressed,
+                    logical_key,
+                    ..
+                }, .. } => {
+                    match logical_key {
+                        Key::Named(_) => {}
+                        Key::Character(character) => {
+                            if character == "l" {
+                                state.toggle_dark_mode();
+                            }
+                        }
+                        Key::Unidentified(_) => {}
+                        Key::Dead(_) => {}
+                    }
+                }
                 _ => {}
             }
         },
@@ -139,8 +234,6 @@ struct State<'a> {
     scale_factor: f64,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
-    mouse: MouseState,
-    keyboard: KeyState,
     camera: Camera,
     last_frame_time: DateTime<Utc>,
     tile_map_texture: TileMapTexture,
@@ -280,8 +373,6 @@ impl<'a> State<'a> {
             scale_factor: 1.0,
             render_pipeline,
             camera,
-            mouse: MouseState::new(),
-            keyboard: KeyState::new(),
             last_frame_time: Utc::now(),
             world,
             tile_map_texture,
@@ -310,59 +401,11 @@ impl<'a> State<'a> {
     #[cfg(target_arch = "wasm32")]
     fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
-        self.mouse.scale_factor = scale_factor;
-    }
-
-    fn input(&mut self, event: &WindowEvent) -> bool {
-        self.keyboard.handle(event.clone())
-        || self.mouse.handle(event.clone())
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let dt = Utc::now() - self.last_frame_time;
         self.last_frame_time = Utc::now();
-        let pan_speed = 200.0 * dt.num_milliseconds() as f32 / 1000.0;
-        let zoom_speed = 16.0 * dt.num_milliseconds() as f32 / 1000.0;
-        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowRight)) {
-            self.camera.pan_pixels(pan_speed, 0.0);
-        }
-        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowLeft)) {
-            self.camera.pan_pixels(-pan_speed, 0.0);
-        }
-        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowDown)) {
-            self.camera.pan_pixels(0.0, pan_speed);
-        }
-        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::ArrowUp)) {
-            self.camera.pan_pixels(0.0, -pan_speed);
-        }
-
-        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Equal)) {
-            self.camera.zoom_level += zoom_speed;
-        }
-        if self.keyboard.key_is_down(PhysicalKey::Code(KeyCode::Minus)) {
-            self.camera.zoom_level -= zoom_speed;
-        }
-        
-        let pressed = self.keyboard.pressed();
-        if pressed.contains(&PhysicalKey::Code(KeyCode::KeyL)) {
-            self.tile_map_texture.sprites.toggle_dark_mode(&self.queue);
-        }
-        if pressed.contains(&PhysicalKey::Code(KeyCode::KeyF)) {
-            self.tile_map_texture.sprites.change_filter(&self.queue);
-        }
-
-        if self.mouse.button_is_down(MouseButton::Left) {
-            self.camera.start_drag(&self.mouse.position);
-        }
-        self.camera.update_drag(&self.mouse);
-
-        let wheel = self.mouse.wheel();
-        if let Some(MouseScrollDelta::LineDelta(_x, y)) = wheel {
-            self.camera.zoom_around(y, &self.mouse.position);
-        }
-        if let Some(MouseScrollDelta::PixelDelta(position)) = wheel {
-            self.camera.zoom_around((position.y / 100.0) as f32, &self.mouse.position);
-        }
         
         self.camera.write_to_queue(&self.queue, 0);
         
@@ -377,44 +420,6 @@ impl<'a> State<'a> {
             }
         }
         
-        let clicked = self.mouse.clicked();
-        let released = self.mouse.released();
-
-        let position_at_mouse = self.camera.screen_to_world(&self.mouse.position);
-        let position = as_world_position(position_at_mouse);
-        if released.contains(&MouseButton::Left) {
-            let drag_length = self.camera.end_drag(&self.mouse.position);
-            if drag_length < 4.0 {
-                if self.mouse.button_is_down(MouseButton::Right) {
-                    if let Some(to_reveal) = self.world.world().check_double_click(&position) {
-                        for position_to_reveal in &to_reveal {
-                            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), *position_to_reveal);
-                        }
-                        if to_reveal.len() > 0 {
-                            self.world.send(ClientMessage::DoubleClick(position));
-                        }
-                    }
-                } else {
-                    if !self.world.world().get_tile(&position).is_revealed() {
-                        self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position);
-                        self.world.send(ClientMessage::Click(position));
-                    }
-                }
-            }
-        }
-        if clicked.contains(&MouseButton::Right) {
-            let tile = self.world.world().get_tile(&position);
-            if tile.is_flag() {
-                info!("unflagging");
-                self.tile_map_texture.write_tile(&self.queue, tile.without_flag(), position);
-            } else {
-                info!("flagging");
-                self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
-            }
-            self.world.world().flag(position, "");
-            self.world.send(ClientMessage::Flag(position));
-        }
-
         while let Some(message) = self.world.next_message() {
             self.world.world().apply_server_message(&message);
             match message {
@@ -501,124 +506,50 @@ impl<'a> State<'a> {
 
         Ok(())
     }
-}
+    
+    pub fn click_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
+        let position_at_mouse = self.camera.screen_to_world(mouse_position);
+        let position = as_world_position(position_at_mouse);
+        
+        if !self.world.world().get_tile(&position).is_revealed() {
+            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position);
+            self.world.send(ClientMessage::Click(position));
+        }
+    }
+    
+    pub fn double_click_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
+        let position_at_mouse = self.camera.screen_to_world(mouse_position);
+        let position = as_world_position(position_at_mouse);
+        
+        if let Some(to_reveal) = self.world.world().check_double_click(&position) {
+            for position_to_reveal in &to_reveal {
+                self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), *position_to_reveal);
+            }
+            if to_reveal.len() > 0 {
+                self.world.send(ClientMessage::DoubleClick(position));
+            }
+        }
+    }
+    
+    pub fn toggle_flag_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
+        let position_at_mouse = self.camera.screen_to_world(mouse_position);
+        let position = as_world_position(position_at_mouse);
 
-#[derive(Default)]
-struct MouseState {
-    position: PhysicalPosition<f64>,
-    buttons_down: HashSet<MouseButton>,
-    buttons_clicked: HashSet<MouseButton>,
-    buttons_released: HashSet<MouseButton>,
-    delta: Option<MouseScrollDelta>,
-    scale_factor: f64,
-}
-
-impl MouseState {
-    fn new() -> Self {
-        Self {
-            scale_factor: 1.0,
-            ..Default::default()
+        let tile = self.world.world().get_tile(&position);
+        if tile.is_flag() {
+            info!("unflagging");
+            self.tile_map_texture.write_tile(&self.queue, tile.without_flag(), position);
+        } else {
+            info!("flagging");
+            self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
         }
+        self.world.world().flag(position, "");
+        self.world.send(ClientMessage::Flag(position));
     }
     
-    pub fn handle(&mut self, event: WindowEvent) -> bool {
-        match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                let scale = self.scale_factor;
-                self.position = PhysicalPosition::new(position.x / scale, position.y / scale);
-                true
-            }
-            WindowEvent::CursorEntered { .. } => false,
-            WindowEvent::CursorLeft { .. } => false,
-            WindowEvent::MouseWheel { delta, .. } => {
-                self.delta = Some(delta);
-                true
-            }
-            WindowEvent::MouseInput { state, button, .. } => {
-                match state {
-                    ElementState::Pressed => {
-                        self.buttons_down.insert(button);
-                        self.buttons_clicked.insert(button)
-                    }
-                    ElementState::Released => {
-                        self.buttons_down.remove(&button);
-                        self.buttons_released.insert(button)
-                    }
-                }
-            }
-            _ => false
-        }
+    pub fn toggle_dark_mode(&mut self) {
+        self.tile_map_texture.sprites.toggle_dark_mode(&self.queue);
     }
-    
-    pub fn clicked(&mut self) -> HashSet<MouseButton> {
-        let result = self.buttons_clicked.clone();
-        self.buttons_clicked.clear();
-        result
-    }
-    
-    pub fn released(&mut self) -> HashSet<MouseButton> {
-        let result = self.buttons_released.clone();
-        self.buttons_released.clear();
-        result
-    }
-    
-    pub fn wheel(&mut self) -> Option<MouseScrollDelta> {
-        match self.delta {
-            None => None,
-            Some(delta) => {
-                self.delta = None;
-                Some(delta)
-            }
-        }
-    }
-    
-    pub fn button_is_down(&self, button: MouseButton) -> bool {
-        self.buttons_down.contains(&button)
-    }
-}
-
-#[derive(Default)]
-struct KeyState {
-    keys_down: HashSet<PhysicalKey>,
-    keys_pressed: HashSet<PhysicalKey>,
-}
-
-impl KeyState {
-    fn new() -> KeyState {
-        Self {
-            ..Default::default()
-        }
-    }
-    
-    pub fn handle(&mut self, event: WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput { event, .. } => {
-                match event.state {
-                    ElementState::Pressed => {
-                        self.keys_down.insert(event.physical_key);
-                        self.keys_pressed.insert(event.physical_key);
-                        false
-                    }
-                    ElementState::Released => {
-                        self.keys_down.remove(&event.physical_key);
-                        false
-                    }
-                }
-            }
-            WindowEvent::ModifiersChanged(_) => false,
-            _ => false
-        }
-    }
-    pub fn key_is_down(&self, key: PhysicalKey) -> bool {
-        self.keys_down.contains(&key)
-    }
-    
-    pub fn pressed(&mut self) -> HashSet<PhysicalKey> {
-        let result = self.keys_pressed.clone();
-        self.keys_pressed.clear();
-        result
-    }
-    
 }
 
 fn as_world_position(vector: Vector2<f32>) -> Position {

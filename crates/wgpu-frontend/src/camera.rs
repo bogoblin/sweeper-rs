@@ -1,6 +1,6 @@
 use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
-use crate::{as_world_position, MouseState};
+use crate::{as_world_position};
 use cgmath::{MetricSpace, Vector2, Vector4, Zero};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
@@ -93,6 +93,8 @@ impl Camera {
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>, scale_factor: f64) {
         self.size = Vector2::new(new_size.width as f32, new_size.height as f32);
+        let scale_factor_change_ratio = scale_factor / self.scale_factor;
+        self.zoom_level *= scale_factor_change_ratio as f32;
         self.scale_factor = scale_factor;
     }
     
@@ -184,16 +186,16 @@ impl Camera {
         distance
     }
 
-    pub fn update_drag(&mut self, mouse: &MouseState) {
+    pub fn update_drag(&mut self, mouse_position: &PhysicalPosition<f64>) {
         if let Some(drag) = &self.drag {
-            let drag_vector = position_to_vector(mouse.position.clone()) - drag.screen_start;
-            let drag_vector_in_world_space = self.scale_factor as f32 * drag_vector/self.tile_size();
+            let drag_vector = position_to_vector(mouse_position.clone()) - drag.screen_start;
+            let drag_vector_in_world_space = drag_vector/self.tile_size();
             self.center = drag.center - drag_vector_in_world_space;
         }
     }
 
     pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
-        let position = position_to_vector(*position) * self.scale_factor as f32;
+        let position = position_to_vector(*position);
         let screen_to_center = self.size/2.0 - position;
         let distance_from_view_center_in_world_space = screen_to_center/self.tile_size();
         self.center - distance_from_view_center_in_world_space
