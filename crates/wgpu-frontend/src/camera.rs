@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
 use crate::{as_world_position};
@@ -21,6 +22,7 @@ pub struct Camera {
     scale_factor: f64,
     #[cfg(target_arch = "wasm32")]
     performance: Performance,
+    pinch: Option<Pinch>,
 }
 
 impl Camera {
@@ -38,6 +40,11 @@ impl Camera {
 struct Drag {
     center: Vector2<f32>,
     screen_start: Vector2<f32>
+}
+
+struct Pinch {
+    fingers: HashMap<u64, Vector2<f64>>,
+    zoom_start: f32,
 }
 
 impl Camera {
@@ -88,6 +95,7 @@ impl Camera {
             scale_factor: 1.0,
             #[cfg(target_arch = "wasm32")]
             performance: web_sys::window().unwrap().performance().unwrap(),
+            pinch: None,
         }
     }
 
@@ -193,6 +201,37 @@ impl Camera {
             self.center = drag.center - drag_vector_in_world_space;
         }
     }
+    
+    pub fn start_pinch(&mut self, fingers: &HashMap<u64, Vector2<f64>>) {
+        if self.pinch.is_none() {
+            self.pinch = Some(Pinch {
+                fingers: fingers.clone(),
+                zoom_start: self.zoom_level,
+            });
+        }
+    }
+    
+    pub fn update_pinch(&mut self, fingers: &HashMap<u64, Vector2<f64>>) {
+        if let Some(pinch) = &self.pinch {
+            let zoom_amount = Self::pinch_size(&pinch.fingers) / Self::pinch_size(fingers);
+            let zoom_amount = zoom_amount as f32;
+            self.zoom_level = pinch.zoom_start + zoom_amount;
+        }
+    }
+    
+    pub fn end_pinch(&mut self) {
+        self.pinch = None;
+    }
+    
+    fn pinch_size(fingers: &HashMap<u64, Vector2<f64>>) -> f64 {
+        if fingers.len() == 2 {
+            let fingers_vec: Vec<_> = fingers.values().collect();
+            let first = fingers_vec[0];
+            let second = fingers_vec[1];
+            first.distance(second.clone())
+        } else { 0.0 }
+    }
+
 
     pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
         let position = position_to_vector(*position);

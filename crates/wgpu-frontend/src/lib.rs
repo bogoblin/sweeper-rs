@@ -61,11 +61,11 @@ pub async fn run() {
             })
             .expect("Couldn't append canvas to document body.")
     }
-    
+
     let mut state = State::new(&window).await;
     let mut surface_configured = false;
     let mut mouse_position = PhysicalPosition::new(0.0, 0.0);
-    let mut fingers: HashMap<u64, PhysicalPosition<f64>> = HashMap::new();
+    let mut fingers: HashMap<u64, Vector2<f64>> = HashMap::new();
     let mut right_mouse_button_down = false;
 
     event_loop.run(move |event, control_flow| match event {
@@ -104,7 +104,7 @@ pub async fn run() {
                 }
                 WindowEvent::RedrawRequested => {
                     state.window().request_redraw();
-                    
+
                     if !surface_configured {
                         return;
                     }
@@ -184,15 +184,14 @@ pub async fn run() {
                         ..
                     }
                 ) => {
-                    let pinch_size_old = pinch_size(&fingers);
-                    fingers.insert(*id, location.clone());
-                    let pinch_size_new = pinch_size(&fingers);
-                    if pinch_size_old != 0.0 {
-                        state.camera.zoom_around((pinch_size_new / pinch_size_old) as f32, &location); // TODO: change to use the centre
-                    }
+                    fingers.insert(*id, physical_to_vector(location));
                     if fingers.len() == 1 {
                         state.camera.start_drag(&location);
                         state.camera.update_drag(&location);
+                    }
+                    if fingers.len() == 2 {
+                        state.camera.start_pinch(&fingers);
+                        state.camera.update_pinch(&fingers);
                     }
                 }
                 WindowEvent::Touch(
@@ -205,6 +204,7 @@ pub async fn run() {
                 ) => {
                     fingers.remove(id);
                     state.camera.end_drag(&location);
+                    state.camera.end_pinch();
                 }
                 WindowEvent::KeyboardInput { event: KeyEvent {
                     state: ElementState::Pressed,
@@ -229,17 +229,6 @@ pub async fn run() {
     }).unwrap();
 }
 
-fn pinch_size(fingers: &HashMap<u64, PhysicalPosition<f64>>) -> f64 {
-    if fingers.len() == 2 {
-        let fingers_vec: Vec<_> = fingers.values().collect();
-        let first = fingers_vec[0];
-        let second = fingers_vec[1];
-        let x = first.x - second.x;
-        let y = first.y - second.y;
-        (x*x + y*y).sqrt()
-    } else { 0.0 }
-}
-
 struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -258,7 +247,7 @@ struct State<'a> {
 
 impl<'a> State<'a> {
     const MAX_SIZE: u32 = 8192;
-    
+
     // Creating some of the wgpu types requires async code
     async fn new(window: &'a Window) -> State<'a> {
         let size = window.inner_size();
@@ -421,9 +410,9 @@ impl<'a> State<'a> {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let dt = Utc::now() - self.last_frame_time;
         self.last_frame_time = Utc::now();
-        
+
         self.camera.write_to_queue(&self.queue, 0);
-        
+
         // Load in any new chunks
         let rects = self.tile_map_texture.update_draw_area(&self.camera);
         for rect in rects {
@@ -434,7 +423,7 @@ impl<'a> State<'a> {
                 self.tile_map_texture.write_chunk(&self.queue, chunk);
             }
         }
-        
+
         while let Some(message) = self.world.next_message() {
             self.world.world().apply_server_message(&message);
             match message {
@@ -478,32 +467,31 @@ impl<'a> State<'a> {
 
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        if true {
-            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    }
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
             });
-            {
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Render Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        }
-                    })],
-                    depth_stencil_attachment: None,
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                });
 
-                render_pass.set_pipeline(&self.render_pipeline);
-                render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
-                render_pass.set_bind_group(1, self.tile_map_texture.bind_group(), &[]);
-                render_pass.draw(0..6, 0..1);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
+            render_pass.set_bind_group(1, self.tile_map_texture.bind_group(), &[]);
+            render_pass.draw(0..6, 0..1);
 
-                cfg_if::cfg_if! {
+            cfg_if::cfg_if! {
                     if #[cfg(target_arch = "wasm32")] {
                     } else {
                         use std::thread::sleep;
@@ -511,31 +499,30 @@ impl<'a> State<'a> {
                         sleep(TimeDelta::milliseconds(16).to_std().unwrap());
                     }
                 }
-            }
-            self.queue.submit(std::iter::once(encoder.finish()));
         }
+        self.queue.submit(std::iter::once(encoder.finish()));
 
         self.cursors.render(&self.device, &self.queue, &view, &self.camera);
-        
+
         output.present();
 
         Ok(())
     }
-    
+
     pub fn click_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
         let position_at_mouse = self.camera.screen_to_world(mouse_position);
         let position = as_world_position(position_at_mouse);
-        
+
         if !self.world.world().get_tile(&position).is_revealed() {
             self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position);
             self.world.send(ClientMessage::Click(position));
         }
     }
-    
+
     pub fn double_click_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
         let position_at_mouse = self.camera.screen_to_world(mouse_position);
         let position = as_world_position(position_at_mouse);
-        
+
         if let Some(to_reveal) = self.world.world().check_double_click(&position) {
             for position_to_reveal in &to_reveal {
                 self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), *position_to_reveal);
@@ -545,7 +532,7 @@ impl<'a> State<'a> {
             }
         }
     }
-    
+
     pub fn toggle_flag_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
         let position_at_mouse = self.camera.screen_to_world(mouse_position);
         let position = as_world_position(position_at_mouse);
@@ -561,7 +548,7 @@ impl<'a> State<'a> {
         self.world.world().flag(position, "");
         self.world.send(ClientMessage::Flag(position));
     }
-    
+
     pub fn toggle_dark_mode(&mut self) {
         self.tile_map_texture.sprites.toggle_dark_mode(&self.queue);
     }
@@ -569,4 +556,8 @@ impl<'a> State<'a> {
 
 fn as_world_position(vector: Vector2<f32>) -> Position {
     Position(vector.x.floor() as i32, vector.y.floor() as i32)
+}
+
+fn physical_to_vector(position: &PhysicalPosition<f64>) -> Vector2<f64> {
+    Vector2::new(position.x, position.y)
 }
