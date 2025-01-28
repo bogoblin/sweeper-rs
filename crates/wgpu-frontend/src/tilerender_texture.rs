@@ -14,6 +14,8 @@ pub struct TileMapTexture {
     tile_blank_pipeline: wgpu::RenderPipeline,
     blanking_rect: BlankingRect,
     tile_map_area: Rect,
+    prev_camera_visible_rect: Rect,
+    dirty_rect: Rect,
 }
 
 impl TileMapTexture {
@@ -217,10 +219,18 @@ impl TileMapTexture {
             tile_blank_pipeline,
             blanking_rect: BlankingRect::new(device),
             tile_map_area: Rect::default(),
+            prev_camera_visible_rect: Default::default(),
+            dirty_rect: Default::default(),
         }
     }
 
-    pub fn render(&self, camera: &Camera, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub fn render(&mut self, camera: &Camera, device: &wgpu::Device, queue: &wgpu::Queue) {
+        // If we've already rendered this view then we don't need to do it again
+        if self.dirty_rect.intersection(&camera.visible_world_rect()).is_none() 
+            && camera.visible_world_rect() == self.prev_camera_visible_rect {
+            return;
+        }
+        
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: None,
         });
@@ -250,7 +260,7 @@ impl TileMapTexture {
 
             let tile_width = camera.tile_map_size() as i32;
             let tile_map_extent = Self::SIZE as i32 / tile_width;
-            
+
             // We only want to render the stuff that's going to appear on the screen.
             // This will consist of up to four rectangles because the screen area is not continuous.
             let rects = self.split_rect_along_boundaries(camera.visible_world_rect().modulo(tile_map_extent));
@@ -267,6 +277,8 @@ impl TileMapTexture {
                 );
                 render_pass.draw(0..6, 0..1);
             }
+            self.prev_camera_visible_rect = camera.visible_world_rect().clone();
+            self.dirty_rect = Rect::default();
         }
         queue.submit(std::iter::once(encoder.finish()));
     }
@@ -284,7 +296,7 @@ impl TileMapTexture {
             .unwrap();
         rects
     }
-    
+
     pub fn blank_rect(&self, device: &wgpu::Device, queue: &wgpu::Queue, camera: &Camera, rect: Rect) {
         if rect.area() == 0 { return; }
         println!("Blanking {:?}", rect);
@@ -320,7 +332,7 @@ impl TileMapTexture {
         queue.submit(std::iter::once(encoder.finish()));
     }
 
-    pub fn write_updated_rect(&self, queue: &wgpu::Queue, updated_rect: &UpdatedRect) {
+    pub fn write_updated_rect(&mut self, queue: &wgpu::Queue, updated_rect: &UpdatedRect) {
         for (x, col) in updated_rect.updated.iter().enumerate() {
             for (y, tile) in col.iter().enumerate() {
                 if tile.0 == 0 { continue }
@@ -330,7 +342,7 @@ impl TileMapTexture {
         }
     }
 
-    pub fn write_chunk(&self, queue: &wgpu::Queue, chunk: &Chunk) {
+    pub fn write_chunk(&mut self, queue: &wgpu::Queue, chunk: &Chunk) {
         if !self.tile_map_area.contains(chunk.position.position()) { return; }
         
         let Position(x, y) = chunk.position.position();
@@ -359,9 +371,10 @@ impl TileMapTexture {
                 depth_or_array_layers: 1,
             }
         );
+        self.dirty_rect.expand_to_contain(chunk.rect())
     }
 
-    pub fn write_tile(&self, queue: &wgpu::Queue, tile: Tile, position: Position) {
+    pub fn write_tile(&mut self, queue: &wgpu::Queue, tile: Tile, position: Position) {
         if !self.tile_map_area.contains(position) { return; }
         
         let Position(x, y) = position;
@@ -390,6 +403,12 @@ impl TileMapTexture {
                 depth_or_array_layers: 1,
             }
         );
+        self.dirty_rect.expand_to_contain(Rect {
+            left: position.0,
+            top: position.1,
+            right: position.0 + 1,
+            bottom: position.1 + 1,
+        });
     }
     
     pub fn update_draw_area(&mut self, camera: &Camera) -> Vec<Rect> {

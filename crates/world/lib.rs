@@ -503,6 +503,17 @@ pub struct Chunk {
     adjacent_mines_filled: bool
 }
 
+impl Chunk {
+    pub fn rect(&self) -> Rect {
+        Rect {
+            left: self.position.0,
+            top: self.position.1,
+            right: self.position.0 + 16,
+            bottom: self.position.1 + 16,
+        }
+    }
+}
+
 impl AddAssign<u8> for Tile {
     fn add_assign(&mut self, rhs: u8) {
         self.0 += rhs;
@@ -706,6 +717,15 @@ pub struct Rect {
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
+}
+
+impl Rect {
+    pub fn expand_to_contain(&mut self, rect: Rect) {
+        self.left = min(self.left, rect.left);
+        self.top = min(self.top, rect.top);
+        self.right = max(self.right, rect.right);
+        self.bottom = max(self.bottom, rect.bottom);
+    }
 }
 
 impl Rect {
