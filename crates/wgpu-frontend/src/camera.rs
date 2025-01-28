@@ -215,7 +215,7 @@ impl Camera {
         if let Some(pinch) = &self.pinch {
             let zoom_amount = Self::pinch_size(&pinch.fingers) / Self::pinch_size(fingers);
             let zoom_amount = zoom_amount as f32;
-            self.zoom_level = pinch.zoom_start + zoom_amount;
+            self.zoom_level = pinch.zoom_start * zoom_amount;
         }
     }
     
