@@ -65,7 +65,7 @@ pub async fn run() {
     let mut state = State::new(&window).await;
     let mut surface_configured = false;
     let mut mouse_position = PhysicalPosition::new(0.0, 0.0);
-    let mut fingers = HashMap::new();
+    let mut fingers: HashMap<u64, PhysicalPosition<f64>> = HashMap::new();
     let mut right_mouse_button_down = false;
 
     event_loop.run(move |event, control_flow| match event {
@@ -184,8 +184,12 @@ pub async fn run() {
                         ..
                     }
                 ) => {
-                    // TODO: find out how much to zoom if we're pinching
+                    let pinch_size_old = pinch_size(&fingers);
                     fingers.insert(*id, location.clone());
+                    let pinch_size_new = pinch_size(&fingers);
+                    if pinch_size_old != 0.0 {
+                        state.camera.zoom_around((pinch_size_new / pinch_size_old) as f32, &location); // TODO: change to use the centre
+                    }
                     if fingers.len() == 1 {
                         state.camera.start_drag(&location);
                         state.camera.update_drag(&location);
@@ -223,6 +227,17 @@ pub async fn run() {
         },
         _ => {}
     }).unwrap();
+}
+
+fn pinch_size(fingers: &HashMap<u64, PhysicalPosition<f64>>) -> f64 {
+    if fingers.len() == 2 {
+        let fingers_vec: Vec<_> = fingers.values().collect();
+        let first = fingers_vec[0];
+        let second = fingers_vec[1];
+        let x = first.x - second.x;
+        let y = first.y - second.y;
+        (x*x + y*y).sqrt()
+    } else { 0.0 }
 }
 
 struct State<'a> {
