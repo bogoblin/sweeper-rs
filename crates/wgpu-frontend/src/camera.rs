@@ -201,7 +201,7 @@ impl Camera {
             self.center = drag.center - drag_vector_in_world_space;
         }
     }
-
+    
     pub fn start_pinch(&mut self, fingers: &HashMap<u64, Vector2<f64>>) {
         if self.pinch.is_none() {
             self.pinch = Some(Pinch {
@@ -210,7 +210,7 @@ impl Camera {
             });
         }
     }
-
+    
     pub fn update_pinch(&mut self, fingers: &HashMap<u64, Vector2<f64>>) {
         if let Some(pinch) = &self.pinch {
             let zoom_amount = Self::pinch_size(&pinch.fingers) / Self::pinch_size(fingers);
@@ -218,11 +218,11 @@ impl Camera {
             self.zoom_level = pinch.zoom_start * zoom_amount;
         }
     }
-
+    
     pub fn end_pinch(&mut self) {
         self.pinch = None;
     }
-
+    
     fn pinch_size(fingers: &HashMap<u64, Vector2<f64>>) -> f64 {
         if fingers.len() == 2 {
             let fingers_vec: Vec<_> = fingers.values().collect();
