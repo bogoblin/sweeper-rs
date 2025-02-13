@@ -35,10 +35,10 @@ impl Finger {
 }
 
 impl Fingers {
-    pub fn new() -> Self {
+    pub fn new(view_matrix: Matrix3<f64>) -> Self {
         Self {
             fingers: Default::default(),
-            view_matrix_before_transform: Matrix3::identity(),
+            view_matrix_before_transform: view_matrix,
         }
     }
     
@@ -102,39 +102,39 @@ impl Fingers {
     fn view_matrix(&self) -> Matrix3<f64> {
         self.pan_and_zoom_matrix() * self.view_matrix_before_transform
     }
-    fn view_matrix_inverse(&self) -> Matrix3<f64> {
-        self.view_matrix().invert().unwrap_or(Matrix3::identity())
-    }
-    fn pre_matrix_inverse(&self) -> Matrix3<f64> {
-        self.view_matrix_before_transform.invert().unwrap_or(Matrix3::identity())
-    }
-    
-    fn world_center_of_pinch_before_transform(&self) -> Option<Vector2<f64>> {
-        let inverse = self.view_matrix_before_transform.invert()?;
-        Some((inverse * self.screen_center_of_pinch_before_transform()?.extend(1.0)).truncate())
-    }
-    fn world_center_of_pinch_after_transform(&self) -> Option<Vector2<f64>> {
-        let inverse = self.view_matrix().invert()?;
-        Some((inverse * self.screen_center_of_pinch_after_transform()?.extend(1.0)).truncate())
-    }
-    fn screen_center_of_pinch_before_transform(&self) -> Option<Vector2<f64>> {
-        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.start_position }).collect();
-        Some(BoundingBox::from_points(start_points)?.center())
-    }
-    fn screen_center_of_pinch_after_transform(&self) -> Option<Vector2<f64>> {
-        let current_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.current_position }).collect();
-        Some(BoundingBox::from_points(current_points)?.center())
-    }
     
     /// The matrix is representing a zoom followed by a pan
     fn pan_and_zoom_matrix(&self) -> Matrix3<f64> {
         let scale = self.pinch_size_increase().unwrap_or(1.0);
-        let pan = self.pan();
-        Matrix3::new(
-            scale, 0.0, scale*pan.x,
-            0.0, scale, scale*pan.y,
+        
+        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.start_position }).collect();
+        let start_bb = BoundingBox::from_points(start_points).unwrap_or_default();
+        let start_center = start_bb.center();
+        // Start with the matrix that translates the start center to (0,0,1)
+        let mut matrix = Matrix3::new(
+            1.0, 0.0, -start_center.x,
+            0.0, 1.0, -start_center.y,
             0.0, 0.0, 1.0,
-        ).transpose()
+        ).transpose();
+        
+        // Then scale it:
+        matrix = Matrix3::new(
+            scale, 0.0, 0.0,
+            0.0, scale, 0.0,
+            0.0, 0.0, 1.0,
+        ).transpose() * matrix;
+
+        let current_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.current_position }).collect();
+        let current_bb = BoundingBox::from_points(current_points).unwrap_or_default();
+        let current_center = current_bb.center();
+        // Then translate so that the center is where the new center is:
+        matrix = Matrix3::new(
+            1.0, 0.0, current_center.x,
+            0.0, 1.0, current_center.y,
+            0.0, 0.0, 1.0,
+        ).transpose() * matrix;
+        
+        matrix
     }
     
     fn pinch_size_increase(&self) -> Option<f64> {
@@ -146,14 +146,6 @@ impl Fingers {
             return None;
         }
         Some(current_bb.size() / start_bb.size())
-    }
-    
-    fn pan(&self) -> Vector2<f64> {
-        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.start_position }).collect();
-        let current_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.current_position }).collect();
-        let start_bb = BoundingBox::from_points(start_points).unwrap_or_default();
-        let current_bb = BoundingBox::from_points(current_points).unwrap_or_default();
-        current_bb.center() - start_bb.center()
     }
 }
 

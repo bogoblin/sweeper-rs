@@ -142,6 +142,11 @@ impl Camera {
     pub fn tile_size(&self) -> f32 {
         16.0 * 2.0_f32.powf(self.zoom_level / 8.0)
     }
+    
+    pub fn set_tile_size(&mut self, tile_size: f64) {
+        self.zoom_level = (8.0 * (tile_size / 16.0).log2()) as f32;
+    }
+    
     pub fn rect(&self) -> Vector4<f32> {
         let top_left = self.top_left();
         let bottom_right = self.bottom_right();
@@ -204,13 +209,7 @@ impl Camera {
     }
     
     pub fn view_matrix(&self) -> Matrix3<f64> {
-        let scale = (self.tile_size()/16.0) as f64;
-        let center = -self.center;
-        Matrix3::new(
-            scale, 0.0, center.x as f64,
-            0.0, scale, center.y as f64,
-            0.0, 0.0, 1.0
-        ).transpose() // Using transpose here so that the matrix looks correct in the code
+        CameraMatrix::new(self.tile_size() as f64, self.center.map(|c| c as f64)).view_matrix
     }
     
     /// This doesn't support arbitrary view matrices, only matrices in the form:
@@ -218,9 +217,9 @@ impl Camera {
     /// ( 0 s -v )
     /// ( 0 0 1 )
     pub fn set_view_matrix(&mut self, view_matrix: Matrix3<f64>) {
-        let scale = view_matrix.x.x as f32;
-        self.center = -1.0 * view_matrix.z.truncate().map(|c| c as f32);
-        self.zoom_level = 8.0 * scale.log2();
+        let m = CameraMatrix::from(view_matrix);
+        self.center = m.center().map(|c| c as f32);
+        self.set_tile_size(m.tile_size());
     }
     
     pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
@@ -259,4 +258,42 @@ struct CameraUniform {
 
 fn position_to_vector(position: PhysicalPosition<f64>) -> Vector2<f32> {
     Vector2::new(position.x as f32, position.y as f32)
+}
+
+pub struct CameraMatrix {
+    /// Maps world space (x,y,1) to screen space, where the center of the screen is (0,0,1)
+    view_matrix: Matrix3<f64>
+}
+
+/// # Example
+/// 
+/// ```rust
+/// use cgmath::Vector2;
+/// use wgpu_frontend::camera::CameraMatrix;
+/// let center = Vector2::new(4.0, 4.0);
+/// let m = CameraMatrix::new(16.0, center.clone());
+/// let t = m.tile_size();
+/// let c = m.center();
+/// assert_eq!(16.0, t);
+/// assert_eq!(center.clone(), c);
+/// ```
+impl CameraMatrix {
+    pub fn from(view_matrix: Matrix3<f64>) -> Self {
+        Self { view_matrix }
+    }
+    pub fn new(tile_size: f64, center: Vector2<f64>) -> Self {
+        Self {
+            view_matrix: Matrix3::new(
+                tile_size, 0.0, -tile_size * center.x,
+                0.0, tile_size, -tile_size * center.y,
+                0.0, 0.0, 1.0
+            ).transpose() // Using transpose here so that the matrix looks correct in the code
+        }
+    }
+    pub fn tile_size(&self) -> f64 {
+        self.view_matrix.x.x
+    }
+    pub fn center(&self) -> Vector2<f64> {
+        self.view_matrix.z.truncate() / -self.tile_size()
+    }
 }

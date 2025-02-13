@@ -1,5 +1,5 @@
 mod texture;
-mod camera;
+pub mod camera;
 mod tilerender_texture;
 mod shader;
 mod tile_sprites;
@@ -255,6 +255,7 @@ impl State {
                     .expect("Couldn't append canvas to document body.")
             }
 
+            let view_matrix = camera.view_matrix();
 
             Self {
                 window,
@@ -272,7 +273,7 @@ impl State {
                 cursors,
                 surface_configured: false,
                 right_mouse_button_down: false,
-                fingers: Fingers::new(),
+                fingers: Fingers::new(view_matrix),
             }
         }
     }
