@@ -9,7 +9,7 @@ mod cursors;
 use std::collections::{HashMap};
 use std::default::Default;
 use std::future::Future;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use cgmath::num_traits::{Pow};
 use cgmath::Vector2;
@@ -41,13 +41,6 @@ struct Fingers {
 }
 
 impl Fingers {
-    pub(crate) fn remove(&mut self, id: &FingerId) {
-        self.fingers.remove(id);
-    }
-    pub(crate) fn insert(&mut self, id: FingerId, position: PhysicalPosition<f64>) {
-        self.fingers.insert(id, position);
-    }
-    
     pub fn pinch_size(&self) -> Option<f64> {
         let mut iter = self.fingers.iter();
         let first = iter.next()?;
@@ -62,6 +55,12 @@ impl Deref for Fingers {
 
     fn deref(&self) -> &Self::Target {
         &self.fingers
+    }
+}
+
+impl DerefMut for Fingers {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.fingers
     }
 }
 
@@ -306,10 +305,6 @@ impl State {
                 fingers: Fingers::default(),
             }
         }
-    }
-
-    pub fn window(&self) -> Arc<Box<dyn Window>> {
-        self.window.clone()
     }
 
     fn resize(&mut self) {
@@ -621,8 +616,4 @@ impl State {
 
 fn as_world_position(vector: Vector2<f32>) -> Position {
     Position(vector.x.floor() as i32, vector.y.floor() as i32)
-}
-
-fn physical_to_vector(position: &PhysicalPosition<f64>) -> Vector2<f64> {
-    Vector2::new(position.x, position.y)
 }
