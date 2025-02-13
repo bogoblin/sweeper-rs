@@ -1,7 +1,6 @@
-use cgmath::{Matrix, Matrix3, MetricSpace, SquareMatrix, Transform, Vector2, Zero};
+use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Zero};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use log::info;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ButtonSource, ElementState, FingerId, PointerKind, PointerSource, WindowEvent};
 
@@ -77,7 +76,6 @@ impl Fingers {
                 if let Some(finger) = self.fingers.get_mut(finger_id) {
                     finger.update_position(&position);
                 } else {
-                    info!("{:?}", view_matrix - self.view_matrix());
                     self.reset(view_matrix);
                     self.fingers.insert(finger_id.clone(), Finger::new(&position));
                 }
@@ -90,7 +88,6 @@ impl Fingers {
                 kind: PointerKind::Touch(finger_id),
                 ..
             } => {
-                info!("{:?}", view_matrix - self.view_matrix());
                 self.reset(view_matrix);
                 self.fingers.remove(finger_id);
             }
