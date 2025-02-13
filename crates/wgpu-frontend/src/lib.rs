@@ -6,15 +6,19 @@ mod tile_sprites;
 mod sweeper_socket;
 mod cursors;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::default::Default;
+use std::future::Future;
+use std::ops::Deref;
+use std::sync::Arc;
+use cgmath::num_traits::{Pow};
 use cgmath::Vector2;
 use chrono::prelude::*;
 use log::info;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::keyboard::{Key, KeyCode, PhysicalKey};
-use winit::window::{Window, WindowBuilder};
+use winit::event::{ButtonSource, ElementState, FingerId, KeyEvent, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{Key};
+use winit::window::{Window, WindowAttributes, WindowId};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Tile};
@@ -26,9 +30,88 @@ use crate::tilerender_texture::{TileMapTexture};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use winit::application::ApplicationHandler;
 use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
 use crate::cursors::Cursors;
+
+#[derive(Default, Debug, Clone)]
+struct Fingers {
+    fingers: HashMap<FingerId, PhysicalPosition<f64>>
+}
+
+impl Fingers {
+    pub(crate) fn remove(&mut self, id: &FingerId) {
+        self.fingers.remove(id);
+    }
+    pub(crate) fn insert(&mut self, id: FingerId, position: PhysicalPosition<f64>) {
+        self.fingers.insert(id, position);
+    }
+    
+    pub fn pinch_size(&self) -> Option<f64> {
+        let mut iter = self.fingers.iter();
+        let first = iter.next()?;
+        let second = iter.next()?;
+        let distance_squared = (second.1.x - first.1.x).pow(2.0) + (second.1.y - first.1.y).pow(2.0);
+        Some(f64::sqrt(distance_squared))
+    }
+}
+
+impl Deref for Fingers {
+    type Target = HashMap<FingerId, PhysicalPosition<f64>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.fingers
+    }
+}
+
+#[derive(Default)]
+struct App {
+    window: Option<Arc<Box<dyn Window>>>,
+    state: Option<State>,
+    receiver: Option<futures::channel::oneshot::Receiver<State>>,
+}
+
+impl ApplicationHandler for App {
+    fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
+        if let Ok(window) = event_loop.create_window(
+            WindowAttributes::default()
+                .with_surface_size(PhysicalSize::new(1280, 720))
+        ) {
+            let window_handle = Arc::new(window);
+            self.window = Some(window_handle.clone());
+            let (sender, receiver) = futures::channel::oneshot::channel();
+            self.receiver = Some(receiver);
+            
+            #[cfg(target_arch = "wasm32")]
+            wasm_bindgen_futures::spawn_local(async move {
+                let state = State::new(window_handle.clone()).await;
+                let _ = sender.send(state);
+            });
+            
+            #[cfg(not(target_arch="wasm32"))]
+            {
+                let state = pollster::block_on(State::new(window_handle.clone()));
+                let _ = sender.send(state);
+            }
+        }
+    }
+
+    fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+        if self.state.is_none() {
+            if let Some(receiver) = &mut self.receiver {
+                if let Ok(Some(mut state)) = receiver.try_recv() {
+                    state.resize();
+                    info!("resized");
+                    self.state = Some(state);
+                }
+            }
+        }
+        if let Some(state) = &mut self.state {
+            state.handle_window_event(event_loop, event);
+        }
+    }
+}
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -41,216 +124,35 @@ pub async fn run() {
         }
     }
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(1280, 720))
-        .build(&event_loop).unwrap();
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(1024, 1024));
-
-        use winit::platform::web::WindowExtWebSys;
-        web_sys::window()
-            .and_then(|win| win.document())
-            .and_then(|doc| {
-                let dst = doc.get_element_by_id("wasm-example")?;
-                let canvas = web_sys::Element::from(window.canvas()?);
-                dst.append_child(&canvas).ok()?;
-                Some(())
-            })
-            .expect("Couldn't append canvas to document body.")
-    }
-
-    let mut state = State::new(&window).await;
-    let mut surface_configured = false;
-    let mut mouse_position = PhysicalPosition::new(0.0, 0.0);
-    let mut fingers: HashMap<u64, Vector2<f64>> = HashMap::new();
-    let mut right_mouse_button_down = false;
-
-    event_loop.run(move |event, control_flow| match event {
-        winit::event::Event::WindowEvent {
-            ref event,
-            window_id,
-        } if window_id == state.window.id() => {
-            match event {
-                WindowEvent::CloseRequested
-                | WindowEvent::KeyboardInput {
-                    event:
-                    KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        ..
-                    },
-                    ..
-                } => control_flow.exit(),
-                WindowEvent::Resized(..) => {
-                    surface_configured = true;
-                    cfg_if::cfg_if! {
-                        if #[cfg(target_arch = "wasm32")] {
-                            let win = web_sys::window().unwrap();
-                            let width = win.inner_width().unwrap().as_f64().unwrap() as u32;
-                            let height = win.inner_height().unwrap().as_f64().unwrap() as u32;
-                            state.set_scale_factor(state.window.scale_factor());
-                            state.resize(PhysicalSize::new(width, height));
-                        } else {
-                            state.resize(state.window.inner_size());
-                        }
-                    }
-                },
-                #[cfg(target_arch = "wasm32")]
-                WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                    state.set_scale_factor(*scale_factor);
-                }
-                WindowEvent::RedrawRequested => {
-                    state.window().request_redraw();
-
-                    if !surface_configured {
-                        return;
-                    }
-
-                    match state.render() {
-                        Ok(_) => {},
-                        Err(
-                            wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                        ) => state.resize(state.size),
-                        // The system is out of memory, we should probably quit
-                        Err(wgpu::SurfaceError::OutOfMemory) => {
-                            log::error!("OutOfMemory");
-                            control_flow.exit();
-                        }
-
-                        // This happens when a frame takes too long to present
-                        Err(wgpu::SurfaceError::Timeout) => {
-                            log::warn!("Surface timeout")
-                        }
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Left,
-                    ..
-                } => {
-                    state.camera.start_drag(&mouse_position);
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Released,
-                    button: MouseButton::Left,
-                    ..
-                } => {
-                    let drag_distance = state.camera.end_drag(&mouse_position);
-                    if drag_distance < 4.0 {
-                        if right_mouse_button_down {
-                            state.double_click_at(&mouse_position);
-                        } else {
-                            state.click_at(&mouse_position);
-                        }
-                    }
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    mouse_position = position.clone();
-                    state.camera.update_drag(&mouse_position);
-                }
-                WindowEvent::MouseWheel { delta, .. } => {
-                    match delta {
-                        MouseScrollDelta::LineDelta(_x, y) => {
-                            state.camera.zoom_around(*y, &mouse_position);
-                        }
-                        MouseScrollDelta::PixelDelta(position) => {
-                            state.camera.zoom_around((position.y / 100.0) as f32, &mouse_position);
-                        }
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Right,
-                    ..
-                } => {
-                    right_mouse_button_down = true;
-                    state.toggle_flag_at(&mouse_position);
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Released,
-                    button: MouseButton::Right,
-                    ..
-                } => {
-                    right_mouse_button_down = false;
-                }
-                WindowEvent::Touch(
-                    Touch {
-                        phase: TouchPhase::Started | TouchPhase::Moved,
-                        location,
-                        id,
-                        ..
-                    }
-                ) => {
-                    fingers.insert(*id, physical_to_vector(location));
-                    if fingers.len() == 1 {
-                        state.camera.start_drag(&location);
-                        state.camera.update_drag(&location);
-                    }
-                    if fingers.len() == 2 {
-                        state.camera.start_pinch(&fingers);
-                        state.camera.update_pinch(&fingers);
-                    }
-                }
-                WindowEvent::Touch(
-                    Touch {
-                        phase: TouchPhase::Ended | TouchPhase::Cancelled,
-                        location,
-                        id,
-                        ..
-                    }
-                ) => {
-                    fingers.remove(id);
-                    state.camera.end_drag(&location);
-                    state.camera.end_pinch();
-                }
-                WindowEvent::KeyboardInput { event: KeyEvent {
-                    state: ElementState::Pressed,
-                    logical_key,
-                    ..
-                }, .. } => {
-                    match logical_key {
-                        Key::Named(_) => {}
-                        Key::Character(character) => {
-                            if character == "l" {
-                                state.toggle_dark_mode();
-                            }
-                        }
-                        Key::Unidentified(_) => {}
-                        Key::Dead(_) => {}
-                    }
-                }
-                _ => {}
-            }
-        },
-        _ => {}
-    }).unwrap();
+    let app = App::default();
+    event_loop.run_app(app).unwrap();
 }
 
-struct State<'a> {
-    surface: wgpu::Surface<'a>,
+struct State {
+    surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
     scale_factor: f64,
-    window: &'a Window,
+    window: Arc<Box<dyn Window>>,
     render_pipeline: wgpu::RenderPipeline,
     camera: Camera,
     last_frame_time: DateTime<Utc>,
     tile_map_texture: TileMapTexture,
     world: Box<dyn SweeperSocket>,
-    cursors: Cursors
+    cursors: Cursors,
+    surface_configured: bool,
+    right_mouse_button_down: bool,
+    fingers: Fingers,
 }
 
-impl<'a> State<'a> {
+impl State {
     const MAX_SIZE: u32 = 8192;
 
     // Creating some of the wgpu types requires async code
-    async fn new(window: &'a Window) -> State<'a> {
-        let size = window.inner_size();
+    fn new(window: Arc<Box<dyn Window>>) -> impl Future<Output = Self> + 'static {
+        let size = window.surface_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch="wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -258,137 +160,171 @@ impl<'a> State<'a> {
             backends: wgpu::Backends::GL,
             ..Default::default()
         });
-        let surface = instance.create_surface(window).unwrap();
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            },
-        ).await.unwrap();
+        let surface = instance.create_surface(window.clone()).unwrap();
+        async move {
+            let adapter = instance.request_adapter(
+                &wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: Some(&surface),
+                    force_fallback_adapter: false,
+                },
+            ).await.unwrap();
 
-        let mut required_limits = wgpu::Limits::downlevel_webgl2_defaults();
-        required_limits.max_texture_dimension_2d = Self::MAX_SIZE;
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
-                required_limits,
-                label: None,
-                memory_hints: Default::default(),
-            },
-            None,
-        ).await.unwrap();
+            let mut required_limits = wgpu::Limits::downlevel_webgl2_defaults();
+            required_limits.max_texture_dimension_2d = Self::MAX_SIZE;
+            let (device, queue) = adapter.request_device(
+                &wgpu::DeviceDescriptor {
+                    required_features: wgpu::Features::empty(),
+                    required_limits,
+                    label: None,
+                    memory_hints: Default::default(),
+                },
+                None,
+            ).await.unwrap();
 
-        let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width: size.width,
-            height: size.height,
-            present_mode: PresentMode::AutoVsync,
-            alpha_mode: CompositeAlphaMode::Auto,
-            view_formats: vec![],
-            desired_maximum_frame_latency: 1,
+            let surface_caps = surface.get_capabilities(&adapter);
+            let surface_format = surface_caps.formats.iter()
+                .find(|f| f.is_srgb())
+                .copied()
+                .unwrap_or(surface_caps.formats[0]);
+            let config = wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format: surface_format,
+                width: size.width,
+                height: size.height,
+                present_mode: PresentMode::AutoVsync,
+                alpha_mode: CompositeAlphaMode::Auto,
+                view_formats: vec![],
+                desired_maximum_frame_latency: 1,
+            };
+
+            let camera = Camera::new(&device, &size);
+
+            let tile_map_texture = TileMapTexture::new(&device, &queue, &camera);
+
+            let common_shader = include_str!("common.wgsl");
+            let mut wgsl_source = String::from(common_shader);
+            wgsl_source.push_str(include_str!("tile.wgsl"));
+            let shader = device.create_shader_module(
+                wgpu::ShaderModuleDescriptor {
+                    label: None,
+                    source: ShaderSource::Wgsl(wgsl_source.into()),
+                }
+            );
+            let render_pipeline_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Pipeline Layout"),
+                    bind_group_layouts: &[
+                        &camera.bind_group_layout(),
+                        &tile_map_texture.bind_group_layout(),
+                    ],
+                    push_constant_ranges: &[],
+                });
+            let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+                cache: None,
+            });
+
+            let world;
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "wasm32")] {
+                    use crate::sweeper_socket::socketio::IoWorld;
+                    world = Box::new(IoWorld::new("/"))
+                } else {
+                    use crate::sweeper_socket::local::LocalWorld;
+                    world = Box::new(LocalWorld::new())
+                }
+            }
+            let cursors = Cursors::new(&device, &queue, surface_format, &camera);
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = window.request_surface_size(PhysicalSize::new(1280, 720).into());
+
+                use winit::platform::web::WindowExtWeb;
+                web_sys::window()
+                    .and_then(|win| win.document())
+                    .and_then(|doc| {
+                        let dst = doc.get_element_by_id("wasm-example").unwrap();
+                        let canvas = web_sys::Element::from(window.canvas().unwrap().clone());
+                        dst.append_child(&canvas).unwrap();
+                        Some(())
+                    })
+                    .expect("Couldn't append canvas to document body.")
+            }
+
+
+            Self {
+                window,
+                surface,
+                device,
+                queue,
+                config,
+                size,
+                scale_factor: 1.0,
+                render_pipeline,
+                camera,
+                last_frame_time: Utc::now(),
+                world,
+                tile_map_texture,
+                cursors,
+                surface_configured: false,
+                right_mouse_button_down: false,
+                fingers: Fingers::default(),
+            }
+        }
+    }
+
+    pub fn window(&self) -> Arc<Box<dyn Window>> {
+        self.window.clone()
+    }
+
+    fn resize(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        let new_size = {
+            let win = web_sys::window().unwrap();
+            let width = win.inner_width().unwrap().as_f64().unwrap() as u32;
+            let height = win.inner_height().unwrap().as_f64().unwrap() as u32;
+            PhysicalSize::new(width, height)
         };
 
-        let camera = Camera::new(&device, &size);
-
-        let tile_map_texture = TileMapTexture::new(&device, &queue, &camera);
-
-        let common_shader = include_str!("common.wgsl");
-        let mut wgsl_source = String::from(common_shader);
-        wgsl_source.push_str(include_str!("tile.wgsl"));
-        let shader = device.create_shader_module(
-            wgpu::ShaderModuleDescriptor {
-                label: None,
-                source: ShaderSource::Wgsl(wgsl_source.into()),
-            }
-        );
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    &camera.bind_group_layout(),
-                    &tile_map_texture.bind_group_layout(),
-                ],
-                push_constant_ranges: &[],
-            });
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
-
-        let world;
-        cfg_if::cfg_if! {
-            if #[cfg(target_arch = "wasm32")] {
-                use crate::sweeper_socket::socketio::IoWorld;
-                world = Box::new(IoWorld::new("/"))
-            } else {
-                use crate::sweeper_socket::local::LocalWorld;
-                world = Box::new(LocalWorld::new())
-            }
-        }
-        let cursors = Cursors::new(&device, &queue, surface_format, &camera);
-
-        Self {
-            window,
-            surface,
-            device,
-            queue,
-            config,
-            size,
-            scale_factor: 1.0,
-            render_pipeline,
-            camera,
-            last_frame_time: Utc::now(),
-            world,
-            tile_map_texture,
-            cursors,
-        }
-    }
-
-    pub fn window(&self) -> &Window {
-        &self.window
-    }
-
-    fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        #[cfg(not(target_arch="wasm32"))]
+        let new_size = self.size;
+        
+        self.scale_factor = self.window.scale_factor();
         info!("rendering at {} x {}, scaling is {}%", new_size.width, new_size.height, self.scale_factor*100.0);
         if new_size.width > 0 && new_size.height > 0 && new_size.width < Self::MAX_SIZE && new_size.height < Self::MAX_SIZE {
             self.size = PhysicalSize::new(
@@ -399,6 +335,134 @@ impl<'a> State<'a> {
             self.config.height = self.size.height;
             self.surface.configure(&self.device, &self.config);
             self.camera.resize(&self.size, self.scale_factor);
+            self.surface_configured = true;
+        }
+    }
+
+    fn handle_window_event(&mut self, event_loop: &dyn ActiveEventLoop, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+            WindowEvent::SurfaceResized(size) => {
+                self.size = size;
+                self.resize();
+            },
+            #[cfg(target_arch = "wasm32")]
+            WindowEvent::ScaleFactorChanged { .. } => {
+                self.resize();
+            }
+            WindowEvent::RedrawRequested => {
+                self.window.request_redraw();
+
+                if !self.surface_configured {
+                    return;
+                }
+
+                match self.render() {
+                    Ok(_) => {},
+                    Err(_) => self.resize(),
+                }
+            }
+            WindowEvent::PointerButton {
+                state: ElementState::Pressed,
+                button: ButtonSource::Mouse(MouseButton::Left),
+                position,
+                ..
+            } => {
+                self.camera.start_drag(&position);
+            }
+            WindowEvent::PointerButton {
+                state: ElementState::Released,
+                button: ButtonSource::Mouse(MouseButton::Left),
+                position,
+                ..
+            } => {
+                let drag_distance = self.camera.end_drag(&position);
+                if drag_distance < 4.0 {
+                    if self.right_mouse_button_down {
+                        self.double_click_at(&position);
+                    } else {
+                        self.click_at(&position);
+                    }
+                }
+            }
+            WindowEvent::PointerMoved {
+                position,
+                source: PointerSource::Mouse,
+                ..
+            } => {
+                self.camera.update_mouse_position(&position);
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                match delta {
+                    MouseScrollDelta::LineDelta(_x, y) => {
+                        self.camera.zoom_around_mouse_position(y);
+                    }
+                    MouseScrollDelta::PixelDelta(position) => {
+                        self.camera.zoom_around_mouse_position((position.y / 100.0) as f32);
+                    }
+                }
+            }
+            WindowEvent::PointerButton {
+                state: ElementState::Pressed,
+                button: ButtonSource::Mouse(MouseButton::Right),
+                position,
+                ..
+            } => {
+                self.right_mouse_button_down = true;
+                self.toggle_flag_at(&position);
+            }
+            WindowEvent::PointerButton {
+                state: ElementState::Released,
+                button: ButtonSource::Mouse(MouseButton::Right),
+                ..
+            } => {
+                self.right_mouse_button_down = false;
+            }
+            WindowEvent::PointerButton {
+                button: ButtonSource::Touch { finger_id, .. },
+                position,
+                state: ElementState::Pressed,
+                ..
+            } => {
+                self.fingers.insert(finger_id, position);
+                if self.fingers.len() == 1 {
+                    self.camera.start_drag(&position);
+                    self.camera.update_mouse_position(&position);
+                }
+                if self.fingers.len() == 2 {
+                    self.camera.start_pinch(&self.fingers);
+                    self.camera.update_pinch(&self.fingers);
+                }
+            }
+            WindowEvent::PointerButton {
+                position,
+                button: ButtonSource::Touch { finger_id, .. },
+                state: ElementState::Released,
+                ..
+            } => {
+                self.fingers.remove(&finger_id);
+                self.camera.end_drag(&position);
+                self.camera.end_pinch();
+            }
+            WindowEvent::KeyboardInput { event: KeyEvent {
+                state: ElementState::Pressed,
+                logical_key,
+                ..
+            }, .. } => {
+                match logical_key {
+                    Key::Named(_) => {}
+                    Key::Character(character) => {
+                        if character == "l" {
+                            self.toggle_dark_mode();
+                        }
+                    }
+                    Key::Unidentified(_) => {}
+                    Key::Dead(_) => {}
+                }
+            }
+            _ => {}
         }
     }
 
@@ -408,7 +472,7 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let dt = Utc::now() - self.last_frame_time;
+        let _dt = Utc::now() - self.last_frame_time;
         self.last_frame_time = Utc::now();
 
         self.camera.write_to_queue(&self.queue, 0);
@@ -537,6 +601,7 @@ impl<'a> State<'a> {
         let position_at_mouse = self.camera.screen_to_world(mouse_position);
         let position = as_world_position(position_at_mouse);
 
+        // TODO: On local, you can't unflag
         let tile = self.world.world().get_tile(&position);
         if tile.is_flag() {
             info!("unflagging");

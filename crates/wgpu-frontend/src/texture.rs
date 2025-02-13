@@ -1,6 +1,7 @@
 use crate::shader::HasBindGroup;
 use anyhow::*;
 
+#[derive(Debug)]
 pub struct Texture {
     #[allow(unused)]
     pub texture: wgpu::Texture,

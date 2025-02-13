@@ -5,6 +5,7 @@ use world::Tile;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 
+#[derive(Debug)]
 pub struct TileSprites {
     pub texture: Texture,
     pub dark_mode: DarkMode,

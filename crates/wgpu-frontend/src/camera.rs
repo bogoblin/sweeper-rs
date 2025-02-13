@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
-use crate::{as_world_position};
+use crate::{as_world_position, Fingers};
 use cgmath::{MetricSpace, Vector2, Vector4, Zero};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
@@ -9,6 +8,7 @@ use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Rect};
 
+#[derive(Debug)]
 pub struct Camera {
     pub center: Vector2<f32>,
     pub zoom_level: f32,
@@ -23,6 +23,7 @@ pub struct Camera {
     #[cfg(target_arch = "wasm32")]
     performance: Performance,
     pinch: Option<Pinch>,
+    mouse_position: PhysicalPosition<f64>
 }
 
 impl Camera {
@@ -37,13 +38,15 @@ impl Camera {
     }
 }
 
+#[derive(Debug)]
 struct Drag {
     center: Vector2<f32>,
     screen_start: Vector2<f32>
 }
 
+#[derive(Debug)]
 struct Pinch {
-    fingers: HashMap<u64, Vector2<f64>>,
+    fingers: Fingers,
     zoom_start: f32,
 }
 
@@ -96,6 +99,7 @@ impl Camera {
             #[cfg(target_arch = "wasm32")]
             performance: web_sys::window().unwrap().performance().unwrap(),
             pinch: None,
+            mouse_position: Default::default(),
         }
     }
 
@@ -176,6 +180,10 @@ impl Camera {
         self.center += difference;
     }
     
+    pub fn zoom_around_mouse_position(&mut self, zoom_delta: f32) {
+        self.zoom_around(zoom_delta, &self.mouse_position.clone());
+    }
+    
     pub fn start_drag(&mut self, drag_start: &PhysicalPosition<f64>) {
         if self.drag.is_none() {
             self.drag = Some(Drag {
@@ -194,7 +202,8 @@ impl Camera {
         distance
     }
 
-    pub fn update_drag(&mut self, mouse_position: &PhysicalPosition<f64>) {
+    pub fn update_mouse_position(&mut self, mouse_position: &PhysicalPosition<f64>) {
+        self.mouse_position = mouse_position.clone();
         if let Some(drag) = &self.drag {
             let drag_vector = position_to_vector(mouse_position.clone()) - drag.screen_start;
             let drag_vector_in_world_space = drag_vector/self.tile_size();
@@ -202,7 +211,7 @@ impl Camera {
         }
     }
     
-    pub fn start_pinch(&mut self, fingers: &HashMap<u64, Vector2<f64>>) {
+    pub fn start_pinch(&mut self, fingers: &Fingers) {
         if self.pinch.is_none() {
             self.pinch = Some(Pinch {
                 fingers: fingers.clone(),
@@ -211,11 +220,18 @@ impl Camera {
         }
     }
     
-    pub fn update_pinch(&mut self, fingers: &HashMap<u64, Vector2<f64>>) {
+    pub fn update_pinch(&mut self, fingers: &Fingers) {
         if let Some(pinch) = &self.pinch {
-            let zoom_amount = Self::pinch_size(&pinch.fingers) / Self::pinch_size(fingers);
-            let zoom_amount = zoom_amount as f32;
-            self.zoom_level = pinch.zoom_start * zoom_amount;
+            match (pinch.fingers.pinch_size(), fingers.pinch_size()) {
+                (Some(new_pinch_size), Some(old_pinch_size)) => {
+                    let zoom_amount = new_pinch_size / old_pinch_size;
+                    let zoom_amount = zoom_amount as f32;
+                    self.zoom_level = pinch.zoom_start * zoom_amount;
+                }
+                (_, _) => {
+                    self.end_pinch()
+                }
+            }
         }
     }
     
@@ -223,16 +239,6 @@ impl Camera {
         self.pinch = None;
     }
     
-    fn pinch_size(fingers: &HashMap<u64, Vector2<f64>>) -> f64 {
-        if fingers.len() == 2 {
-            let fingers_vec: Vec<_> = fingers.values().collect();
-            let first = fingers_vec[0];
-            let second = fingers_vec[1];
-            first.distance(second.clone())
-        } else { 0.0 }
-    }
-
-
     pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
         let position = position_to_vector(*position);
         let screen_to_center = self.size/2.0 - position;

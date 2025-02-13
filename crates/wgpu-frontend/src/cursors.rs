@@ -8,6 +8,7 @@ use wgpu::VertexFormat::{Float32x2, Sint32, Uint32};
 use wgpu::{BufferAddress, RenderPipeline, ShaderLocation, ShaderSource, VertexBufferLayout};
 use world::player::Player;
 
+#[derive(Debug)]
 pub struct Cursors {
     cursor_texture: Texture,
     cursors: [CursorInstance; Cursors::N_CURSORS],
