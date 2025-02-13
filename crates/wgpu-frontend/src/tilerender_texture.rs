@@ -19,7 +19,7 @@ pub struct TileMapTexture {
 }
 
 impl TileMapTexture {
-    pub(crate) const SIZE: usize = 8192;
+    pub(crate) const SIZE: usize = 4096; // TODO: check the max size on the browser
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, camera: &Camera) -> Self {
         let tiles = device.create_texture(&wgpu::TextureDescriptor {
             label: None,

@@ -5,17 +5,15 @@ mod shader;
 mod tile_sprites;
 mod sweeper_socket;
 mod cursors;
+mod fingers;
 
-use std::collections::{HashMap};
 use std::default::Default;
 use std::future::Future;
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use cgmath::num_traits::{Pow};
 use cgmath::Vector2;
 use chrono::prelude::*;
 use log::info;
-use winit::event::{ButtonSource, ElementState, FingerId, KeyEvent, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
+use winit::event::{ButtonSource, ElementState, KeyEvent, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key};
 use winit::window::{Window, WindowAttributes, WindowId};
@@ -34,35 +32,7 @@ use winit::application::ApplicationHandler;
 use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
 use crate::cursors::Cursors;
-
-#[derive(Default, Debug, Clone)]
-struct Fingers {
-    fingers: HashMap<FingerId, PhysicalPosition<f64>>
-}
-
-impl Fingers {
-    pub fn pinch_size(&self) -> Option<f64> {
-        let mut iter = self.fingers.iter();
-        let first = iter.next()?;
-        let second = iter.next()?;
-        let distance_squared = (second.1.x - first.1.x).pow(2.0) + (second.1.y - first.1.y).pow(2.0);
-        Some(f64::sqrt(distance_squared))
-    }
-}
-
-impl Deref for Fingers {
-    type Target = HashMap<FingerId, PhysicalPosition<f64>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.fingers
-    }
-}
-
-impl DerefMut for Fingers {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.fingers
-    }
-}
+use crate::fingers::Fingers;
 
 #[derive(Default)]
 struct App {
@@ -147,7 +117,7 @@ struct State {
 }
 
 impl State {
-    const MAX_SIZE: u32 = 8192;
+    const MAX_SIZE: u32 = TileMapTexture::SIZE as u32;
 
     // Creating some of the wgpu types requires async code
     fn new(window: Arc<Box<dyn Window>>) -> impl Future<Output = Self> + 'static {
@@ -302,7 +272,7 @@ impl State {
                 cursors,
                 surface_configured: false,
                 right_mouse_button_down: false,
-                fingers: Fingers::default(),
+                fingers: Fingers::new(),
             }
         }
     }
@@ -335,6 +305,9 @@ impl State {
     }
 
     fn handle_window_event(&mut self, event_loop: &dyn ActiveEventLoop, event: WindowEvent) {
+        let window_size = PhysicalSize::new(self.size.width as f64, self.size.height as f64);
+        let new_view_matrix = self.fingers.handle_event(&event, window_size, self.camera.view_matrix());
+        self.camera.set_view_matrix(new_view_matrix);
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -414,32 +387,6 @@ impl State {
                 ..
             } => {
                 self.right_mouse_button_down = false;
-            }
-            WindowEvent::PointerButton {
-                button: ButtonSource::Touch { finger_id, .. },
-                position,
-                state: ElementState::Pressed,
-                ..
-            } => {
-                self.fingers.insert(finger_id, position);
-                if self.fingers.len() == 1 {
-                    self.camera.start_drag(&position);
-                    self.camera.update_mouse_position(&position);
-                }
-                if self.fingers.len() == 2 {
-                    self.camera.start_pinch(&self.fingers);
-                    self.camera.update_pinch(&self.fingers);
-                }
-            }
-            WindowEvent::PointerButton {
-                position,
-                button: ButtonSource::Touch { finger_id, .. },
-                state: ElementState::Released,
-                ..
-            } => {
-                self.fingers.remove(&finger_id);
-                self.camera.end_drag(&position);
-                self.camera.end_pinch();
             }
             WindowEvent::KeyboardInput { event: KeyEvent {
                 state: ElementState::Pressed,

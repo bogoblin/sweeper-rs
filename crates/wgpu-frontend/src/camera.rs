@@ -1,7 +1,7 @@
 use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
 use crate::{as_world_position, Fingers};
-use cgmath::{MetricSpace, Vector2, Vector4, Zero};
+use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::util::DeviceExt;
@@ -22,7 +22,6 @@ pub struct Camera {
     scale_factor: f64,
     #[cfg(target_arch = "wasm32")]
     performance: Performance,
-    pinch: Option<Pinch>,
     mouse_position: PhysicalPosition<f64>
 }
 
@@ -42,12 +41,6 @@ impl Camera {
 struct Drag {
     center: Vector2<f32>,
     screen_start: Vector2<f32>
-}
-
-#[derive(Debug)]
-struct Pinch {
-    fingers: Fingers,
-    zoom_start: f32,
 }
 
 impl Camera {
@@ -98,7 +91,6 @@ impl Camera {
             scale_factor: 1.0,
             #[cfg(target_arch = "wasm32")]
             performance: web_sys::window().unwrap().performance().unwrap(),
-            pinch: None,
             mouse_position: Default::default(),
         }
     }
@@ -211,32 +203,24 @@ impl Camera {
         }
     }
     
-    pub fn start_pinch(&mut self, fingers: &Fingers) {
-        if self.pinch.is_none() {
-            self.pinch = Some(Pinch {
-                fingers: fingers.clone(),
-                zoom_start: self.zoom_level,
-            });
-        }
+    pub fn view_matrix(&self) -> Matrix3<f64> {
+        let scale = (self.tile_size()/16.0) as f64;
+        let center = -self.center;
+        Matrix3::new(
+            scale, 0.0, center.x as f64,
+            0.0, scale, center.y as f64,
+            0.0, 0.0, 1.0
+        ).transpose() // Using transpose here so that the matrix looks correct in the code
     }
     
-    pub fn update_pinch(&mut self, fingers: &Fingers) {
-        if let Some(pinch) = &self.pinch {
-            match (pinch.fingers.pinch_size(), fingers.pinch_size()) {
-                (Some(new_pinch_size), Some(old_pinch_size)) => {
-                    let zoom_amount = new_pinch_size / old_pinch_size;
-                    let zoom_amount = zoom_amount as f32;
-                    self.zoom_level = pinch.zoom_start * zoom_amount;
-                }
-                (_, _) => {
-                    self.end_pinch()
-                }
-            }
-        }
-    }
-    
-    pub fn end_pinch(&mut self) {
-        self.pinch = None;
+    /// This doesn't support arbitrary view matrices, only matrices in the form:
+    /// ( s 0 -u )
+    /// ( 0 s -v )
+    /// ( 0 0 1 )
+    pub fn set_view_matrix(&mut self, view_matrix: Matrix3<f64>) {
+        let scale = view_matrix.x.x as f32;
+        self.center = -1.0 * view_matrix.z.truncate().map(|c| c as f32);
+        self.zoom_level = 8.0 * scale.log2();
     }
     
     pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
