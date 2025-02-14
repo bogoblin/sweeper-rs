@@ -53,7 +53,7 @@ impl Fingers {
         event: &WindowEvent, 
         window_size: PhysicalSize<f64>,
         view_matrix: Matrix3<f64>,
-    ) -> Matrix3<f64> {
+    ) -> Option<Matrix3<f64>> {
         // Mapping the screen position so that the center is at 0,0:
         let screen_to_vector = |screen: &PhysicalPosition<f64>| {
             Vector2::new(
@@ -79,6 +79,7 @@ impl Fingers {
                     self.reset(view_matrix);
                     self.fingers.insert(finger_id.clone(), Finger::new(&position));
                 }
+                Some(self.view_matrix())
             }
             WindowEvent::PointerButton {
                 button: ButtonSource::Touch { finger_id, .. },
@@ -90,10 +91,10 @@ impl Fingers {
             } => {
                 self.reset(view_matrix);
                 self.fingers.remove(finger_id);
+                Some(self.view_matrix())
             }
-            _ => {}
+            _ => None
         }
-        self.view_matrix()
     }
     
     fn view_matrix(&self) -> Matrix3<f64> {

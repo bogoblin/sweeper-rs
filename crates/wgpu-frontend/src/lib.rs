@@ -307,8 +307,9 @@ impl State {
 
     fn handle_window_event(&mut self, event_loop: &dyn ActiveEventLoop, event: WindowEvent) {
         let window_size = PhysicalSize::new(self.size.width as f64, self.size.height as f64);
-        let new_view_matrix = self.fingers.handle_event(&event, window_size, self.camera.view_matrix());
-        self.camera.set_view_matrix(new_view_matrix);
+        if let Some(new_view_matrix) = self.fingers.handle_event(&event, window_size, self.camera.view_matrix()) {
+            self.camera.set_view_matrix(new_view_matrix);
+        }
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
