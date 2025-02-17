@@ -2,6 +2,7 @@ use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
 use crate::{as_world_position, Fingers};
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
+use log::{info, trace};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::util::DeviceExt;
@@ -98,8 +99,11 @@ impl Camera {
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>, scale_factor: f64) {
         self.size = Vector2::new(new_size.width as f32, new_size.height as f32);
         let scale_factor_change_ratio = scale_factor / self.scale_factor;
-        self.zoom_level *= scale_factor_change_ratio as f32;
+        let new_tile_size = self.tile_size() as f64 * scale_factor_change_ratio;
+        self.set_tile_size(new_tile_size);
         self.scale_factor = scale_factor;
+        trace!("zoom level is {}", self.zoom_level);
+        trace!("set scale factor to {}, changed by {}%", scale_factor, scale_factor_change_ratio*100.0);
     }
     
     pub fn scale(&self) -> i32 {
@@ -144,7 +148,11 @@ impl Camera {
     }
     
     pub fn set_tile_size(&mut self, tile_size: f64) {
-        self.zoom_level = (8.0 * (tile_size / 16.0).log2()) as f32;
+        self.zoom_level = Self::tile_size_to_zoom_level(tile_size) as f32;
+    }
+    
+    fn tile_size_to_zoom_level(tile_size: f64) -> f64 {
+        8.0 * (tile_size / 16.0).log2()
     }
     
     pub fn rect(&self) -> Vector4<f32> {
