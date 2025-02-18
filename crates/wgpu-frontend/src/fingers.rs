@@ -1,6 +1,7 @@
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Zero};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use log::info;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ButtonSource, ElementState, FingerId, PointerKind, PointerSource, WindowEvent};
 
@@ -8,18 +9,21 @@ use winit::event::{ButtonSource, ElementState, FingerId, PointerKind, PointerSou
 pub struct Fingers {
     fingers: HashMap<FingerId, Finger>,
     view_matrix_before_transform: Matrix3<f64>,
+    released: VecDeque<Finger>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Finger {
-    start_position: Vector2<f64>,
+    touched_position: Vector2<f64>,
+    position_at_begin_transform: Vector2<f64>,
     current_position: Vector2<f64>,
 }
 
 impl Finger {
     fn new(position: &Vector2<f64>) -> Self {
         Self {
-            start_position: position.clone(),
+            touched_position: position.clone(),
+            position_at_begin_transform: position.clone(),
             current_position: position.clone(),
         }
     }
@@ -29,7 +33,15 @@ impl Finger {
     }
     
     fn reset(&mut self) {
-        self.start_position = self.current_position.clone();
+        self.position_at_begin_transform = self.current_position.clone();
+    }
+
+    pub fn distance_moved(&self) -> f64 {
+        self.touched_position.distance(self.current_position)
+    }
+
+    pub fn screen_position(&self) -> Vector2<f64> {
+        self.current_position
     }
 }
 
@@ -38,6 +50,7 @@ impl Fingers {
         Self {
             fingers: Default::default(),
             view_matrix_before_transform: view_matrix,
+            released: Default::default(),
         }
     }
     
@@ -46,6 +59,10 @@ impl Fingers {
         for (_, finger) in &mut self.fingers {
             finger.reset()
         }
+    }
+
+    pub fn next_released_finger(&mut self) -> Option<Finger> {
+        self.released.pop_front()
     }
     
     pub(crate) fn handle_event(
@@ -61,6 +78,12 @@ impl Fingers {
                 screen.y - window_size.height/2.0,
             )
         };
+        match event {
+            WindowEvent::RedrawRequested => {},
+            _ => {
+                info!("{:?}", event);
+            }
+        }
         match event {
             WindowEvent::PointerButton {
                 button: ButtonSource::Touch { finger_id, .. },
@@ -90,7 +113,11 @@ impl Fingers {
                 ..
             } => {
                 self.reset(view_matrix);
-                self.fingers.remove(finger_id);
+                if let Some(removed) = self.fingers.remove(finger_id) {
+                    self.released.push_back(removed);
+                } else {
+                    
+                }
                 Some(self.view_matrix())
             }
             _ => None
@@ -105,7 +132,7 @@ impl Fingers {
     fn pan_and_zoom_matrix(&self) -> Matrix3<f64> {
         let scale = self.pinch_size_increase().unwrap_or(1.0);
         
-        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.start_position }).collect();
+        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.position_at_begin_transform }).collect();
         let start_bb = BoundingBox::from_points(start_points).unwrap_or_default();
         let start_center = start_bb.center();
         // Start with the matrix that translates the start center to (0,0,1)
@@ -136,7 +163,7 @@ impl Fingers {
     }
     
     fn pinch_size_increase(&self) -> Option<f64> {
-        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.start_position }).collect();
+        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.position_at_begin_transform }).collect();
         let current_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.current_position }).collect();
         let start_bb = BoundingBox::from_points(start_points)?;
         let current_bb = BoundingBox::from_points(current_points)?;

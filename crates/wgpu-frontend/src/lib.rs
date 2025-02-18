@@ -310,6 +310,13 @@ impl State {
         if let Some(new_view_matrix) = self.fingers.handle_event(&event, window_size, self.camera.view_matrix()) {
             self.camera.set_view_matrix(new_view_matrix);
         }
+        if let Some(finger) = self.fingers.next_released_finger() {
+            if finger.distance_moved() < 4.0 {
+                let position = finger.screen_position();
+                let position = PhysicalPosition::new(position.x + window_size.width/2.0, position.y + window_size.height/2.0);
+                self.click_at(&position);
+            }
+        }
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
