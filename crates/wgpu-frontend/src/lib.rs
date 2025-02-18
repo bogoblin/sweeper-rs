@@ -408,6 +408,9 @@ impl State {
                         if character == "l" {
                             self.toggle_dark_mode();
                         }
+                        if character == "f" {
+                            self.tile_map_texture.sprites.change_filter(&self.queue);
+                        }
                     }
                     Key::Unidentified(_) => {}
                     Key::Dead(_) => {}

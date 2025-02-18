@@ -189,7 +189,9 @@ async fn recv_from_client(
 
                         match world.write_backup() {
                             Ok(bytes_saved) => {
-                                info!("{} bytes written to {:?}", bytes_saved, world.backup.location());
+                                if bytes_saved > 0 {
+                                    info!("{} bytes written to {:?}", bytes_saved, world.backup.location());
+                                }
                             }
                             Err(err) => {
                                 error!("Unable to backup world: {:?}", err);

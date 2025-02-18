@@ -2,7 +2,7 @@ use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
 use crate::{as_world_position};
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
-use log::{trace};
+use log::{info, trace};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::util::DeviceExt;
@@ -118,6 +118,7 @@ impl Camera {
             16
         };
         if tile_map_size < 1 { tile_map_size = 1; }
+        info!("{}", tile_map_size);
         tile_map_size
     }
     

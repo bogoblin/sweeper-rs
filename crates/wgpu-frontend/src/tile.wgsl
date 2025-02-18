@@ -62,6 +62,21 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     }
 
     let dims = vec2<f32>(textureDimensions(zoom_render));
-    return textureSample(zoom_render, zoom_sampler,
-        world_to_uv(in.world_coords.xy, dims, camera.tile_map_size.x));
+    let uv = world_to_uv(in.world_coords.xy, dims, camera.tile_map_size.x);
+    if camera.tile_map_size.x >= 16 {
+        let relative_uv = uv - floor(uv);
+        let dimensions = vec2<f32>(textureDimensions(zoom_render));
+        let texture_coords = relative_uv * vec2<f32>(textureDimensions(zoom_render));
+        // Pixel perfect scaling from: https://colececil.dev/blog/2017/scaling-pixel-art-without-destroying-it/
+        let location_within_texel = fract(texture_coords);
+        let texels_per_pixel = vec2(16.0, 16.0)/camera.tile_size.xy;
+        let interpolation_amount = clamp(location_within_texel / texels_per_pixel, vec2(0.0, 0.0), vec2(0.5, 0.5))
+            + clamp((location_within_texel - vec2(1.0, 1.0)) / texels_per_pixel + vec2(0.5, 0.5), vec2(0.0, 0.0), vec2(0.5, 0.5));
+
+        let final_texture_coords = floor(texture_coords) + interpolation_amount;
+
+        return textureSample(zoom_render, zoom_sampler, final_texture_coords/dimensions);
+    } else {
+        return textureSample(zoom_render, zoom_sampler, uv);
+    }
 }
