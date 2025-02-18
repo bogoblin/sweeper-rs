@@ -1,4 +1,4 @@
-use log::{error, info, trace};
+use log::{error};
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;

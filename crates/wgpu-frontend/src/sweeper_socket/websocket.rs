@@ -7,8 +7,8 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen::__rt::IntoJsResult;
 use web_sys::{js_sys, BinaryType, ErrorEvent, MessageEvent, WebSocket};
 use world::client_messages::ClientMessage;
-use world::{Chunk, Rect, World};
-use world::server_messages::{ServerMessage, ServerMessageError};
+use world::{World};
+use world::server_messages::{ServerMessage};
 use crate::sweeper_socket::SweeperSocket;
 
 pub struct WebSocketWorld {

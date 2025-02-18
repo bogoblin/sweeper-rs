@@ -1,8 +1,8 @@
 use crate::shader::HasBindGroup;
 use crate::tilerender_texture::TileMapTexture;
-use crate::{as_world_position, Fingers};
+use crate::{as_world_position};
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
-use log::{info, trace};
+use log::{trace};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::util::DeviceExt;

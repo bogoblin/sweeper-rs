@@ -1,7 +1,6 @@
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Zero};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
-use log::info;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ButtonSource, ElementState, FingerId, PointerKind, PointerSource, WindowEvent};
 
