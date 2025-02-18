@@ -586,15 +586,17 @@ impl State {
 
         // TODO: On local, you can't unflag
         let tile = self.world.world().get_tile(&position);
-        if tile.is_flag() {
-            info!("unflagging");
-            self.tile_map_texture.write_tile(&self.queue, tile.without_flag(), position);
-        } else {
-            info!("flagging");
-            self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
+        if !tile.is_revealed() {
+            if tile.is_flag() {
+                info!("unflagging");
+                self.tile_map_texture.write_tile(&self.queue, tile.without_flag(), position);
+            } else {
+                info!("flagging");
+                self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
+            }
+            self.world.world().flag(position, "");
+            self.world.send(ClientMessage::Flag(position));
         }
-        self.world.world().flag(position, "");
-        self.world.send(ClientMessage::Flag(position));
     }
 
     pub fn toggle_dark_mode(&mut self) {
