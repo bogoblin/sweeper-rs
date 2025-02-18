@@ -17,16 +17,22 @@ pub struct TileMapTexture {
     tile_map_area: Rect,
     prev_camera_visible_rect: Rect,
     dirty_rect: Rect,
+    texture_size: u32,
 }
 
 impl TileMapTexture {
-    pub(crate) const SIZE: usize = 4096; // TODO: check the max size on the browser
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, camera: &Camera) -> Self {
+    pub(crate) fn texture_size(&self) -> u32 {
+        self.texture_size
+    }
+}
+
+impl TileMapTexture {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, camera: &Camera, texture_size: u32) -> Self {
         let tiles = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
-                width: Self::SIZE as u32,
-                height: Self::SIZE as u32,
+                width: texture_size,
+                height: texture_size,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -81,8 +87,8 @@ impl TileMapTexture {
         let output = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
-                width: Self::SIZE as u32,
-                height: Self::SIZE as u32,
+                width: texture_size,
+                height: texture_size,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -222,6 +228,7 @@ impl TileMapTexture {
             tile_map_area: Rect::default(),
             prev_camera_visible_rect: Default::default(),
             dirty_rect: Default::default(),
+            texture_size,
         }
     }
 
@@ -260,35 +267,35 @@ impl TileMapTexture {
             render_pass.set_bind_group(2, self.tiles.bind_group(), &[]);
 
             let tile_width = camera.tile_map_size() as i32;
-            let tile_map_extent = Self::SIZE as i32 / tile_width;
+            let tile_map_extent = self.texture_size as i32 / tile_width;
 
             // We only want to render the stuff that's going to appear on the screen.
             // This will consist of up to four rectangles because the screen area is not continuous.
             let visible_rect_in_pixel_space = camera.visible_world_rect() * tile_width;
             
             // If we're looking at the whole tile map, then just render the whole thing:
-            if visible_rect_in_pixel_space.width() > Self::SIZE as i32 
-                || visible_rect_in_pixel_space.height() > Self::SIZE as i32 {
-                render_pass.set_scissor_rect(0, 0, Self::SIZE as u32, Self::SIZE as u32);
+            if visible_rect_in_pixel_space.width() > self.texture_size as i32 
+                || visible_rect_in_pixel_space.height() > self.texture_size as i32 {
+                render_pass.set_scissor_rect(0, 0, self.texture_size, self.texture_size);
                 render_pass.draw(0..6, 0..1);
             } else {
                 // Otherwise, only render the parts that are visible on the screen:
-                let rects = self.split_rect_along_boundaries(visible_rect_in_pixel_space.modulo(Self::SIZE as i32));
+                let rects = self.split_rect_along_boundaries(visible_rect_in_pixel_space.modulo(self.texture_size as i32));
                 for rect in rects {
                     if rect.area() == 0 { continue }
                     let mut r = rect;
 
-                    if r.left < 0 { r.shift(Self::SIZE as i32, 0) }
-                    if r.top < 0 { r.shift(0, Self::SIZE as i32) }
-                    if r.left >= Self::SIZE as i32 { r.shift(-(Self::SIZE as i32), 0) }
-                    if r.top >= Self::SIZE as i32 { r.shift(0, -(Self::SIZE as i32)) }
+                    if r.left < 0 { r.shift(self.texture_size as i32, 0) }
+                    if r.top < 0 { r.shift(0, self.texture_size as i32) }
+                    if r.left >= self.texture_size as i32 { r.shift(-(self.texture_size as i32), 0) }
+                    if r.top >= self.texture_size as i32 { r.shift(0, -(self.texture_size as i32)) }
 
                     let left = r.left as u32;
                     let top = r.top as u32;
                     let right = r.width() as u32;
                     let bottom = r.height() as u32;
 
-                    if right > Self::SIZE as u32 || bottom > Self::SIZE as u32 {
+                    if right > self.texture_size as u32 || bottom > self.texture_size as u32 {
                         error!("Scissor Rect was constructed badly: {} {}", right, bottom);
                         error!("Visible world rect: {:?}", camera.visible_world_rect());
                         error!("Visible world rect modulo extent: {:?}", camera.visible_world_rect().modulo(tile_map_extent));
@@ -310,10 +317,10 @@ impl TileMapTexture {
             .iter().map(|r| r.split_y(0))
             .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
             .unwrap()
-            .iter().map(|r| r.split_x(Self::SIZE as i32))
+            .iter().map(|r| r.split_x(self.texture_size as i32))
             .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
             .unwrap()
-            .iter().map(|r| r.split_y(Self::SIZE as i32))
+            .iter().map(|r| r.split_y(self.texture_size as i32))
             .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
             .unwrap();
         rects
@@ -368,8 +375,8 @@ impl TileMapTexture {
         if !self.tile_map_area.contains(chunk.position.position()) { return; }
         
         let Position(x, y) = chunk.position.position();
-        let x = x as usize % Self::SIZE;
-        let y = y as usize % Self::SIZE;
+        let x = x as usize % self.texture_size as usize;
+        let y = y as usize % self.texture_size as usize;
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.tiles.texture,
@@ -400,8 +407,8 @@ impl TileMapTexture {
         if !self.tile_map_area.contains(position) { return; }
         
         let Position(x, y) = position;
-        let x = x as usize % Self::SIZE;
-        let y = y as usize % Self::SIZE;
+        let x = x as usize % self.texture_size as usize;
+        let y = y as usize % self.texture_size as usize;
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.tiles.texture,
@@ -435,7 +442,7 @@ impl TileMapTexture {
     
     pub fn update_draw_area(&mut self, camera: &Camera) -> Vec<Rect> {
         let current_area = &self.tile_map_area.clone();
-        self.tile_map_area = Rect::from_center_and_size(camera.world_center().chunk_position().position(), Self::SIZE as i32, Self::SIZE as i32);
+        self.tile_map_area = Rect::from_center_and_size(camera.world_center().chunk_position().position(), self.texture_size as i32, self.texture_size as i32);
         let new_area = &self.tile_map_area;
 
         if let Some(intersection) = &new_area.intersection(current_area) {

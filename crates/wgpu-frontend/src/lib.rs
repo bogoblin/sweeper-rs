@@ -117,8 +117,6 @@ struct State {
 }
 
 impl State {
-    const MAX_SIZE: u32 = TileMapTexture::SIZE as u32;
-
     // Creating some of the wgpu types requires async code
     fn new(window: Arc<Box<dyn Window>>) -> impl Future<Output = Self> + 'static {
         let size = window.surface_size();
@@ -139,17 +137,25 @@ impl State {
                 },
             ).await.unwrap();
 
-            let mut required_limits = wgpu::Limits::downlevel_webgl2_defaults();
-            required_limits.max_texture_dimension_2d = Self::MAX_SIZE;
-            let (device, queue) = adapter.request_device(
-                &wgpu::DeviceDescriptor {
-                    required_features: wgpu::Features::empty(),
-                    required_limits,
-                    label: None,
-                    memory_hints: Default::default(),
-                },
-                None,
-            ).await.unwrap();
+            let mut texture_size = 2 << 14;
+            let (device, queue) = loop {
+                let mut required_limits = wgpu::Limits::downlevel_webgl2_defaults();
+                required_limits.max_texture_dimension_2d = texture_size;
+                if let Ok(( device, queue )) = adapter.request_device(
+                    &wgpu::DeviceDescriptor {
+                        required_features: wgpu::Features::empty(),
+                        required_limits,
+                        label: None,
+                        memory_hints: Default::default(),
+                    },
+                    None,
+                ).await {
+                    break (device, queue)
+                } else {
+                    texture_size /= 2;
+                }
+            };
+            info!("Max texture size is {}", texture_size);
 
             let surface_caps = surface.get_capabilities(&adapter);
             let surface_format = surface_caps.formats.iter()
@@ -169,7 +175,7 @@ impl State {
 
             let camera = Camera::new(&device, &size);
 
-            let tile_map_texture = TileMapTexture::new(&device, &queue, &camera);
+            let tile_map_texture = TileMapTexture::new(&device, &queue, &camera, texture_size);
 
             let common_shader = include_str!("common.wgsl");
             let mut wgsl_source = String::from(common_shader);
@@ -292,7 +298,7 @@ impl State {
         
         self.scale_factor = self.window.scale_factor();
         info!("rendering at {} x {}, scaling is {}%", new_size.width, new_size.height, self.scale_factor*100.0);
-        if new_size.width > 0 && new_size.height > 0 && new_size.width < Self::MAX_SIZE && new_size.height < Self::MAX_SIZE {
+        if new_size.width > 0 && new_size.height > 0 && new_size.width < self.tile_map_texture.texture_size() && new_size.height < self.tile_map_texture.texture_size() {
             self.size = PhysicalSize::new(
                 (new_size.width as f64 * self.scale_factor) as u32,
                 (new_size.height as f64 * self.scale_factor) as u32,
@@ -429,7 +435,7 @@ impl State {
         let _dt = Utc::now() - self.last_frame_time;
         self.last_frame_time = Utc::now();
 
-        self.camera.write_to_queue(&self.queue, 0);
+        self.camera.write_to_queue(&self.queue, 0, self.tile_map_texture.texture_size());
 
         // Load in any new chunks
         let rects = self.tile_map_texture.update_draw_area(&self.camera);
@@ -527,7 +533,7 @@ impl State {
 
         Ok(())
     }
-    
+
     pub fn touch_at(&mut self, finger_position: &PhysicalPosition<f64>) {
         let position = as_world_position(self.camera.screen_to_world(finger_position));
         let tile = self.world.world().get_tile(&position);
@@ -541,7 +547,7 @@ impl State {
                     revealed_neighbours += 1;
                 }
             }
-            
+
             if revealed_neighbours == 0 {
                 self.click_at(finger_position);
             } else {

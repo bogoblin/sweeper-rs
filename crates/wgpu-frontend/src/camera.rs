@@ -1,8 +1,7 @@
 use crate::shader::HasBindGroup;
-use crate::tilerender_texture::TileMapTexture;
 use crate::{as_world_position};
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
-use log::{info, trace};
+use log::{trace};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::util::DeviceExt;
@@ -118,16 +117,15 @@ impl Camera {
             16
         };
         if tile_map_size < 1 { tile_map_size = 1; }
-        info!("{}", tile_map_size);
         tile_map_size
     }
     
-    pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress) {
+    pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress, texture_size: u32) {
         self.uniform.world_rect = self.rect().into();
         self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
         let tile_map_size = self.tile_map_size() as f32;
         self.uniform.tile_map_size = [tile_map_size, tile_map_size, 0.0, 0.0];
-        let tiles_in_texture = (TileMapTexture::SIZE/tile_map_size as usize) as i32;
+        let tiles_in_texture = (texture_size as usize/tile_map_size as usize) as i32;
         let tile_map_area = Rect::from_center_and_size(Position(
             (self.world_center().0 >> (4))<<(4),
             (self.world_center().1 >> (4))<<(4),
@@ -135,8 +133,8 @@ impl Camera {
         self.uniform.tile_map_rect = [tile_map_area.left as f32, tile_map_area.top as f32, tile_map_area.right as f32, tile_map_area.bottom as f32];
         self.uniform.full_tile_map_rect = Rect::from_center_and_size(
             self.world_center().chunk_position().position(),
-            TileMapTexture::SIZE as i32,
-            TileMapTexture::SIZE as i32,
+            texture_size as i32,
+            texture_size as i32,
         );
         #[cfg(target_arch = "wasm32")] {
             self.uniform.time = self.performance.now() as i32;
