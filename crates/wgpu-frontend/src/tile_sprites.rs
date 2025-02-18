@@ -134,7 +134,7 @@ impl TileSprites {
         let texture = Texture::from_wgpu_texture_and_sampler(texture, sampler, device).expect("Couldn't create sprite atlas texture");
 
         let result = Self {
-            texture, dark_mode: DarkMode::Dark, filter_type: FilterType::Triangle,
+            texture, dark_mode: DarkMode::Light, filter_type: FilterType::Triangle,
         };
         result.write_texture(queue);
         
