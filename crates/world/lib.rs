@@ -5,7 +5,7 @@ use crate::player::Player;
 use bytes_cast::BytesCast;
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
-use rand::SeedableRng;
+use rand::{thread_rng, RngCore, SeedableRng};
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::{max, min, PartialEq};
@@ -13,6 +13,8 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Add, AddAssign, Sub};
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use derive_more::{Div, Mul};
 use crate::server_messages::ServerMessage;
 
@@ -66,6 +68,7 @@ impl World {
             }
             ServerMessage::Welcome(_) => {}
             ServerMessage::Disconnected(_) => {}
+            ServerMessage::Connected => {}
         }
     }
 }
@@ -83,6 +86,15 @@ impl World {
         };
         world.generate_chunk(Position(0, 0));
         world
+    }
+    
+    pub fn new_player_id(&mut self) -> String {
+        let mut buf: [u8; 8] = Default::default();
+        thread_rng().fill_bytes(&mut buf);
+        let player_id = BASE64_STANDARD.encode(buf);
+        let new_player = Player::new(player_id.clone());
+        self.players.insert(player_id.clone(), new_player);
+        player_id
     }
     
     pub fn create_or_update_player(&mut self, event: &Event) -> String {

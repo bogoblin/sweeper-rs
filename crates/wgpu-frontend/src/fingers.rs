@@ -79,12 +79,6 @@ impl Fingers {
             )
         };
         match event {
-            WindowEvent::RedrawRequested => {},
-            _ => {
-                info!("{:?}", event);
-            }
-        }
-        match event {
             WindowEvent::PointerButton {
                 button: ButtonSource::Touch { finger_id, .. },
                 position,

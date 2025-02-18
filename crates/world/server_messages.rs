@@ -14,6 +14,7 @@ pub enum ServerMessage {
     Player(Player),
     Welcome(Player),
     Disconnected(String),
+    Connected,
 }
 
 impl From<ServerMessage> for Vec<u8> {
@@ -36,7 +37,8 @@ impl From<ServerMessage> for Vec<u8> {
                 result.append(&mut "x".as_bytes().to_vec());
                 result.append(&mut player_id.as_bytes().to_vec());
                 result
-            }
+            },
+            ServerMessage::Connected => vec![]
         }
     }
 }

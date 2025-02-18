@@ -1,24 +1,29 @@
 mod backup;
 
-use axum::body::Bytes;
-use axum::extract::Path;
+use axum::extract::{Path, State};
+use axum::extract::{ws::WebSocket, WebSocketUpgrade};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{body, Router};
 use clap::Parser;
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use include_dir::{include_dir, Dir};
-use serde_json::{json, Value};
-use socketioxide::extract::{Data, SocketRef};
-use socketioxide::{SocketIo};
+use serde_json::{Value};
 use std::net::SocketAddr;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::thread;
+use std::sync::{Arc};
+use axum::extract::ws::Message;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
-use log::{debug};
-use crate::backup::Backup;
+use log::{error, info};
+use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::{broadcast, Mutex};
+use crate::backup::{Backup, BackupError};
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
 use world::player::Player;
@@ -34,114 +39,198 @@ struct Cli {
     world_file: Option<PathBuf>
 }
 
+#[derive(Clone)]
+struct AppState {
+    world: Arc<Mutex<WorldBackup>>,
+    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+}
+
+struct WorldBackup {
+    world: World,
+    backup: Backup,
+}
+
+impl WorldBackup {
+    fn write_backup(&mut self) -> Result<usize, BackupError> {
+        self.backup.save(&self.world)
+    }
+}
+
+impl Deref for WorldBackup {
+    type Target = World;
+
+    fn deref(&self) -> &Self::Target {
+        &self.world
+    }
+}
+
+impl DerefMut for WorldBackup {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.world
+    }
+}
+
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
     
-    let mut backup = Backup::new(cli.world_file.unwrap_or("worldfile".into()));
-
-    let mut world = backup.load().unwrap_or_else(|_| World::new());
+    env_logger::init();
     
-    let (tx, rx) = mpsc::channel();
-    let (socket_layer, io) = SocketIo::new_layer();
-    io.ns("/", |socket: SocketRef| {
-        if let Ok(_) = tx.send((Connected, socket.clone())) {
-            socket.join("default").expect("TODO: panic message");
-            let _ = socket.emit("join", json!({
-                "player_id": socket.id
-            }));
-            let tx2 = tx.clone();
-            socket.on("message", move |socket_ref: SocketRef, Data::<Value>(data)| {
-                // thread::sleep(std::time::Duration::from_millis(500)); // Can uncomment this to add simulated lag
-                if let Some(message) = ClientMessage::decode(data) {
-                    tx.send((message, socket_ref)).unwrap_or_default();
-                }
-            });
-            socket.on_disconnect(move |socket_ref: SocketRef| {
-                tx2.send((Disconnected(socket_ref.id.to_string()), socket_ref)).unwrap_or_default();
-            });
-        }
-    });
+    let backup = Backup::new(cli.world_file.unwrap_or("worldfile".into()));
+    let world = backup.load().unwrap_or_else(|_| World::new());
 
-    let _handle = thread::spawn(move || {
-        for (received, socket_ref) in rx {
-            let player_id = socket_ref.id.as_str();
-            match received {
-                Click(position) => {
-                    world.click(position, player_id);
-                }
-                Flag(position) => {
-                    world.flag(position, player_id);
-                }
-                DoubleClick(position) => {
-                    world.double_click(position, player_id);
-                }
-                Connected => {
-                    // TODO? Move this to the query and put the players in a quadtree? Possible improvement, may be worse
-                    let mut players_to_send = vec![];
-                    for (_player_id, player) in &world.players {
-                        players_to_send.push(player.compress("p"));
-                    }
-                    println!("Sending {} players", players_to_send.len());
-                    players_to_send.push(Player::new(socket_ref.id.to_string()).compress("w"));
-                    match &socket_ref.bin(players_to_send)
-                        .emit("e", vec![""]) {
-                        Ok(_) => {}
-                        Err(_) => {
-                            socket_ref.disconnect().ok();
-                            continue
-                        }
-                    }
-                },
-                Disconnected(player_id) => {
-                    world.players.remove(&player_id);
-                    socket_ref.broadcast()
-                        .bin(vec!(Vec::<u8>::from(ServerMessage::Disconnected(player_id))))
-                        .within("default")
-                        .emit("e", vec![""]).ok();
-                }
-                Query(rect) => {
-                    let mut chunks_to_send = vec![];
-                    let query = world.query_chunks(&rect);
-                    for chunk in query {
-                        if chunk.should_send() {
-                            chunks_to_send.push(chunk.compress());
-                        }
-                    }
-                    match &socket_ref.bin(chunks_to_send)
-                        .emit("e", vec![""]) {
-                        Ok(_) => {}
-                        Err(_) => {
-                            socket_ref.disconnect().ok();
-                            continue
-                        }
-                    }
-                }
-            }
-            send_recent_events(&mut world, &socket_ref);
-
-            match backup.save(&world) {
-                Ok(bytes_written) => {
-                    debug!("{} bytes written to {}", bytes_written, backup.location().to_string_lossy());
-                }
-                Err(err) => {
-                    eprintln!("Error while writing worldfile: {err}")
-                }
-            }
-        }
-    });
+    let (tx, _) = broadcast::channel(32);
+    let app = AppState {
+        world: Arc::new(Mutex::new(WorldBackup {
+            world, backup
+        })),
+        broadcast_tx: Arc::new(Mutex::new(tx)),
+    };
 
     let router: Router<> = Router::new()
-        .layer(socket_layer)
         .route("/", get(root))
+        .route("/ws", get(ws_upgrade_handler))
+        .with_state(app)
         .route("/static/*path", get(static_path))
         ;
     let port = cli.port.unwrap_or(80);
-    println!("Hosting on port {port}");
+    info!("Hosting on port {port}");
     let addr = SocketAddr::from(([0,0,0,0], port));
     let tcp = TcpListener::bind(&addr).await.unwrap();
 
     axum::serve(tcp, router).await.unwrap();
+}
+
+async fn ws_upgrade_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Response {
+    ws.on_upgrade(|socket| handle_socket(socket, app))
+}
+
+async fn handle_socket(ws: WebSocket, app: AppState) {
+    let (ws_tx, ws_rx) = ws.split();
+    let ws_tx = Arc::new(Mutex::new(ws_tx));
+    
+    let player_id = app.world.lock().await.world.new_player_id();
+
+    let tx_clone = ws_tx.clone();
+    {
+        let broadcast_rx = app.broadcast_tx.lock().await.subscribe();
+        tokio::spawn(async move {
+            recv_broadcast(tx_clone, broadcast_rx).await;
+        });
+    }
+    
+    recv_from_client(ws_rx, ws_tx, app.broadcast_tx, app.world, &player_id).await;
+}
+
+async fn recv_broadcast(
+    client_tx: Arc<Mutex<SplitSink<WebSocket, Message>>>,
+    mut broadcast_rx: Receiver<Message>,
+) {
+    while let Ok(msg) = broadcast_rx.recv().await {
+        info!("Broadcasting message: {:?}", msg);
+        if client_tx.lock().await.send(msg).await.is_err() {
+            return; // disconnected.
+        }
+    }
+}
+
+async fn recv_from_client(
+    mut client_rx: SplitStream<WebSocket>,
+    client_tx: Arc<Mutex<SplitSink<WebSocket, Message>>>,
+    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+    world: Arc<Mutex<WorldBackup>>,
+    player_id: &str,
+) {
+    while let Some(Ok(msg)) = client_rx.next().await {
+        let mut to_broadcast = vec![];
+        let mut to_client = vec![];
+        match msg {
+            Message::Text(text) => {
+                if let Ok(message) = serde_json::from_str::<Value>(&text) {
+                    if let Some(message) = ClientMessage::decode(message) {
+                        let mut world = world.lock().await;
+                        match message {
+                            Click(position) => {
+                                world.click(position, player_id);
+                            }
+                            Flag(position) => {
+                                world.flag(position, player_id);
+                            }
+                            DoubleClick(position) => {
+                                world.double_click(position, player_id);
+                            }
+                            Connected => {
+                                // TODO? Move this to the query and put the players in a quadtree? Possible improvement, may be worse
+                                for (_player_id, player) in &world.players {
+                                    to_client.push(ServerMessage::Player(player.clone()))
+                                }
+                                let player = Player::new(player_id.to_string());
+                                to_broadcast.push(ServerMessage::Player(player.clone()));
+                                to_client.push(ServerMessage::Welcome(player));
+                            },
+                            Disconnected(player_id) => {
+                                world.players.remove(&player_id);
+                                to_broadcast.push(ServerMessage::Disconnected(player_id));
+                            }
+                            Query(rect) => {
+                                let query = world.query_chunks(&rect);
+                                for chunk in query {
+                                    if chunk.should_send() {
+                                        // TODO: cloning all these chunks might be expensive
+                                        to_client.push(ServerMessage::Chunk(chunk.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        while let Some(event) = world.events.pop_front() {
+                            to_broadcast.push(ServerMessage::Event(event))
+                        }
+
+                        match world.write_backup() {
+                            Ok(bytes_saved) => {
+                                info!("{} bytes written to backup", bytes_saved);
+                            }
+                            Err(err) => {
+                                error!("Unable to backup world: {:?}", err);
+                            }
+                        }
+                    }
+                }
+            }
+            Message::Binary(_) => {}
+            Message::Ping(_) => {}
+            Message::Pong(_) => {}
+            Message::Close(_) => return
+        }
+
+        {
+            let messages = to_client.into_iter()
+                .map(|message| {
+                    Message::Binary(Vec::<u8>::from(message))
+                });
+            let mut lock = client_tx.lock().await;
+            for message in messages {
+                info!("to player: {:?}", message);
+                lock.send(message).await.unwrap_or_default();
+            }
+        }
+        
+        {
+            let messages = to_broadcast.into_iter()
+                .map(|message| {
+                    Message::Binary(Vec::<u8>::from(message))
+                });
+            let lock = broadcast_tx.lock().await;
+            for message in messages {
+                info!("to all: {:?}", message);
+                if lock.send(message).is_err() {
+                    println!("Failed to broadcast a message");
+                }
+            }
+        }
+        
+    }
 }
 
 static STATIC_DIR: Dir<'_> = include_dir!("crates/server/static");
@@ -170,14 +259,4 @@ async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
 
 async fn root() -> impl IntoResponse {
     static_path(Path("index.html".to_string())).await
-}
-
-fn send_recent_events(world: &mut World, socket_ref: &SocketRef) {
-    while let Some(event) = world.events.pop_front() {
-        println!("{:?}", event);
-        socket_ref
-            .bin(vec![Bytes::from(event.compress())])
-            .within("default")
-            .emit("e", vec![""]).ok();
-    }
 }

@@ -227,16 +227,16 @@ impl State {
                 cache: None,
             });
 
-            let world;
+            let mut world;
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "wasm32")] {
-                    use crate::sweeper_socket::socketio::IoWorld;
-                    world = Box::new(IoWorld::new("/"))
+                    world = Box::new(sweeper_socket::websocket::WebSocketWorld::new().unwrap())
                 } else {
                     use crate::sweeper_socket::local::LocalWorld;
                     world = Box::new(LocalWorld::new())
                 }
             }
+            world.send(ClientMessage::Connected);
             let cursors = Cursors::new(&device, &queue, surface_format, &camera);
 
             #[cfg(target_arch = "wasm32")]
@@ -433,8 +433,8 @@ impl State {
         for rect in rects {
             if rect.area() == 0 { continue }
             self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect.clone());
-            let chunks = self.world.get_chunks(rect);
-            for chunk in chunks {
+            self.world.send(ClientMessage::Query(rect.clone()));
+            for chunk in self.world.world().query_chunks(&rect) {
                 self.tile_map_texture.write_chunk(&self.queue, chunk);
             }
         }
@@ -475,6 +475,7 @@ impl State {
                     self.cursors.delete_player(&player_id, &self.queue);
                     self.world.world().players.remove(&player_id);
                 }
+                ServerMessage::Connected => {}
             }
         }
 

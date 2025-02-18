@@ -1,10 +1,10 @@
 use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
-use world::{Chunk, Rect, World};
+use world::World;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        pub mod socketio;
+        pub mod websocket;
     } else {
         pub mod local;
     }
@@ -13,7 +13,6 @@ cfg_if::cfg_if! {
 pub trait SweeperSocket {
     fn send(&mut self, message: ClientMessage);
     fn next_message(&mut self) -> Option<ServerMessage>;
-    fn get_chunks(&self, rect: Rect) -> Vec<&Chunk>;
     fn world(&mut self) -> &mut World;
 }
 

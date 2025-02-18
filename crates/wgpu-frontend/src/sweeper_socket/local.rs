@@ -35,14 +35,6 @@ impl SweeperSocket for LocalWorld {
         }
     }
 
-    fn get_chunks(&self, rect: Rect) -> Vec<&Chunk> {
-        let chunks_to_get = rect.chunks_contained();
-        chunks_to_get.iter()
-            .map(|chunk_position| self.world.get_chunk(chunk_position.position()))
-            .filter_map(|v| v)
-            .collect()
-    }
-
     fn world(&mut self) -> &mut World {
         &mut self.world
     }

@@ -240,6 +240,7 @@ checksum = "3a6c9af12842a67734c9a2e355436e5d03b22383ed60cf13cd0c18fbfe3dcbcf"
 dependencies = [
  "async-trait",
  "axum-core",
+ "base64 0.21.7",
  "bytes",
  "futures-util",
  "http",
@@ -258,8 +259,10 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+ "sha1",
  "sync_wrapper 1.0.1",
  "tokio",
+ "tokio-tungstenite",
  "tower",
  "tower-layer",
  "tower-service",
@@ -301,6 +304,12 @@ dependencies = [
  "object",
  "rustc-demangle",
 ]
+
+[[package]]
+name = "base64"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "base64"
@@ -411,9 +420,6 @@ name = "bytes"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "514de17de45fdb8dc022b1a7975556c53c86f9f0aa5f534b98977b171857c2c9"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bytes-cast"
@@ -866,32 +872,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
 
 [[package]]
-name = "engineioxide"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc76e79b0c318bbff227b003843c56d5fc50b43276441d162124166f4cbacc80"
-dependencies = [
- "base64",
- "bytes",
- "futures-core",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "pin-project-lite",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "smallvec",
- "thiserror",
- "tokio",
- "tokio-tungstenite",
- "tower",
-]
-
-[[package]]
 name = "env_filter"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -903,9 +883,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.5"
+version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13fa619b91fb2381732789fc5de83b45675e882f66623b7d8cb4f643017018d"
+checksum = "dcaee3d8e3cfc3fd92428d477bc97fc29ec8716d180c0d74c643bb26166660e0"
 dependencies = [
  "anstream",
  "anstyle",
@@ -927,7 +907,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2306,7 +2286,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2513,36 +2493,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "socketio-local"
-version = "0.1.0"
-dependencies = [
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "socketioxide"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "178953184593e92c3f58d0d3eda74865c520b6fc05f80dc6c99bb235e39f400a"
-dependencies = [
- "bytes",
- "engineioxide",
- "futures-core",
- "futures-util",
- "http",
- "http-body",
- "hyper",
- "itoa",
- "pin-project-lite",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tower",
-]
-
-[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2597,13 +2547,14 @@ dependencies = [
  "axum",
  "clap",
  "derive_more 0.99.17",
+ "env_logger",
+ "futures-util",
  "include_dir",
  "log",
  "mime_guess",
  "postcard",
  "serde",
  "serde_json",
- "socketioxide",
  "tokio",
  "world",
 ]
@@ -3227,7 +3178,6 @@ dependencies = [
  "rand 0.9.0-alpha.1",
  "serde-wasm-bindgen",
  "serde_json",
- "socketio-local",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3654,7 +3604,7 @@ dependencies = [
 name = "world"
 version = "0.1.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytemuck",
  "bytes-cast",
  "derive_more 1.0.0",
