@@ -370,6 +370,23 @@ impl PositionInChunk {
 #[derive(Serialize, Deserialize)]
 #[derive(derive_more::Mul, derive_more::Div, derive_more::Add, derive_more::Sub)]
 pub struct Position(pub i32, pub i32);
+
+impl Position {
+    pub fn neighbors(&self) -> Vec<Position> {
+        let mut result = vec![];
+        
+        for x in self.0-1..=self.0+1 {
+            for y in self.1-1..=self.1+1 {
+                if x != self.0 || y != self.1 {
+                    result.push(Position(x, y))
+                }
+            }
+        }
+        
+        result
+    }
+}
+
 impl Position {
     pub fn origin() -> Self { Self(0, 0) }
 

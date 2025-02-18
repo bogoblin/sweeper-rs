@@ -314,7 +314,7 @@ impl State {
             if finger.distance_moved() < 4.0 {
                 let position = finger.screen_position();
                 let position = PhysicalPosition::new(position.x + window_size.width/2.0, position.y + window_size.height/2.0);
-                self.click_at(&position);
+                self.touch_at(&position);
             }
         }
         match event {
@@ -522,6 +522,28 @@ impl State {
         output.present();
 
         Ok(())
+    }
+    
+    pub fn touch_at(&mut self, finger_position: &PhysicalPosition<f64>) {
+        let position = as_world_position(self.camera.screen_to_world(finger_position));
+        let tile = self.world.world().get_tile(&position);
+        if tile.is_revealed() {
+            self.double_click_at(finger_position);
+        } else {
+            // if no adjacent tiles are not revealed, then reveal, otherwise, flag
+            let mut revealed_neighbours = 0;
+            for neighbor in position.neighbors() {
+                if self.world.world().get_tile(&neighbor).is_revealed() {
+                    revealed_neighbours += 1;
+                }
+            }
+            
+            if revealed_neighbours == 0 {
+                self.click_at(finger_position);
+            } else {
+                self.toggle_flag_at(finger_position);
+            }
+        }
     }
 
     pub fn click_at(&mut self, mouse_position: &PhysicalPosition<f64>) {
