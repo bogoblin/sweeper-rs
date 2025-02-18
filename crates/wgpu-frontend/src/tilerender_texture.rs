@@ -1,3 +1,4 @@
+use log::{error, info, trace};
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
@@ -263,19 +264,40 @@ impl TileMapTexture {
 
             // We only want to render the stuff that's going to appear on the screen.
             // This will consist of up to four rectangles because the screen area is not continuous.
-            let rects = self.split_rect_along_boundaries(camera.visible_world_rect().modulo(tile_map_extent));
-            for rect in rects {
-                if rect.area() == 0 { continue }
-                let mut r = rect.modulo(tile_map_extent);
-                if r.left < 0 { r.shift(tile_map_extent, 0) }
-                if r.top < 0 { r.shift(0, tile_map_extent) }
-                render_pass.set_scissor_rect(
-                    (tile_width * r.left) as u32,
-                    (tile_width * r.top) as u32,
-                    (tile_width * r.width()) as u32,
-                    (tile_width * r.height()) as u32,
-                );
+            let visible_rect_in_pixel_space = camera.visible_world_rect() * tile_width;
+            
+            // If we're looking at the whole tile map, then just render the whole thing:
+            if visible_rect_in_pixel_space.width() > Self::SIZE as i32 
+                || visible_rect_in_pixel_space.height() > Self::SIZE as i32 {
+                render_pass.set_scissor_rect(0, 0, Self::SIZE as u32, Self::SIZE as u32);
                 render_pass.draw(0..6, 0..1);
+            } else {
+                // Otherwise, only render the parts that are visible on the screen:
+                let rects = self.split_rect_along_boundaries(visible_rect_in_pixel_space.modulo(Self::SIZE as i32));
+                for rect in rects {
+                    if rect.area() == 0 { continue }
+                    let mut r = rect;
+
+                    if r.left < 0 { r.shift(Self::SIZE as i32, 0) }
+                    if r.top < 0 { r.shift(0, Self::SIZE as i32) }
+                    if r.left >= Self::SIZE as i32 { r.shift(-(Self::SIZE as i32), 0) }
+                    if r.top >= Self::SIZE as i32 { r.shift(0, -(Self::SIZE as i32)) }
+
+                    let left = r.left as u32;
+                    let top = r.top as u32;
+                    let right = r.width() as u32;
+                    let bottom = r.height() as u32;
+
+                    if right > Self::SIZE as u32 || bottom > Self::SIZE as u32 {
+                        error!("Scissor Rect was constructed badly: {} {}", right, bottom);
+                        error!("Visible world rect: {:?}", camera.visible_world_rect());
+                        error!("Visible world rect modulo extent: {:?}", camera.visible_world_rect().modulo(tile_map_extent));
+                        error!("This rect: {:?}", rect);
+                    } else {
+                        render_pass.set_scissor_rect(left, top, right, bottom);
+                    }
+                    render_pass.draw(0..6, 0..1);
+                }
             }
             self.prev_camera_visible_rect = camera.visible_world_rect().clone();
             self.dirty_rect = Rect::default();

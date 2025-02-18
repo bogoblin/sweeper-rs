@@ -13,6 +13,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Add, AddAssign, Sub};
+use derive_more::{Div, Mul};
 use crate::server_messages::ServerMessage;
 
 pub mod server_messages;
@@ -712,6 +713,7 @@ impl Iterator for ChunkPositionIter {
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 #[derive(bytemuck::Pod, bytemuck::Zeroable)]
 #[derive(Deserialize, Serialize)]
+#[derive(Mul, Div)]
 pub struct Rect {
     pub left: i32,
     pub top: i32,
@@ -763,9 +765,9 @@ impl Rect {
     pub fn modulo(&self, modulo: i32) -> Rect {
         let mut result = self.clone();
         result.left %= modulo;
-        result.right %= modulo;
         result.top %= modulo;
-        result.bottom %= modulo;
+        result.right = result.left + self.width();
+        result.bottom = result.top + self.height();
         result
     }
 }
