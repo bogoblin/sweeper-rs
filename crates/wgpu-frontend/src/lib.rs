@@ -137,7 +137,11 @@ impl State {
                 },
             ).await.unwrap();
 
-            let mut texture_size = 2 << 14;
+            let mut texture_size = 2 << 12;
+            #[cfg(target_arch = "wasm32")] {
+                texture_size = 2 << 14;
+            }
+            
             let (device, queue) = loop {
                 let mut required_limits = wgpu::Limits::downlevel_webgl2_defaults();
                 required_limits.max_texture_dimension_2d = texture_size;
@@ -584,7 +588,6 @@ impl State {
         let position_at_mouse = self.camera.screen_to_world(mouse_position);
         let position = as_world_position(position_at_mouse);
 
-        // TODO: On local, you can't unflag
         let tile = self.world.world().get_tile(&position);
         if !tile.is_revealed() {
             if tile.is_flag() {
@@ -595,6 +598,7 @@ impl State {
                 self.tile_map_texture.write_tile(&self.queue, tile.with_flag(), position);
             }
             self.world.world().flag(position, "");
+            #[cfg(target_arch = "wasm32")]
             self.world.send(ClientMessage::Flag(position));
         }
     }
