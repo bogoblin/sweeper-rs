@@ -18,83 +18,169 @@
   body {
     margin: 0;
     padding: 0;
-    overflow: hidden;
+    overflow: clip;
+    background-color: black;
   }
   canvas {
     width: 100%;
     height: 100%;
   }
+
+  @media not (hover) {
+    .desktop {
+      display: none !important;
+    }
+  }
   @media (hover) {
     .mobile {
-      display: none;
+      display: none !important;
     }
   }
-  @media (hover: none) {
-    .desktop {
-      display: none;
-    }
-  }
+
   dialog {
     margin: 0;
     width: 80%;
-    height: 80%;
+    max-height: 80%;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
+    text-align: center;
+    font-size: large;
+    font-family: sans-serif;
+
+    button {
+      font-size: inherit;
+      color: inherit;
+      background-color: inherit;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      color: aliceblue;
+      background-color: darkblue;
+    }
+    @media (prefers-color-scheme: light) or (prefers-color-scheme: no-preference) {
+      color: darkslategray;
+      background-color: navajowhite;
+    }
+  }
+  .tutorial {
+    display: flex;
+    flex-direction: row;
+    overflow-x: scroll;
+    scroll-snap-type: x mandatory;
+    scroll-snap-stop: always;
+    scrollbar-width: none;
+
+    section {
+      width: calc(100% - 2ch);
+      padding: 2ch;
+      scroll-snap-align: center;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      grid-template-columns: 1fr;
+      flex-shrink: 0;
+
+      figure {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-items: center;
+
+        img {
+          max-width: 100%;
+          max-height: 100%;
+        }
+      }
+    }
   }
 </style>
 <body id="wasm-example">
-<dialog open>
-  <form>
+<dialog id="tutorial-dialog">
+  <form method="dialog">
     <h1>InfiniteSweeper</h1>
-    <div class="desktop tutorial">
+    <div class="tutorial">
       <section>
-        <p>Reveal as many tiles as you can, but don't trigger any mines</p>
+        <figure>
+          <div><img src="/static/tutorial1.png" alt=""></div>
+        </figure>
+        <p>Welcome to InfiniteSweeper, an infinite online minesweeper grid, where you can contribute to by placing flags
+        on mines and revealing squares without mines on them.</p>
+        <div><button onclick="nextSection(this)">Next</button></div>
       </section>
       <section>
-        <p>Numbers in revealed tiles indicate how many adjacent mines there are</p>
+        <figure>
+          <div><img src="/static/tutorial2.png" alt=""></div>
+        </figure>
+        <p>Numbers in revealed squares indicate how many mines there are in the eight adjacent squares.</p>
+        <div>
+          <button onclick="prevSection(this)">Back</button>
+          <button onclick="nextSection(this)">Next</button>
+        </div>
       </section>
       <section>
-        <p>If you know that a tile has a mine, right-click it to place a flag</p>
+        <figure>
+          <div><img src="/static/tutorial3.png" alt=""></div>
+        </figure>
+        <p class="desktop">If you know that a square has a mine, right-click it to place a flag.</p>
+        <p class="mobile">If you know that a square has a mine, tap it to place a mine.</p>
+        <div>
+          <button onclick="prevSection(this)">Back</button>
+          <button onclick="nextSection(this)">Next</button>
+        </div>
       </section>
       <section>
-        <p>If you know that a tile doesn't have a mine, left-click it to reveal it</p>
+        <figure>
+          <div><img src="/static/tutorial5.png" alt=""></div>
+        </figure>
+        <p class="desktop">If you know that a square doesn't have a mine, left-click it to reveal it.</p>
+        <p class="desktop">If a revealed square has adjacent flags equal to its adjacent mines, then you can quickly reveal the unmarked
+          adjacent tiles by pressing <kbd>left-click</kbd> while holding <kbd>right-click</kbd>.</p>
+        <p class="mobile">If a revealed tile has adjacent flags equal to its adjacent mines, then you can reveal the unmarked
+          adjacent tiles by tapping it.</p>
+        <div>
+          <button onclick="prevSection(this)">Back</button>
+          <button onclick="nextSection(this)">Next</button>
+        </div>
       </section>
       <section>
-        <p>If a revealed tile has adjacent flags equal to its adjacent mines, then you can quickly reveal the unmarked
-          adjacent tiles by pressing <kbd>left-click</kbd> while holding <kbd>right-click</kbd></p>
-      </section>
-      <section>
-        <p>Hold <kbd>left-click</kbd> and move the mouse to pan around the map. Use the <kbd>mouse wheel</kbd> to zoom in and out</p>
+        <figure>
+          <div><img src="/static/tutorial6b.png" alt=""></div>
+        </figure>
+        <p class="desktop">Hold <kbd>left-click</kbd> and move the mouse to pan around the map. Use the <kbd>mouse wheel</kbd> to zoom in and out.</p>
+        <p class="mobile">Tap and drag to pan the map around. Pinch to zoom in and out.</p>
+        <div>
+          <button onclick="prevSection(this)">Back</button>
+          <button onclick="closeTutorial()">Close</button>
+        </div>
       </section>
     </div>
-    <div class="mobile tutorial">
-      <section>
-        <p>Reveal as many tiles as you can, but don't trigger any mines</p>
-      </section>
-      <section>
-        <p>Numbers in revealed tiles indicate how many adjacent mines there are</p>
-      </section>
-      <section>
-        <p>If you know that a tile has a mine, tap it to place a mine</p>
-      </section>
-      <section>
-        <p>If a revealed tile has adjacent flags equal to its adjacent mines, then you can reveal the unmarked
-          adjacent tiles by tapping it</p>
-      </section>
-      <section>
-        <p>Tap and drag to pan the map around. Pinch to zoom in and out.</p>
-      </section>
-    </div>
-    <button formmethod="dialog">Close</button>
   </form>
 </dialog>
-<script type="importmap">
-  {
-    "imports": {
-      "socket.io.esm.min.js": "https://cdn.socket.io/4.8.1/socket.io.esm.min.js"
-    }
+<script>
+  const tutorial = document.getElementById("tutorial-dialog");
+  if (localStorage.getItem("done-tutorial") === null) {
+    tutorial.show();
   }
+  function closeTutorial() {
+    tutorial.close();
+    localStorage.setItem("done-tutorial", "true");
+  }
+  function nextSection(element) {
+    let currentSection = element.parentElement.parentElement;
+    currentSection.nextElementSibling.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
+    event.preventDefault();
+  }
+  function prevSection(element) {
+    const currentSection = element.parentElement.parentElement;
+    currentSection.previousElementSibling.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
+    event.preventDefault();
+  }
+  const sections = document.getElementById("tutorial-dialog").querySelectorAll("section");
+  console.log(sections);
+  sections.item(2).scrollIntoView();
+  setTimeout(() => {
+    sections.item(0).scrollIntoView({block: "center", inline: "center"});
+  }, 50);
 </script>
 <script type="module">
   import init from "/static/wgpu_frontend.js";
