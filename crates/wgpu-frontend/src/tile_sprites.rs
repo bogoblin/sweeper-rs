@@ -1,6 +1,6 @@
 use image::imageops::FilterType;
 use log::info;
-use wgpu::{BindGroup, BindGroupLayout};
+use wgpu::{BindGroup, BindGroupLayout, Queue};
 use world::Tile;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
@@ -12,14 +12,18 @@ pub struct TileSprites {
     pub filter_type: FilterType,
 }
 
+impl TileSprites {
+}
+
 #[derive(Clone, Debug)]
+#[derive(PartialEq)]
 pub enum DarkMode {
     Light,
     Dark,
 }
 
 impl TileSprites {
-    pub fn toggle_dark_mode(&mut self, queue: &wgpu::Queue) -> DarkMode {
+    pub fn toggle_dark_mode(&mut self, queue: &Queue) -> DarkMode {
         match self.dark_mode {
             DarkMode::Light => {
                 self.dark_mode = DarkMode::Dark;
@@ -32,6 +36,15 @@ impl TileSprites {
         self.dark_mode.clone()
     }
     
+    pub fn set_dark_mode(&mut self, queue: &Queue, mode: DarkMode) -> DarkMode {
+        let toggle = self.dark_mode != mode;
+        if toggle {
+            self.toggle_dark_mode(queue)
+        } else {
+            mode
+        }
+    }
+    
     fn source_image(&self) -> &'static[u8] {
         match self.dark_mode {
             DarkMode::Light => Self::LIGHT,
@@ -39,7 +52,7 @@ impl TileSprites {
         }
     }
     
-    pub fn change_filter(&mut self, queue: &wgpu::Queue) {
+    pub fn change_filter(&mut self, queue: &Queue) {
         self.filter_type = match self.filter_type {
             FilterType::Nearest    => FilterType::Triangle,
             FilterType::Triangle   => FilterType::CatmullRom,
@@ -50,7 +63,7 @@ impl TileSprites {
         self.write_texture(queue);
     }
     
-    pub fn write_texture(&self, queue: &wgpu::Queue) {
+    pub fn write_texture(&self, queue: &Queue) {
         info!("Creating texture using {:?}", self.filter_type);
         let mipmaps = create_sprite_mipmaps(self.source_image(), self.filter_type);
         let get_bytes = |tile: Tile, mip_level: usize| -> &[u8] {
@@ -103,7 +116,7 @@ impl TileSprites {
     
     const LIGHT: &'static[u8] = include_bytes!("./tiles.png");
     const DARK: &'static[u8] = include_bytes!("./tilesdark.png");
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &Queue) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Tile Sprite Atlas"),
             size: wgpu::Extent3d {

@@ -10,6 +10,7 @@ mod fingers;
 use std::default::Default;
 use std::future::Future;
 use std::sync::Arc;
+use cfg_if::cfg_if;
 use cgmath::Vector2;
 use chrono::prelude::*;
 use log::info;
@@ -33,6 +34,7 @@ use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
+use crate::tile_sprites::DarkMode;
 
 #[derive(Default)]
 struct App {
@@ -127,6 +129,24 @@ impl State {
             backends: wgpu::Backends::GL,
             ..Default::default()
         });
+        
+        let mut dark_mode = true;
+        cfg_if::cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                let dummy_element = web_sys::window().unwrap()
+                    .document().unwrap()
+                    .get_element_by_id("dummy").unwrap();
+                let content =
+                    web_sys::window().unwrap()
+                        .get_computed_style(&dummy_element)
+                        .unwrap().unwrap().get_property_value("content").unwrap();
+                dark_mode = content.contains("dark")
+            } else {
+                dark_mode = false;
+            }
+        }
+        info!("Dark mode: {}", dark_mode);
+        
         let surface = instance.create_surface(window.clone()).unwrap();
         async move {
             let adapter = instance.request_adapter(
@@ -179,7 +199,10 @@ impl State {
 
             let camera = Camera::new(&device, &size);
 
-            let tile_map_texture = TileMapTexture::new(&device, &queue, &camera, texture_size);
+            let mut tile_map_texture = TileMapTexture::new(&device, &queue, &camera, texture_size);
+            if dark_mode {
+                tile_map_texture.sprites.set_dark_mode(&queue, DarkMode::Dark);
+            }
 
             let common_shader = include_str!("common.wgsl");
             let mut wgsl_source = String::from(common_shader);

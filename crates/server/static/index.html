@@ -9,8 +9,11 @@
   <link rel="icon" href="/static/favicon.png">
   <title>InfiniteSweeper</title>
   <style>
-    canvas {
-      background-color: black;
+    #dummy {
+      visibility: hidden;
+      @media (prefers-color-scheme: dark) {
+        content: "dark";
+      }
     }
   </style>
 </head>
@@ -95,6 +98,7 @@
   }
 </style>
 <body id="wasm-example">
+<div id="dummy"></div>
 <dialog id="tutorial-dialog">
   <form method="dialog">
     <h1>InfiniteSweeper</h1>
