@@ -34,13 +34,13 @@ pub enum PublicTile {
     Newline,
 }
 
-impl Into<PublicTile> for &Tile {
-    fn into(self) -> PublicTile {
-        if self.is_revealed() {
-            if self.is_mine() {
+impl From<&Tile> for PublicTile {
+    fn from(tile: &Tile) -> Self {
+        if tile.is_revealed() {
+            if tile.is_mine() {
                 Exploded
             } else {
-                match self.adjacent() { 
+                match tile.adjacent() { 
                     0 => Adjacent0,
                     1 => Adjacent1,
                     2 => Adjacent2,
@@ -54,13 +54,14 @@ impl Into<PublicTile> for &Tile {
                 }
             }
         } else {
-            if self.is_flag() {
+            if tile.is_flag() {
                 Flag
             } else {
                 Hidden
             }
         }
     }
+
 }
 
 impl From<PublicTile> for Tile {

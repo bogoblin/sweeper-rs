@@ -6,6 +6,7 @@ mod tile_sprites;
 mod sweeper_socket;
 mod cursors;
 mod fingers;
+mod coins;
 
 use std::default::Default;
 use std::future::Future;
@@ -31,6 +32,7 @@ use wasm_bindgen::prelude::*;
 use winit::application::ApplicationHandler;
 use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
+use crate::coins::Coins;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
 
@@ -114,6 +116,7 @@ struct State {
     surface_configured: bool,
     right_mouse_button_down: bool,
     fingers: Fingers,
+    coins: Coins,
 }
 
 impl State {
@@ -248,6 +251,7 @@ impl State {
             }
             world.send(ClientMessage::Connected);
             let cursors = Cursors::new(&device, &queue, surface_format, &camera);
+            let coins = Coins::new(&device, &queue, surface_format, &camera);
 
             #[cfg(target_arch = "wasm32")]
             {
@@ -281,6 +285,7 @@ impl State {
                 world,
                 tile_map_texture,
                 cursors,
+                coins,
                 surface_configured: false,
                 right_mouse_button_down: false,
                 fingers: Fingers::new(view_matrix),
