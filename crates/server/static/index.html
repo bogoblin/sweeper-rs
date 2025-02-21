@@ -24,8 +24,71 @@
     width: 100%;
     height: 100%;
   }
+  @media (hover) {
+    .mobile {
+      display: none;
+    }
+  }
+  @media (hover: none) {
+    .desktop {
+      display: none;
+    }
+  }
+  dialog {
+    margin: 0;
+    width: 80%;
+    height: 80%;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
 </style>
 <body id="wasm-example">
+<dialog open>
+  <form>
+    <h1>InfiniteSweeper</h1>
+    <div class="desktop tutorial">
+      <section>
+        <p>Reveal as many tiles as you can, but don't trigger any mines</p>
+      </section>
+      <section>
+        <p>Numbers in revealed tiles indicate how many adjacent mines there are</p>
+      </section>
+      <section>
+        <p>If you know that a tile has a mine, right-click it to place a flag</p>
+      </section>
+      <section>
+        <p>If you know that a tile doesn't have a mine, left-click it to reveal it</p>
+      </section>
+      <section>
+        <p>If a revealed tile has adjacent flags equal to its adjacent mines, then you can quickly reveal the unmarked
+          adjacent tiles by pressing <kbd>left-click</kbd> while holding <kbd>right-click</kbd></p>
+      </section>
+      <section>
+        <p>Hold <kbd>left-click</kbd> and move the mouse to pan around the map. Use the <kbd>mouse wheel</kbd> to zoom in and out</p>
+      </section>
+    </div>
+    <div class="mobile tutorial">
+      <section>
+        <p>Reveal as many tiles as you can, but don't trigger any mines</p>
+      </section>
+      <section>
+        <p>Numbers in revealed tiles indicate how many adjacent mines there are</p>
+      </section>
+      <section>
+        <p>If you know that a tile has a mine, tap it to place a mine</p>
+      </section>
+      <section>
+        <p>If a revealed tile has adjacent flags equal to its adjacent mines, then you can reveal the unmarked
+          adjacent tiles by tapping it</p>
+      </section>
+      <section>
+        <p>Tap and drag to pan the map around. Pinch to zoom in and out.</p>
+      </section>
+    </div>
+    <button formmethod="dialog">Close</button>
+  </form>
+</dialog>
 <script type="importmap">
   {
     "imports": {

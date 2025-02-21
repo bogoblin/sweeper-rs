@@ -20,7 +20,7 @@ use std::sync::{Arc};
 use axum::extract::ws::Message;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
-use log::{error, info};
+use log::{error, info, trace};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::{broadcast, Mutex};
 use crate::backup::{Backup, BackupError};
@@ -213,7 +213,7 @@ async fn recv_from_client(
                 });
             let mut lock = client_tx.lock().await;
             for message in messages {
-                info!("to player: {:?}", message);
+                trace!("to player: {:?}", message);
                 lock.send(message).await.unwrap_or_default();
             }
         }
@@ -239,24 +239,50 @@ static STATIC_DIR: Dir<'_> = include_dir!("crates/server/static");
 // Thanks to https://matze.github.io/axum-notes/notes/misc/serve_static_from_binary/index.html
 async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
     let path = path.trim_start_matches('/');
-    println!("{path}");
     let mime_type = mime_guess::from_path(path).first_or(TEXT_HTML);
-    println!("{path}: {mime_type}");
+    trace!("Serving {path} as {mime_type}");
 
     match STATIC_DIR.get_file(path) {
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(body::Body::empty())
             .unwrap(),
-        Some(file) => Response::builder()
-            .status(StatusCode::OK)
-            .header(
-                header::CONTENT_TYPE,
-                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
-            )
-            .body(body::Body::from(file.contents()))
-            .unwrap(),
-    } 
+        Some(file) => {
+            // The server compiles into one binary, including the files from the static directory,
+            // but in development, we want to serve the files from the directory so that we don't
+            // have to recompile whenever we change something:
+            if cfg!(debug_assertions) {
+                let static_dir_path: PathBuf = PathBuf::from("crates/server/static");
+                let path = static_dir_path.join(file.path());
+                info!("Serving file from filesystem: {:?}", path);
+                if let Ok(contents) = tokio::fs::read(path).await {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(
+                            header::CONTENT_TYPE,
+                            HeaderValue::from_str(mime_type.as_ref()).unwrap(),
+                        )
+                        .body(body::Body::from(contents))
+                        .unwrap()
+                } else {
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(body::Body::empty())
+                        .unwrap()
+                }
+            } else {
+                trace!("Serving file from binary");
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_str(mime_type.as_ref()).unwrap(),
+                    )
+                    .body(body::Body::from(file.contents()))
+                    .unwrap()
+            }
+        }
+    }
 }
 
 async fn root() -> impl IntoResponse {
