@@ -23,23 +23,11 @@ pub enum DarkMode {
 }
 
 impl TileSprites {
-    pub fn toggle_dark_mode(&mut self, queue: &Queue) -> DarkMode {
-        match self.dark_mode {
-            DarkMode::Light => {
-                self.dark_mode = DarkMode::Dark;
-            }
-            DarkMode::Dark => {
-                self.dark_mode = DarkMode::Light;
-            }
-        }
-        self.write_texture(queue);
-        self.dark_mode.clone()
-    }
-    
     pub fn set_dark_mode(&mut self, queue: &Queue, mode: DarkMode) -> DarkMode {
-        let toggle = self.dark_mode != mode;
-        if toggle {
-            self.toggle_dark_mode(queue)
+        if self.dark_mode != mode {
+            self.dark_mode = mode;
+            self.write_texture(queue);
+            self.dark_mode.clone()
         } else {
             mode
         }

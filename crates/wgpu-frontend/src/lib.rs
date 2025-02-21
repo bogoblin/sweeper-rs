@@ -130,23 +130,6 @@ impl State {
             ..Default::default()
         });
         
-        let mut dark_mode = true;
-        cfg_if::cfg_if! {
-            if #[cfg(target_arch = "wasm32")] {
-                let dummy_element = web_sys::window().unwrap()
-                    .document().unwrap()
-                    .get_element_by_id("dummy").unwrap();
-                let content =
-                    web_sys::window().unwrap()
-                        .get_computed_style(&dummy_element)
-                        .unwrap().unwrap().get_property_value("content").unwrap();
-                dark_mode = content.contains("dark")
-            } else {
-                dark_mode = false;
-            }
-        }
-        info!("Dark mode: {}", dark_mode);
-        
         let surface = instance.create_surface(window.clone()).unwrap();
         async move {
             let adapter = instance.request_adapter(
@@ -200,9 +183,6 @@ impl State {
             let camera = Camera::new(&device, &size);
 
             let mut tile_map_texture = TileMapTexture::new(&device, &queue, &camera, texture_size);
-            if dark_mode {
-                tile_map_texture.sprites.set_dark_mode(&queue, DarkMode::Dark);
-            }
 
             let common_shader = include_str!("common.wgsl");
             let mut wgsl_source = String::from(common_shader);
@@ -307,6 +287,25 @@ impl State {
                 surface_configured: false,
                 right_mouse_button_down: false,
                 fingers: Fingers::new(view_matrix),
+            }
+        }
+    }
+
+    fn detect_dark_mode(&self) -> Option<DarkMode> {
+        cfg_if::cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                let dummy_element = web_sys::window()?
+                    .document()?.get_element_by_id("dummy")?;
+                let content =
+                    web_sys::window()?
+                        .get_computed_style(&dummy_element).ok()??
+                        .get_property_value("content").unwrap();
+                Some(match content.contains("dark") {
+                    true => DarkMode::Dark,
+                    false => DarkMode::Light,
+                })
+            } else {
+                Some(DarkMode::Light)
             }
         }
     }
@@ -430,25 +429,6 @@ impl State {
             } => {
                 self.right_mouse_button_down = false;
             }
-            WindowEvent::KeyboardInput { event: KeyEvent {
-                state: ElementState::Pressed,
-                logical_key,
-                ..
-            }, .. } => {
-                match logical_key {
-                    Key::Named(_) => {}
-                    Key::Character(character) => {
-                        if character == "l" {
-                            self.toggle_dark_mode();
-                        }
-                        if character == "f" {
-                            self.tile_map_texture.sprites.change_filter(&self.queue);
-                        }
-                    }
-                    Key::Unidentified(_) => {}
-                    Key::Dead(_) => {}
-                }
-            }
             _ => {}
         }
     }
@@ -459,6 +439,10 @@ impl State {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        if let Some(mode) = self.detect_dark_mode() {
+            self.tile_map_texture.sprites.set_dark_mode(&self.queue, mode);
+        }
+        
         let _dt = Utc::now() - self.last_frame_time;
         self.last_frame_time = Utc::now();
 
@@ -626,9 +610,6 @@ impl State {
         }
     }
 
-    pub fn toggle_dark_mode(&mut self) {
-        self.tile_map_texture.sprites.toggle_dark_mode(&self.queue);
-    }
 }
 
 fn as_world_position(vector: Vector2<f32>) -> Position {
