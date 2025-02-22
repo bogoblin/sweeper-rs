@@ -119,6 +119,10 @@ impl Camera {
         if tile_map_size < 1 { tile_map_size = 1; }
         tile_map_size
     }
+    
+    pub fn min_zoom_level(&self) -> f64 {
+        Self::tile_size_to_zoom_level(0.25)
+    }
 
     pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: BufferAddress, texture_size: u32) {
         let tile_map_size = self.tile_map_size() as f32;
@@ -160,11 +164,23 @@ impl Camera {
     }
 
     pub fn tile_size(&self) -> f64 {
-        16.0 * 2.0f64.powf(self.zoom_level / 8.0)
+        Self::zoom_level_to_tile_size(self.zoom_level)
     }
     
     pub fn set_tile_size(&mut self, tile_size: f64) {
-        self.zoom_level = Self::tile_size_to_zoom_level(tile_size);
+        self.set_zoom_level(Self::tile_size_to_zoom_level(tile_size));
+    }
+    
+    fn set_zoom_level(&mut self, zoom_level: f64) {
+        if zoom_level < self.min_zoom_level() {
+            self.zoom_level = self.min_zoom_level();
+        } else {
+            self.zoom_level = zoom_level;
+        }
+    }
+    
+    fn zoom_level_to_tile_size(zoom_level: f64) -> f64 {
+        16.0 * 2.0f64.powf(zoom_level / 8.0)
     }
     
     fn tile_size_to_zoom_level(tile_size: f64) -> f64 {
@@ -184,7 +200,7 @@ impl Camera {
     
     pub fn zoom_around(&mut self, zoom_delta: f64, position: &PhysicalPosition<f64>) {
         let mouse_position_before_zoom = self.screen_to_world(position);
-        self.zoom_level += zoom_delta;
+        self.set_zoom_level(self.zoom_level + zoom_delta);
         let mouse_position_after_zoom = self.screen_to_world(position);
         let difference = mouse_position_before_zoom - mouse_position_after_zoom;
         self.center += difference;
