@@ -1,4 +1,3 @@
-use cgmath::Vector4;
 use image::DynamicImage;
 use image::imageops::FilterType;
 use log::info;
@@ -124,7 +123,7 @@ impl TileSprites {
 
         let mut result = Self {
             texture, dark_mode: DarkMode::Light, filter_type: FilterType::Triangle,
-            sprite_mipmaps: SpriteMipmaps::new(image::load_from_memory(Self::LIGHT).unwrap(), FilterType::Triangle)
+            sprite_mipmaps: SpriteMipmaps { mipmaps: vec![] }
         };
         result.write_texture(queue);
         
@@ -148,10 +147,6 @@ pub struct SpriteMipmaps {
 }
 
 impl SpriteMipmaps {
-    pub fn get_color(&self, tile: Tile) -> Vector4<u8> {
-        Vector4::from(*self.get_bytes(self.mipmaps.len() - 1, tile).first_chunk::<4>().unwrap())
-    }
-    
     pub fn get_bytes(&self, mip_level: usize, tile: Tile) -> &[u8] {
         let scaled_bytes = &self.mipmaps[mip_level];
         if tile.is_revealed() {
