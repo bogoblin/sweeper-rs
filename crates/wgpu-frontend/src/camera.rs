@@ -1,9 +1,11 @@
+use std::mem::size_of;
 use crate::shader::HasBindGroup;
 use crate::{as_world_position};
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
 use log::{trace};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
+use wgpu::BufferAddress;
 use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Rect};
@@ -18,7 +20,6 @@ pub struct Camera {
     buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     bind_group_layout: wgpu::BindGroupLayout,
-    uniform: CameraUniform,
     scale_factor: f64,
     #[cfg(target_arch = "wasm32")]
     performance: Performance,
@@ -45,12 +46,12 @@ struct Drag {
 
 impl Camera {
     pub fn new(device: &wgpu::Device, size: &PhysicalSize<u32>) -> Self {
-        let uniform = CameraUniform::default();
-        let buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
+        let buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
                 label: Some("Camera Buffer"),
-                contents: bytemuck::cast_slice(&[uniform]),
+                size: size_of::<CameraUniform>() as BufferAddress,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             }
         );
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -87,7 +88,6 @@ impl Camera {
             buffer,
             bind_group,
             bind_group_layout,
-            uniform,
             scale_factor: 1.0,
             #[cfg(target_arch = "wasm32")]
             performance: web_sys::window().unwrap().performance().unwrap(),
@@ -119,27 +119,32 @@ impl Camera {
         if tile_map_size < 1 { tile_map_size = 1; }
         tile_map_size
     }
-    
-    pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: wgpu::BufferAddress, texture_size: u32) {
-        self.uniform.world_rect = self.rect().into();
-        self.uniform.tile_size = [self.tile_size(), self.tile_size(), 0.0, 0.0];
+
+    pub fn write_to_queue(&mut self, queue: &wgpu::Queue, offset: BufferAddress, texture_size: u32) {
         let tile_map_size = self.tile_map_size() as f32;
-        self.uniform.tile_map_size = [tile_map_size, tile_map_size, 0.0, 0.0];
         let tiles_in_texture = (texture_size as usize/tile_map_size as usize) as i32;
         let tile_map_area = Rect::from_center_and_size(Position(
             (self.world_center().0 >> (4))<<(4),
             (self.world_center().1 >> (4))<<(4),
         ), tiles_in_texture, tiles_in_texture);
-        self.uniform.tile_map_rect = [tile_map_area.left as f32, tile_map_area.top as f32, tile_map_area.right as f32, tile_map_area.bottom as f32];
-        self.uniform.full_tile_map_rect = Rect::from_center_and_size(
-            self.world_center().chunk_position().position(),
-            texture_size as i32,
-            texture_size as i32,
-        );
+        let mut uniform = CameraUniform {
+            world_rect: self.rect().into(),
+            tile_size: [self.tile_size(), self.tile_size(), 0.0, 0.0],
+            tile_map_size: [tile_map_size, tile_map_size, 0.0, 0.0],
+            tile_map_rect: [tile_map_area.left as f32, tile_map_area.top as f32, tile_map_area.right as f32, tile_map_area.bottom as f32],
+            full_tile_map_rect: Rect::from_center_and_size(
+                self.world_center().chunk_position().position(),
+                texture_size as i32,
+                texture_size as i32,
+            ),
+            ..Default::default()
+        };
+
         #[cfg(target_arch = "wasm32")] {
-            self.uniform.time = self.performance.now() as i32;
+            uniform.time = self.performance.now() as i32;
         }
-        queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[self.uniform]));
+        
+        queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[uniform]));
     }
 
     pub fn tile_size(&self) -> f32 {
