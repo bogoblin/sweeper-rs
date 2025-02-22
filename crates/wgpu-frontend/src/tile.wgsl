@@ -52,15 +52,7 @@ var zoom_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    if (
-        in.world_coords.x < camera.tile_map_rect.x
-        || in.world_coords.y < camera.tile_map_rect.y
-        || in.world_coords.x > camera.tile_map_rect.z
-        || in.world_coords.y > camera.tile_map_rect.w
-    ) {
-        return vec4(0.0, 0.0, 0.0, 1.0);
-    }
-
+    var color: vec4<f32>;
     let dims = vec2<f32>(textureDimensions(zoom_render));
     let uv = world_to_uv(in.world_coords.xy, dims, camera.tile_map_size.x);
     if camera.tile_map_size.x >= 16 {
@@ -75,8 +67,19 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
 
         let final_texture_coords = floor(texture_coords) + interpolation_amount;
 
-        return textureSample(zoom_render, zoom_sampler, final_texture_coords/dimensions);
+        color = textureSample(zoom_render, zoom_sampler, final_texture_coords/dimensions);
     } else {
-        return textureSample(zoom_render, zoom_sampler, uv);
+        color = textureSample(zoom_render, zoom_sampler, uv);
     }
+
+    if (
+        in.world_coords.x < camera.tile_map_rect.x
+        || in.world_coords.y < camera.tile_map_rect.y
+        || in.world_coords.x > camera.tile_map_rect.z
+        || in.world_coords.y > camera.tile_map_rect.w
+    ) {
+        color += vec4(0.1, 0.0, 0.0, 0.2);
+    }
+
+    return color / color.a;
 }

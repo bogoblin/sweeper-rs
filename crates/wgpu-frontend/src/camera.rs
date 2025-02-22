@@ -2,19 +2,19 @@ use std::mem::size_of;
 use crate::shader::HasBindGroup;
 use crate::{as_world_position};
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
+use cgmath::num_traits::ToPrimitive;
 use log::{trace};
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::BufferAddress;
-use wgpu::util::DeviceExt;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Rect};
 
 #[derive(Debug)]
 pub struct Camera {
-    pub center: Vector2<f32>,
-    pub zoom_level: f32,
-    size: Vector2<f32>,
+    pub center: Vector2<f64>,
+    pub zoom_level: f64,
+    size: Vector2<f64>,
     drag: Option<Drag>,
 
     buffer: wgpu::Buffer,
@@ -40,8 +40,8 @@ impl Camera {
 
 #[derive(Debug)]
 struct Drag {
-    center: Vector2<f32>,
-    screen_start: Vector2<f32>
+    center: Vector2<f64>,
+    screen_start: Vector2<f64>
 }
 
 impl Camera {
@@ -83,7 +83,7 @@ impl Camera {
         Self {
             center: Vector2::zero(),
             zoom_level: 0.0,
-            size: Vector2::new(size.width as f32, size.height as f32),
+            size: Vector2::new(size.width as f64, size.height as f64),
             drag: None,
             buffer,
             bind_group,
@@ -96,9 +96,9 @@ impl Camera {
     }
 
     pub fn resize(&mut self, new_size: &PhysicalSize<u32>, scale_factor: f64) {
-        self.size = Vector2::new(new_size.width as f32, new_size.height as f32);
+        self.size = Vector2::new(new_size.width as f64, new_size.height as f64);
         let scale_factor_change_ratio = scale_factor / self.scale_factor;
-        let new_tile_size = self.tile_size() as f64 * scale_factor_change_ratio;
+        let new_tile_size = self.tile_size() * scale_factor_change_ratio;
         self.set_tile_size(new_tile_size);
         self.scale_factor = scale_factor;
         trace!("zoom level is {}", self.zoom_level);
@@ -127,11 +127,23 @@ impl Camera {
             (self.world_center().0 >> (4))<<(4),
             (self.world_center().1 >> (4))<<(4),
         ), tiles_in_texture, tiles_in_texture);
+        
+        // Move the top left corner of the tile map area to within [-texture_size, texture_size] to maintain precision:
+        let modified_tile_map_area = tile_map_area.modulo(texture_size as i32);
+        let world_offset = modified_tile_map_area.top_left() - tile_map_area.top_left();
+        let world_offset_f64 = Vector2::new(
+            world_offset.0.to_f64().unwrap_or_default(),
+            world_offset.1.to_f64().unwrap_or_default()
+        );
+        
+        let modified_world_rect = self.rect() + world_offset_f64
+            .extend(world_offset_f64.x).extend(world_offset_f64.y);
+        
         let mut uniform = CameraUniform {
-            world_rect: self.rect().into(),
-            tile_size: [self.tile_size(), self.tile_size(), 0.0, 0.0],
+            world_rect: modified_world_rect.map(|c| c as f32).into(),
+            tile_size: [self.tile_size() as f32, self.tile_size() as f32, 0.0, 0.0],
             tile_map_size: [tile_map_size, tile_map_size, 0.0, 0.0],
-            tile_map_rect: [tile_map_area.left as f32, tile_map_area.top as f32, tile_map_area.right as f32, tile_map_area.bottom as f32],
+            tile_map_rect: [modified_tile_map_area.left as f32, modified_tile_map_area.top as f32, modified_tile_map_area.right as f32, modified_tile_map_area.bottom as f32],
             full_tile_map_rect: Rect::from_center_and_size(
                 self.world_center().chunk_position().position(),
                 texture_size as i32,
@@ -147,21 +159,21 @@ impl Camera {
         queue.write_buffer(&self.buffer, offset, bytemuck::cast_slice(&[uniform]));
     }
 
-    pub fn tile_size(&self) -> f32 {
-        16.0 * 2.0_f32.powf(self.zoom_level / 8.0)
+    pub fn tile_size(&self) -> f64 {
+        16.0 * 2.0f64.powf(self.zoom_level / 8.0)
     }
     
     pub fn set_tile_size(&mut self, tile_size: f64) {
-        self.zoom_level = Self::tile_size_to_zoom_level(tile_size) as f32;
+        self.zoom_level = Self::tile_size_to_zoom_level(tile_size);
     }
     
     fn tile_size_to_zoom_level(tile_size: f64) -> f64 {
         8.0 * (tile_size / 16.0).log2()
     }
     
-    pub fn rect(&self) -> Vector4<f32> {
-        let top_left = self.top_left();
-        let bottom_right = self.bottom_right();
+    pub fn rect(&self) -> Vector4<f64> {
+        let top_left = self.center - (self.size/2.0)/self.tile_size();
+        let bottom_right = self.center + (self.size/2.0)/self.tile_size();
         Vector4::new(
             top_left.x,
             top_left.y,
@@ -170,18 +182,7 @@ impl Camera {
         )
     }
     
-    pub fn top_left(&self) -> Vector2<f32> {
-        self.center - (self.size/2.0)/self.tile_size()
-    }
-
-    pub fn bottom_right(&self) -> Vector2<f32> {
-        self.center + (self.size/2.0)/self.tile_size()
-    }
-
-    pub fn pan_pixels(&mut self, right: f32, down: f32) {
-        self.center += Vector2::new(right, down)/self.tile_size();
-    }
-    pub fn zoom_around(&mut self, zoom_delta: f32, position: &PhysicalPosition<f64>) {
+    pub fn zoom_around(&mut self, zoom_delta: f64, position: &PhysicalPosition<f64>) {
         let mouse_position_before_zoom = self.screen_to_world(position);
         self.zoom_level += zoom_delta;
         let mouse_position_after_zoom = self.screen_to_world(position);
@@ -189,7 +190,7 @@ impl Camera {
         self.center += difference;
     }
     
-    pub fn zoom_around_mouse_position(&mut self, zoom_delta: f32) {
+    pub fn zoom_around_mouse_position(&mut self, zoom_delta: f64) {
         self.zoom_around(zoom_delta, &self.mouse_position.clone());
     }
     
@@ -201,10 +202,10 @@ impl Camera {
             });
         }
     }
-    pub fn end_drag(&mut self, end_position: &PhysicalPosition<f64>) -> f32 {
+    pub fn end_drag(&mut self, end_position: &PhysicalPosition<f64>) -> f64 {
         let distance = if let Some(drag) = &self.drag {
             println!("Drag ended");
-            let end_position = Vector2::new(end_position.x as f32, end_position.y as f32);
+            let end_position = Vector2::new(end_position.x, end_position.y);
             end_position.distance(drag.screen_start)
         } else { 0.0 };
         self.drag = None;
@@ -221,7 +222,7 @@ impl Camera {
     }
     
     pub fn view_matrix(&self) -> Matrix3<f64> {
-        CameraMatrix::new(self.tile_size() as f64, self.center.map(|c| c as f64)).view_matrix
+        CameraMatrix::new(self.tile_size(), self.center.map(|c| c)).view_matrix
     }
     
     /// This doesn't support arbitrary view matrices, only matrices in the form:
@@ -230,11 +231,11 @@ impl Camera {
     /// ( 0 0 1 )
     pub fn set_view_matrix(&mut self, view_matrix: Matrix3<f64>) {
         let m = CameraMatrix::from(view_matrix);
-        self.center = m.center().map(|c| c as f32);
+        self.center = m.center();
         self.set_tile_size(m.tile_size());
     }
     
-    pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f32> {
+    pub fn screen_to_world(&self, position: &PhysicalPosition<f64>) -> Vector2<f64> {
         let position = position_to_vector(*position);
         let screen_to_center = self.size/2.0 - position;
         let distance_from_view_center_in_world_space = screen_to_center/self.tile_size();
@@ -268,8 +269,8 @@ struct CameraUniform {
     _pad: [f32; 3]
 }
 
-fn position_to_vector(position: PhysicalPosition<f64>) -> Vector2<f32> {
-    Vector2::new(position.x as f32, position.y as f32)
+fn position_to_vector(position: PhysicalPosition<f64>) -> Vector2<f64> {
+    Vector2::new(position.x, position.y)
 }
 
 pub struct CameraMatrix {

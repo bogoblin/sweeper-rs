@@ -10,13 +10,11 @@ mod fingers;
 use std::default::Default;
 use std::future::Future;
 use std::sync::Arc;
-use cfg_if::cfg_if;
 use cgmath::Vector2;
 use chrono::prelude::*;
 use log::info;
-use winit::event::{ButtonSource, ElementState, KeyEvent, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::{Key};
 use winit::window::{Window, WindowAttributes, WindowId};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -182,7 +180,7 @@ impl State {
 
             let camera = Camera::new(&device, &size);
 
-            let mut tile_map_texture = TileMapTexture::new(&device, &queue, &camera, texture_size);
+            let tile_map_texture = TileMapTexture::new(&device, &queue, &camera, texture_size);
 
             let common_shader = include_str!("common.wgsl");
             let mut wgsl_source = String::from(common_shader);
@@ -406,10 +404,10 @@ impl State {
             WindowEvent::MouseWheel { delta, .. } => {
                 match delta {
                     MouseScrollDelta::LineDelta(_x, y) => {
-                        self.camera.zoom_around_mouse_position(y);
+                        self.camera.zoom_around_mouse_position(y as f64);
                     }
                     MouseScrollDelta::PixelDelta(position) => {
-                        self.camera.zoom_around_mouse_position((position.y / 100.0) as f32);
+                        self.camera.zoom_around_mouse_position(position.y / 100.0);
                     }
                 }
             }
@@ -612,6 +610,6 @@ impl State {
 
 }
 
-fn as_world_position(vector: Vector2<f32>) -> Position {
+fn as_world_position(vector: Vector2<f64>) -> Position {
     Position(vector.x.floor() as i32, vector.y.floor() as i32)
 }
