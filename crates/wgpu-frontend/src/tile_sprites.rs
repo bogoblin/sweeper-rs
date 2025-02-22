@@ -1,3 +1,5 @@
+use cgmath::Vector4;
+use image::DynamicImage;
 use image::imageops::FilterType;
 use log::info;
 use wgpu::{BindGroup, BindGroupLayout, Queue};
@@ -10,9 +12,7 @@ pub struct TileSprites {
     pub texture: Texture,
     pub dark_mode: DarkMode,
     pub filter_type: FilterType,
-}
-
-impl TileSprites {
+    sprite_mipmaps: SpriteMipmaps
 }
 
 #[derive(Clone, Debug)]
@@ -51,22 +51,10 @@ impl TileSprites {
         self.write_texture(queue);
     }
     
-    pub fn write_texture(&self, queue: &Queue) {
+    pub fn write_texture(&mut self, queue: &Queue) {
         info!("Creating texture using {:?}", self.filter_type);
-        let mipmaps = create_sprite_mipmaps(self.source_image(), self.filter_type);
-        let get_bytes = |tile: Tile, mip_level: usize| -> &[u8] {
-            let scaled_bytes = &mipmaps[mip_level];
-            if tile.is_revealed() {
-                if tile.is_mine() {
-                    return &scaled_bytes[11];
-                }
-                return &scaled_bytes[tile.adjacent() as usize];
-            }
-            if tile.is_flag() {
-                return &scaled_bytes[10];
-            }
-            &scaled_bytes[9]
-        };
+        self.sprite_mipmaps = SpriteMipmaps::new(image::load_from_memory(self.source_image()).unwrap(), self.filter_type);
+        let mipmaps = &self.sprite_mipmaps;
         
         for tile_index in 0..=255 {
             for mip_level in 0..5 {
@@ -86,7 +74,7 @@ impl TileSprites {
                         },
                         aspect: wgpu::TextureAspect::All,
                     },
-                    get_bytes(tile, mip_level as usize),
+                    mipmaps.get_bytes(mip_level as usize, tile),
                     wgpu::ImageDataLayout {
                         offset: 0,
                         bytes_per_row: Some((tile_size * 4) as u32),
@@ -134,8 +122,9 @@ impl TileSprites {
         );
         let texture = Texture::from_wgpu_texture_and_sampler(texture, sampler, device).expect("Couldn't create sprite atlas texture");
 
-        let result = Self {
+        let mut result = Self {
             texture, dark_mode: DarkMode::Light, filter_type: FilterType::Triangle,
+            sprite_mipmaps: SpriteMipmaps::new(image::load_from_memory(Self::LIGHT).unwrap(), FilterType::Triangle)
         };
         result.write_texture(queue);
         
@@ -153,28 +142,54 @@ impl HasBindGroup for TileSprites {
     }
 }
 
-fn create_sprite_mipmaps(image_bytes: &[u8], filter_type: FilterType) -> Vec<Vec<Vec<u8>>> {
-    let sprite_sheet = image::load_from_memory(image_bytes).unwrap();
-    let mut sprite_images = vec![];
-    let mut sprite_bytes = vec![];
-    for i in 0..12 {
-        let sprite = sprite_sheet.crop_imm(16 * i, 0, 16, 16);
-        sprite_images.push(sprite);
-    }
-    let mut scale = 0;
-    while 16 >> scale >= 1 {
-        let mut scale_vec = vec![];
-        for image_index in 0..sprite_images.len() {
-            let sprite = &sprite_images[image_index];
-            scale_vec.push(sprite.as_bytes().to_vec());
-            if sprite.width() > 1 {
-                let scaled = sprite.resize(sprite.width() / 2, sprite.height() / 2, filter_type);
-                sprite_images[image_index] = scaled;
-            }
-        }
-        sprite_bytes.push(scale_vec);
-        scale += 1;
+#[derive(Debug)]
+pub struct SpriteMipmaps {
+    mipmaps: Vec<Vec<Vec<u8>>>
+}
+
+impl SpriteMipmaps {
+    pub fn get_color(&self, tile: Tile) -> Vector4<u8> {
+        Vector4::from(*self.get_bytes(self.mipmaps.len() - 1, tile).first_chunk::<4>().unwrap())
     }
     
-    sprite_bytes
+    pub fn get_bytes(&self, mip_level: usize, tile: Tile) -> &[u8] {
+        let scaled_bytes = &self.mipmaps[mip_level];
+        if tile.is_revealed() {
+            if tile.is_mine() {
+                return &scaled_bytes[11];
+            }
+            return &scaled_bytes[tile.adjacent() as usize];
+        }
+        if tile.is_flag() {
+            return &scaled_bytes[10];
+        }
+        &scaled_bytes[9]
+    }
+    
+    pub fn new(sprite_sheet: DynamicImage, filter_type: FilterType) -> Self {
+        let mut sprite_images = vec![];
+        let mut sprite_bytes = vec![];
+        for i in 0..12 {
+            let sprite = sprite_sheet.crop_imm(16 * i, 0, 16, 16);
+            sprite_images.push(sprite);
+        }
+        let mut scale = 0;
+        while 16 >> scale >= 1 {
+            let mut scale_vec = vec![];
+            for image_index in 0..sprite_images.len() {
+                let sprite = &sprite_images[image_index];
+                scale_vec.push(sprite.as_bytes().to_vec());
+                if sprite.width() > 1 {
+                    let scaled = sprite.resize(sprite.width() / 2, sprite.height() / 2, filter_type);
+                    sprite_images[image_index] = scaled;
+                }
+            }
+            sprite_bytes.push(scale_vec);
+            scale += 1;
+        }
+
+        Self {
+            mipmaps: sprite_bytes
+        }
+    }
 }
