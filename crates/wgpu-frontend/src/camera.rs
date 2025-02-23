@@ -9,6 +9,8 @@ use web_sys::Performance;
 use wgpu::BufferAddress;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Rect};
+#[cfg(target_arch = "wasm32")]
+use crate::url::url::UrlInfo;
 
 #[derive(Debug)]
 pub struct Camera {
@@ -23,7 +25,9 @@ pub struct Camera {
     scale_factor: f64,
     #[cfg(target_arch = "wasm32")]
     performance: Performance,
-    mouse_position: PhysicalPosition<f64>
+    mouse_position: PhysicalPosition<f64>,
+    #[cfg(target_arch = "wasm32")]
+    url_info: UrlInfo,
 }
 
 impl Camera {
@@ -46,6 +50,16 @@ struct Drag {
 
 impl Camera {
     pub fn new(device: &wgpu::Device, size: &PhysicalSize<u32>) -> Self {
+        let mut center: Vector2<f64> = Vector2::zero();
+        let mut zoom_level = 0.0;
+        #[cfg(target_arch = "wasm32")]
+        {
+            let url = UrlInfo::new();
+            center.x = url.get_f64("x").unwrap_or_default().clamp(i32::MIN as f64 / 2.0, i32::MAX as f64 / 2.0);
+            center.y = url.get_f64("y").unwrap_or_default().clamp(i32::MIN as f64 / 2.0, i32::MAX as f64 / 2.0);
+            zoom_level = url.get_f64("zoom").unwrap_or_default().clamp(-48.0, 48.0);
+        }
+
         let buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Camera Buffer"),
@@ -81,8 +95,8 @@ impl Camera {
         });
 
         Self {
-            center: Vector2::zero(),
-            zoom_level: 0.0,
+            center,
+            zoom_level,
             size: Vector2::new(size.width as f64, size.height as f64),
             drag: None,
             buffer,
@@ -92,6 +106,8 @@ impl Camera {
             #[cfg(target_arch = "wasm32")]
             performance: web_sys::window().unwrap().performance().unwrap(),
             mouse_position: Default::default(),
+            #[cfg(target_arch = "wasm32")]
+            url_info: UrlInfo::new(),
         }
     }
 
@@ -142,7 +158,16 @@ impl Camera {
         
         let modified_world_rect = self.rect() + world_offset_f64
             .extend(world_offset_f64.x).extend(world_offset_f64.y);
-        
+
+        // TODO: this seems inefficient
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.url_info.set_f64("x", self.center.x);
+            self.url_info.set_f64("y", self.center.y);
+            self.url_info.set_f64("zoom", self.zoom_level);
+            self.url_info.update_url();
+        }
+
         let mut uniform = CameraUniform {
             world_rect: modified_world_rect.map(|c| c as f32).into(),
             tile_size: [self.tile_size() as f32, self.tile_size() as f32, 0.0, 0.0],

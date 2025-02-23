@@ -6,6 +6,7 @@ mod tile_sprites;
 mod sweeper_socket;
 mod cursors;
 mod fingers;
+mod url;
 
 use std::default::Default;
 use std::future::Future;

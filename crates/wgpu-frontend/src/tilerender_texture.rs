@@ -271,35 +271,40 @@ impl TileMapTexture {
 
             // We only want to render the stuff that's going to appear on the screen.
             // This will consist of up to four rectangles because the screen area is not continuous.
-            let visible_rect_in_pixel_space = camera.visible_world_rect() * tile_width;
+            let visible_world_rect = camera.visible_world_rect();
+            let visible_rect_in_pixel_space = PixelRect{
+                left: visible_world_rect.left as i64,
+                top: visible_world_rect.top as i64,
+                right: visible_world_rect.right as i64,
+                bottom: visible_world_rect.bottom as i64,
+            } * tile_width as i64;
             
             // If we're looking at the whole tile map, then just render the whole thing:
-            if visible_rect_in_pixel_space.width() > self.texture_size as i32 
-                || visible_rect_in_pixel_space.height() > self.texture_size as i32 {
+            if visible_rect_in_pixel_space.width() > self.texture_size as i64 
+                || visible_rect_in_pixel_space.height() > self.texture_size as i64 {
                 render_pass.set_scissor_rect(0, 0, self.texture_size, self.texture_size);
                 render_pass.draw(0..6, 0..1);
             } else {
                 // Otherwise, only render the parts that are visible on the screen:
-                let rects = self.split_rect_along_boundaries(visible_rect_in_pixel_space.modulo(self.texture_size as i32));
+                let rects = self.split_rect_along_boundaries(visible_rect_in_pixel_space.modulo(self.texture_size as i64));
                 for rect in rects {
                     if rect.area() == 0 { continue }
                     let mut r = rect;
 
-                    if r.left < 0 { r.shift(self.texture_size as i32, 0) }
-                    if r.top < 0 { r.shift(0, self.texture_size as i32) }
-                    if r.left >= self.texture_size as i32 { r.shift(-(self.texture_size as i32), 0) }
-                    if r.top >= self.texture_size as i32 { r.shift(0, -(self.texture_size as i32)) }
+                    if r.left < 0 { r.shift(self.texture_size as i64, 0) }
+                    if r.top < 0 { r.shift(0, self.texture_size as i64) }
+                    if r.left >= self.texture_size as i64 { r.shift(-(self.texture_size as i64), 0) }
+                    if r.top >= self.texture_size as i64 { r.shift(0, -(self.texture_size as i64)) }
 
                     let left = r.left as u32;
                     let top = r.top as u32;
                     let right = r.width() as u32;
                     let bottom = r.height() as u32;
 
-                    if right > self.texture_size as u32 || bottom > self.texture_size as u32 {
+                    if right > self.texture_size || bottom > self.texture_size {
                         error!("Scissor Rect was constructed badly: {} {}", right, bottom);
                         error!("Visible world rect: {:?}", camera.visible_world_rect());
                         error!("Visible world rect modulo extent: {:?}", camera.visible_world_rect().modulo(tile_map_extent));
-                        error!("This rect: {:?}", rect);
                     } else {
                         render_pass.set_scissor_rect(left, top, right, bottom);
                     }
@@ -312,15 +317,15 @@ impl TileMapTexture {
         queue.submit(std::iter::once(encoder.finish()));
     }
 
-    fn split_rect_along_boundaries(&self, rect: Rect) -> Vec<Rect> {
+    fn split_rect_along_boundaries(&self, rect: PixelRect) -> Vec<PixelRect> {
         let rects = rect.split_x(0)
             .iter().map(|r| r.split_y(0))
             .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
             .unwrap()
-            .iter().map(|r| r.split_x(self.texture_size as i32))
+            .iter().map(|r| r.split_x(self.texture_size as i64))
             .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
             .unwrap()
-            .iter().map(|r| r.split_y(self.texture_size as i32))
+            .iter().map(|r| r.split_y(self.texture_size as i64))
             .reduce(|mut acc, mut vec| {acc.append(&mut vec); acc})
             .unwrap();
         rects
@@ -541,5 +546,69 @@ impl HasBindGroup for BlankingRect {
 
     fn bind_group_layout(&self) -> &BindGroupLayout {
         &self.bind_group_layout
+    }
+}
+
+use derive_more::{Add, Sub, Mul, Div};
+
+#[derive(Debug, Clone, Add, Sub, Mul, Div)]
+struct PixelRect {
+    left: i64,
+    top: i64,
+    right: i64,
+    bottom: i64,
+}
+
+impl PixelRect {
+    pub fn area(&self) -> i64 {
+        self.width() * self.height()
+    }
+    
+    pub fn width(&self) -> i64 {
+        self.right - self.left
+    }
+    
+    pub fn height(&self) -> i64 {
+        self.bottom - self.top
+    }
+    
+    pub fn shift(&mut self, x: i64, y: i64) {
+        self.left += x;
+        self.right += x;
+        self.top += y;
+        self.bottom += y;
+    }
+    
+    pub fn modulo(&self, modulo: i64) -> PixelRect {
+        let mut result = self.clone();
+        result.left %= modulo;
+        result.top %= modulo;
+        result.right = result.left + self.width();
+        result.bottom = result.top + self.height();
+        result
+    }
+    
+    pub fn split_x(&self, split: i64) -> Vec<PixelRect> {
+        if split > self.left && split < self.right {
+            let mut r1 = self.clone();
+            let mut r2 = self.clone();
+            r1.right = split;
+            r2.left = split;
+            vec![r1, r2]
+        } else {
+            vec![self.clone()]
+        }
+    }
+
+    pub fn split_y(&self, split: i64) -> Vec<PixelRect> {
+        if split > self.top && split < self.bottom {
+            let mut r1 = self.clone();
+            let mut r2 = self.clone();
+            r1.bottom = split;
+            r2.top = split;
+            vec![r1, r2]
+        } else {
+            vec![self.clone()]
+        }
     }
 }
