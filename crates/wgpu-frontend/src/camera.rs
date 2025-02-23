@@ -57,7 +57,7 @@ impl Camera {
             let url = UrlInfo::new();
             center.x = url.get_f64("x").unwrap_or_default().clamp(i32::MIN as f64 / 2.0, i32::MAX as f64 / 2.0);
             center.y = url.get_f64("y").unwrap_or_default().clamp(i32::MIN as f64 / 2.0, i32::MAX as f64 / 2.0);
-            zoom_level = url.get_f64("zoom").unwrap_or_default().clamp(-48.0, 48.0);
+            // zoom_level = url.get_f64("zoom").unwrap_or_default().clamp(-48.0, 48.0);
         }
 
         let buffer = device.create_buffer(
@@ -164,7 +164,7 @@ impl Camera {
         {
             self.url_info.set_f64("x", self.center.x);
             self.url_info.set_f64("y", self.center.y);
-            self.url_info.set_f64("zoom", self.zoom_level);
+            // self.url_info.set_f64("zoom", self.zoom_level);
             self.url_info.update_url();
         }
 
