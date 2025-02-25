@@ -115,6 +115,7 @@ struct State {
     surface_configured: bool,
     right_mouse_button_down: bool,
     fingers: Fingers,
+    double_click_overlay: Option<Position>,
 }
 
 impl State {
@@ -286,6 +287,7 @@ impl State {
                 surface_configured: false,
                 right_mouse_button_down: false,
                 fingers: Fingers::new(view_matrix),
+                double_click_overlay: None,
             }
         }
     }
@@ -378,7 +380,11 @@ impl State {
                 position,
                 ..
             } => {
-                self.camera.start_drag(&position);
+                if self.right_mouse_button_down {
+                    self.start_double_click_overlay(&position);
+                } else {
+                    self.camera.start_drag(&position);
+                }
             }
             WindowEvent::PointerButton {
                 state: ElementState::Released,
@@ -386,6 +392,7 @@ impl State {
                 position,
                 ..
             } => {
+                self.end_double_click_overlay();
                 let drag_distance = self.camera.end_drag(&position);
                 if drag_distance < 4.0 {
                     if self.right_mouse_button_down {
@@ -401,6 +408,9 @@ impl State {
                 ..
             } => {
                 self.camera.update_mouse_position(&position);
+                if self.double_click_overlay.is_some() {
+                    self.start_double_click_overlay(&position);
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 match delta {
@@ -573,6 +583,41 @@ impl State {
         if !self.world.world().get_tile(&position).is_revealed() {
             self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position);
             self.world.send(ClientMessage::Click(position));
+        }
+    }
+    
+    pub fn start_double_click_overlay(&mut self, mouse_position: &PhysicalPosition<f64>) {
+        if self.double_click_overlay.is_some() {
+            self.end_double_click_overlay();
+        }
+
+        let position_at_mouse = self.camera.screen_to_world(mouse_position);
+        let position = as_world_position(position_at_mouse);
+        self.double_click_overlay = Some(position.clone());
+        let tile = self.world.world().get_tile(&position);
+        let tiles_to_overlay = if tile.is_revealed() {
+            position.neighbors()
+        } else {
+            vec![position]
+        };
+
+        for position in tiles_to_overlay {
+            let tile = self.world.world().get_tile(&position);
+            if !tile.is_revealed() && ! tile.is_flag() {
+                self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), position);
+            }
+        }
+    }
+
+    pub fn end_double_click_overlay(&mut self) {
+        if let Some(position) = self.double_click_overlay {
+            for position in position.neighbours_and_self() {
+                let tile = self.world.world().get_tile(&position);
+                if !tile.is_revealed() && !tile.is_flag() {
+                    self.tile_map_texture.write_tile(&self.queue, tile, position);
+                }
+            }
+            self.double_click_overlay = None;
         }
     }
 

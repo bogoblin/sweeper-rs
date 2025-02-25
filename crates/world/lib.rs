@@ -397,6 +397,18 @@ impl Position {
         
         result
     }
+    
+    pub fn neighbours_and_self(&self) -> Vec<Position> {
+        let mut result = vec![];
+
+        for x in self.0-1..=self.0+1 {
+            for y in self.1-1..=self.1+1 {
+                result.push(Position(x, y))
+            }
+        }
+
+        result
+    }
 }
 
 impl Position {
