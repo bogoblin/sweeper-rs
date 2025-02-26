@@ -2,6 +2,7 @@ use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
 use std::mem;
+use log::info;
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::VertexFormat::{Float32x2, Sint32, Uint32};
@@ -156,6 +157,9 @@ impl Cursors {
                 player.player_id.eq(player_id)
             }
         };
+        if is_you {
+            info!("Updating your cursor");
+        }
         cursor_instance.properties = CursorProperties::new(is_you);
         queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&self.cursors[index..index+1]));
     }

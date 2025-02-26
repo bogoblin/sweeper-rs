@@ -144,6 +144,7 @@ impl SweeperSocket for WebSocketWorld {
                             match message {
                                 ServerMessage::Connected => {
                                     connection.connected = true;
+                                    self.send(ClientMessage::Connected);
                                 }
                                 _ => {}
                             }

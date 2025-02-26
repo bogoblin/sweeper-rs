@@ -249,7 +249,6 @@ impl State {
                     world = Box::new(LocalWorld::new())
                 }
             }
-            world.send(ClientMessage::Connected);
             let cursors = Cursors::new(&device, &queue, surface_format, &camera);
 
             #[cfg(target_arch = "wasm32")]
@@ -498,6 +497,7 @@ impl State {
                     self.world.world().players.insert(player.player_id.clone(), player);
                 }
                 ServerMessage::Welcome(player) => {
+                    info!("Welcome");
                     self.cursors.set_you(player.player_id.clone(), &player, &self.queue);
                 }
                 ServerMessage::Disconnected(player_id) => {
@@ -585,7 +585,7 @@ impl State {
             self.world.send(ClientMessage::Click(position));
         }
     }
-    
+
     pub fn start_double_click_overlay(&mut self, mouse_position: &PhysicalPosition<f64>) {
         if self.double_click_overlay.is_some() {
             self.end_double_click_overlay();
