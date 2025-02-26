@@ -43,6 +43,7 @@ impl From<ServerMessage> for Vec<u8> {
     }
 }
 
+#[derive(Debug)]
 pub enum ServerMessageError {
     BadChunk,
     BadEvent,

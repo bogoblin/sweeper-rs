@@ -4,9 +4,9 @@ use world::World;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        pub mod websocket;
+        pub mod js_websocket;
     } else {
-        pub mod local;
+        pub mod native_websocket;
     }
 }
 

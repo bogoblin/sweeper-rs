@@ -243,10 +243,9 @@ impl State {
             let mut world;
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "wasm32")] {
-                    world = Box::new(sweeper_socket::websocket::WebSocketWorld::new())
+                    world = Box::new(sweeper_socket::js_websocket::WebSocketWorld::new())
                 } else {
-                    use crate::sweeper_socket::local::LocalWorld;
-                    world = Box::new(LocalWorld::new())
+                    world = Box::new(sweeper_socket::native_websocket::WebSocketWorld::new())
                 }
             }
             let cursors = Cursors::new(&device, &queue, surface_format, &camera);
