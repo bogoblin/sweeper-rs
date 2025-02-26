@@ -128,7 +128,7 @@ async fn recv_broadcast(
     mut broadcast_rx: Receiver<Message>,
 ) {
     while let Ok(msg) = broadcast_rx.recv().await {
-        info!("Broadcasting message: {:?}", msg);
+        trace!("Broadcasting message: {:?}", msg);
         if client_tx.lock().await.send(msg).await.is_err() {
             return; // disconnected.
         }
@@ -225,7 +225,7 @@ async fn recv_from_client(
                 });
             let lock = broadcast_tx.lock().await;
             for message in messages {
-                info!("to all: {:?}", message);
+                trace!("to all: {:?}", message);
                 if lock.send(message).is_err() {
                     println!("Failed to broadcast a message");
                 }
@@ -254,7 +254,7 @@ async fn static_path(Path(path): Path<String>) -> impl IntoResponse {
             if cfg!(debug_assertions) {
                 let static_dir_path: PathBuf = PathBuf::from("crates/server/static");
                 let path = static_dir_path.join(file.path());
-                info!("Serving file from filesystem: {:?}", path);
+                trace!("Serving file from filesystem: {:?}", path);
                 if let Ok(contents) = tokio::fs::read(path).await {
                     Response::builder()
                         .status(StatusCode::OK)
