@@ -243,7 +243,7 @@ impl State {
             let mut world;
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "wasm32")] {
-                    world = Box::new(sweeper_socket::websocket::WebSocketWorld::new().unwrap())
+                    world = Box::new(sweeper_socket::websocket::WebSocketWorld::new())
                 } else {
                     use crate::sweeper_socket::local::LocalWorld;
                     world = Box::new(LocalWorld::new())
