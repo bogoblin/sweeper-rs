@@ -11,11 +11,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::{max, min, PartialEq};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign, Sub};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use derive_more::{Div, Mul};
+use huffman::{BitWriter, HuffmanCode};
 use crate::server_messages::ServerMessage;
 
 pub mod server_messages;
@@ -48,6 +49,17 @@ impl World {
             Tile::empty()
         }
     }
+    
+    pub fn get_rect(&self, rect: &Rect) -> UpdatedRect {
+        let mut updated_tiles = vec![];
+        for position in rect.positions() {
+            updated_tiles.push(UpdatedTile {
+                position,
+                tile: self.get_tile(&position),
+            })
+        }
+        UpdatedRect::new(updated_tiles)
+    }
 }
 
 impl World {
@@ -69,6 +81,16 @@ impl World {
             ServerMessage::Welcome(_) => {}
             ServerMessage::Disconnected(_) => {}
             ServerMessage::Connected => {}
+            ServerMessage::Rect(rect) => {
+                self.apply_updated_rect(rect);
+            }
+        }
+    }
+    
+    pub fn apply_updated_rect(&mut self, updated_rect: &UpdatedRect) {
+        for UpdatedTile {position, tile} in updated_rect.tiles_updated() {
+            let chunk_id = self.generate_chunk(position);
+            self.chunks[chunk_id].set_tile(position, tile);
         }
     }
 }
@@ -208,13 +230,14 @@ impl World {
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
 
-    pub fn click(&mut self, at: Position, by_player_id: &str) {
+    pub fn click(&mut self, at: Position, by_player_id: &str) -> UpdatedRect {
         let updated = self.reveal(vec![at]);
         self.push_event(Event::Clicked {
             player_id: by_player_id.to_string(),
             at,
             updated
         });
+        self.get_rect(&Rect::from_center_and_size(at, 1, 1))
     }
     
     fn push_event(&mut self, event: Event) {
@@ -288,7 +311,7 @@ impl World {
         }
     }
 
-    pub fn double_click(&mut self, position: Position, by_player_id: &str) {
+    pub fn double_click(&mut self, position: Position, by_player_id: &str) -> UpdatedRect {
         if let Some(to_reveal) = self.check_double_click(&position) {
             let updated = self.reveal(to_reveal);
             self.push_event(Event::DoubleClicked {
@@ -296,33 +319,35 @@ impl World {
                 at: position,
                 updated
             });
-            return;
         }
+        self.get_rect(&Rect::from_center_and_size(position, 3, 3))
     }
 
-    pub fn flag(&mut self, position: Position, by_player_id: &str) {
+    pub fn flag(&mut self, position: Position, by_player_id: &str) -> UpdatedRect {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
-                    if tile.is_revealed() { return }
-                    if tile.is_flag() {
-                        // Unflag
-                        *tile = tile.without_flag();
-                        self.push_event(Event::Unflag {
-                            player_id: by_player_id.to_string(),
-                            at: position
-                        });
-                    } else {
-                        // Flag
-                        *tile = tile.with_flag();
-                        self.push_event(Event::Flag {
-                            player_id: by_player_id.to_string(),
-                            at: position
-                        });
+                    if !tile.is_revealed() {
+                        if tile.is_flag() {
+                            // Unflag
+                            *tile = tile.without_flag();
+                            self.push_event(Event::Unflag {
+                                player_id: by_player_id.to_string(),
+                                at: position
+                            });
+                        } else {
+                            // Flag
+                            *tile = tile.with_flag();
+                            self.push_event(Event::Flag {
+                                player_id: by_player_id.to_string(),
+                                at: position
+                            });
+                        }
                     }
                 }
             }
         }
+        self.get_rect(&Rect::from_center_and_size(position, 1, 1))
     }
 }
 
@@ -423,6 +448,12 @@ impl Position {
     pub fn from_chunk_positions(chunk_position: &ChunkPosition, position_in_chunk: &PositionInChunk) -> Self {
         Self(chunk_position.0 + position_in_chunk.x() as i32, chunk_position.1 + position_in_chunk.y() as i32)
     }
+
+    pub fn from_compressed(bytes: &[u8]) -> Option<Self> {
+        let x = i32::from_be_bytes(*bytes[0..].first_chunk()?);
+        let y = i32::from_be_bytes(*bytes[4..].first_chunk()?);
+        Some(Position(x, y))
+    }
 }
 impl Add<(i32, i32)> for &Position {
     type Output = Position;
@@ -444,6 +475,29 @@ impl Sub<(i32, i32)> for &Position {
 #[derive(Default, Eq, PartialEq, Clone, Copy)]
 #[derive(Serialize, Deserialize, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Tile (pub u8);
+
+impl Display for Tile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let char: &str = {
+            if self.is_revealed() {
+                if self.is_mine() {
+                    "*"
+                } else {
+                    &unsafe {
+                        String::from_utf8_unchecked(vec![self.adjacent() + '0' as u8])
+                    }
+                }
+            } else {
+                if self.is_flag() {
+                    "F"
+                } else {
+                    " "
+                }
+            }
+        };
+        write!(f, "{}", char)
+    }
+}
 
 impl Tile {
     pub const fn empty() -> Tile {
@@ -654,7 +708,7 @@ pub struct UpdatedTile {
 }
 
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 #[derive(Serialize, Deserialize)]
 pub struct UpdatedRect {
     pub top_left: Position,
@@ -663,7 +717,15 @@ pub struct UpdatedRect {
 
 impl Debug for UpdatedRect {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("UpdatedRect")
+        write!(f, "UpdatedRect: {:?} with tiles:\n", self.top_left)?;
+        for row in &self.updated {
+            for tile in row {
+                write!(f, "{}", tile)?;
+            }
+            write!(f, "\n")?;
+        }
+        Ok(())
+        
     }
 }
 
@@ -729,6 +791,39 @@ impl UpdatedRect {
         }
         result
     }
+    
+    pub fn tiles_updated(&self) -> Vec<UpdatedTile> {
+        let mut result = vec![];
+        for (x, col) in self.updated.iter().enumerate() {
+            for (y, tile) in col.iter().enumerate() {
+                if *tile == Tile::empty() {
+                    continue
+                }
+                let position = self.top_left + Position(x as i32, y as i32);
+                result.push(UpdatedTile {
+                    position,
+                    tile: tile.clone()
+                });
+            }
+        }
+        result
+    }
+}
+
+impl From<&UpdatedRect> for Vec<u8> {
+    fn from(updated: &UpdatedRect) -> Self {
+        let mut binary = vec![];
+        let Position(x, y) = updated.top_left;
+        binary.append(&mut x.to_be_bytes().to_vec());
+        binary.append(&mut y.to_be_bytes().to_vec());
+        let mut bw = BitWriter::new();
+        let public_tiles = updated.public_tiles();
+        for tile in public_tiles {
+            tile.encode(&mut bw);
+        }
+        binary.append(&mut bw.to_bytes());
+        binary
+    }
 }
 
 pub struct ChunkPositionIter {
@@ -760,6 +855,21 @@ pub struct Rect {
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
+}
+
+impl Rect {
+    pub fn positions(&self) -> Vec<Position> {
+        if self.right <= self.left || self.bottom <= self.top {
+            return vec![];
+        }
+        let mut result = vec![];
+        for x in self.left..self.right {
+            for y in self.top..self.bottom {
+                result.push(Position(x, y))
+            }
+        }
+        result
+    }
 }
 
 impl Rect {

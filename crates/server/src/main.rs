@@ -151,17 +151,21 @@ async fn recv_from_client(
                     if let Some(message) = ClientMessage::decode(message) {
                         let mut world = world.lock().await;
                         match message {
+                            // Click, Flag, and DoubleClick return a safety rect to send to the client
+                            // in case nothing has been updated.
                             Click(position) => {
-                                world.click(position, player_id);
+                                let rect = world.click(position, player_id);
+                                to_client.push(ServerMessage::Rect(rect))
                             }
                             Flag(position) => {
-                                world.flag(position, player_id);
+                                let rect = world.flag(position, player_id);
+                                to_client.push(ServerMessage::Rect(rect))
                             }
                             DoubleClick(position) => {
-                                world.double_click(position, player_id);
+                                let rect = world.double_click(position, player_id);
+                                to_client.push(ServerMessage::Rect(rect))
                             }
                             Connected => {
-                                // TODO? Move this to the query and put the players in a quadtree? Possible improvement, may be worse
                                 for (_player_id, player) in &world.players {
                                     to_client.push(ServerMessage::Player(player.clone()))
                                 }

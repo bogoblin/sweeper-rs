@@ -1,8 +1,6 @@
-use std::i32;
-use serde::{Deserialize, Serialize};
-use huffman::{BitWriter, HuffmanCode};
 use crate::{Position, Tile, UpdatedRect, UpdatedTile};
-use crate::compression::PublicTile;
+use serde::{Deserialize, Serialize};
+use std::i32;
 
 #[derive(Debug)]
 #[derive(Serialize, Deserialize)]
@@ -32,20 +30,7 @@ impl Event {
         match self {
             Event::Clicked { updated, .. } |
             Event::DoubleClicked { updated, .. } => {
-                let mut result = vec![];
-                for (x, col) in updated.updated.iter().enumerate() {
-                    for (y, tile) in col.iter().enumerate() {
-                        if *tile == Tile::empty() {
-                            continue
-                        }
-                        let position = updated.top_left + Position(x as i32, y as i32);
-                        result.push(UpdatedTile {
-                            position,
-                            tile: tile.clone()
-                        });
-                    }
-                }
-                result
+                updated.tiles_updated()
             }
             Event::Flag { at, .. } => {
                 vec![UpdatedTile {
@@ -84,15 +69,7 @@ impl Event {
         binary.append(&mut at.0.to_be_bytes().to_vec());
         binary.append(&mut at.1.to_be_bytes().to_vec());
         if let Some(updated) = updated {
-            let Position(x, y) = updated.top_left;
-            binary.append(&mut x.to_be_bytes().to_vec());
-            binary.append(&mut y.to_be_bytes().to_vec());
-            let mut bw = BitWriter::new();
-            let public_tiles = updated.public_tiles();
-            for tile in public_tiles {
-                tile.encode(&mut bw);
-            }
-            binary.append(&mut bw.to_bytes());
+            binary.append(&mut updated.into());
         }
         
         binary
@@ -117,49 +94,29 @@ impl Event {
         };
         
         if header == "c" {
-            let top_left = {
-                let x = i32::from_be_bytes(*compressed[index..].first_chunk()?);
-                let y = i32::from_be_bytes(*compressed[index+4..].first_chunk()?);
-                index += 8;
-                Position(x, y)
-            };
-            let mut updated = UpdatedRect::empty();
-            updated.top_left = top_left;
-
-            let tiles = PublicTile::from_huffman_bytes(compressed[index..].to_vec());
-            
-            let mut current_line: Vec<Tile> = vec![];
-            for tile in tiles {
-                match *tile {
-                    PublicTile::Newline => {
-                        updated.updated.push(current_line);
-                        current_line = vec![];
-                    },
-                    tile => {
-                        let tile: Tile = tile.into();
-                        current_line.push(tile.into());
-                    }
+            match UpdatedRect::from_compressed(&compressed[index..]) {
+                None => None,
+                Some(updated) => {
+                    Some(Event::Clicked {
+                        player_id,
+                        at,
+                        updated
+                    })
                 }
             }
-            
-            return Some(Event::Clicked {
-                player_id,
-                at,
-                updated
-            });
         } else if header == "f" {
-            return Some(Event::Flag {
+            Some(Event::Flag {
                 player_id,
                 at
-            });
+            })
         } else if header == "u" {
-            return Some(Event::Unflag {
+            Some(Event::Unflag {
                 player_id,
                 at
-            });
+            })
+        } else {
+            None
         }
-        
-        None
     }
 }
 

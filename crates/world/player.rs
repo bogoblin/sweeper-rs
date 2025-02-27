@@ -39,9 +39,8 @@ impl Player {
         result % max
     }
 
-    pub fn compress(&self, header: &str) -> Vec<u8> {
-        let mut binary = vec![];
-        binary.append(&mut header.as_bytes().to_vec());
+    pub fn compress(&self, header: u8) -> Vec<u8> {
+        let mut binary = vec![header];
         binary.append(&mut self.position.0.to_be_bytes().to_vec());
         binary.append(&mut self.position.1.to_be_bytes().to_vec());
         binary.append(&mut self.player_id.clone().into_bytes());

@@ -1,24 +1,34 @@
-use serde::{Deserialize, Serialize};
 use crate::compression::PublicTile;
 use crate::events::Event;
-use crate::{Chunk, ChunkPosition, ChunkTiles, Tile};
-use huffman::{BitWriter, HuffmanCode};
 use crate::player::Player;
+use crate::{Chunk, ChunkPosition, ChunkTiles, Position, Tile, UpdatedRect};
+use huffman::{BitWriter, HuffmanCode};
+use serde::{Deserialize, Serialize};
 
 // ServerMessage is anything the server sends that gets compressed to bytes
+#[repr(u8)]
 #[derive(Serialize, Deserialize)]
 #[derive(Debug)]
 pub enum ServerMessage {
-    Event(Event),
-    Chunk(Chunk),
-    Player(Player),
-    Welcome(Player),
-    Disconnected(String),
-    Connected,
+    Event(Event) = 'e' as u8,
+    Chunk(Chunk) = 'h' as u8,
+    Rect(UpdatedRect) = 'r' as u8,
+    Player(Player) = 'p' as u8,
+    Welcome(Player) = 'w' as u8,
+    Disconnected(String) = 'x' as u8,
+    Connected = '+' as u8,
+}
+
+impl ServerMessage {
+    fn header(&self) -> u8 {
+        // We're using the discriminant as the header, so this unsafe code gets that:
+        unsafe { *<*const _>::from(self).cast::<u8>() }
+    }
 }
 
 impl From<ServerMessage> for Vec<u8> {
     fn from(value: ServerMessage) -> Self {
+        let header = value.header();
         match value {
             ServerMessage::Event(event) => {
                 event.compress()
@@ -26,11 +36,14 @@ impl From<ServerMessage> for Vec<u8> {
             ServerMessage::Chunk(chunk) => {
                 chunk.compress()
             }
-            ServerMessage::Player(player) => {
-                player.compress("p")
+            ServerMessage::Rect(rect) => {
+                let mut result = vec![header];
+                result.append(&mut (&rect).into());
+                result
             }
+            ServerMessage::Player(player) |
             ServerMessage::Welcome(player) => {
-                player.compress("w")
+                player.compress(header)
             }
             ServerMessage::Disconnected(player_id) => {
                 let mut result = vec![];
@@ -38,7 +51,7 @@ impl From<ServerMessage> for Vec<u8> {
                 result.append(&mut player_id.as_bytes().to_vec());
                 result
             },
-            ServerMessage::Connected => vec![]
+            ServerMessage::Connected => vec![],
         }
     }
 }
@@ -48,6 +61,8 @@ pub enum ServerMessageError {
     BadChunk,
     BadEvent,
     BadPlayer,
+    BadTile,
+    BadRect,
 }
 
 impl ServerMessage {
@@ -60,6 +75,12 @@ impl ServerMessage {
             match Chunk::from_compressed(compressed) {
                 Some(chunk) => Ok(ServerMessage::Chunk(chunk)),
                 None => Err(ServerMessageError::BadChunk)
+            }
+        }
+        else if header == "r" {
+            match UpdatedRect::from_compressed(&compressed[1..]) {
+                Some(rect) => Ok(ServerMessage::Rect(rect)),
+                None => Err(ServerMessageError::BadRect)
             }
         }
         else if header == "p" {
@@ -82,6 +103,34 @@ impl ServerMessage {
             match Event::from_compressed(compressed) {
                 Some(event) => Ok(ServerMessage::Event(event)),
                 None => Err(ServerMessageError::BadEvent)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::server_messages::ServerMessage;
+    use crate::{Position, Tile, UpdatedRect, UpdatedTile};
+
+    #[test]
+    fn rect_compress_and_decompress() {
+        let mut updated = vec![];
+        for i in 0..50 {
+            updated.push(UpdatedTile {
+                position: Position(i+5, -i-3),
+                tile: Tile::empty().with_revealed(),
+            });
+        }
+        let rect = UpdatedRect::new(updated);
+        let compressed: Vec<u8> = ServerMessage::Rect(rect.clone()).into();
+        match ServerMessage::from_compressed(compressed) {
+            Ok(ServerMessage::Rect(updated)) => {
+                assert_eq!(updated.top_left, rect.top_left);
+                assert_eq!(updated.updated, rect.updated);
+            }
+            _ => {
+                assert!(false);
             }
         }
     }
@@ -186,5 +235,32 @@ impl ChunkPosition {
             i32::from_be_bytes(x_bytes.try_into().ok()?),
             i32::from_be_bytes(y_bytes.try_into().ok()?)
         ))
+    }
+}
+
+impl UpdatedRect {
+    pub fn from_compressed(compressed: &[u8]) -> Option<Self> {
+        let top_left = Position::from_compressed(compressed)?;
+        let mut updated = UpdatedRect::empty();
+        updated.top_left = top_left;
+
+        let index = 8;
+        let tiles = PublicTile::from_huffman_bytes(compressed[index..].to_vec());
+
+        let mut current_line: Vec<Tile> = vec![];
+        for tile in tiles {
+            match *tile {
+                PublicTile::Newline => {
+                    updated.updated.push(current_line);
+                    current_line = vec![];
+                },
+                tile => {
+                    let tile: Tile = tile.into();
+                    current_line.push(tile.into());
+                }
+            }
+        }
+        
+        Some(updated)
     }
 }

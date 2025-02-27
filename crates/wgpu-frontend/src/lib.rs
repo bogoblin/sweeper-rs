@@ -504,6 +504,9 @@ impl State {
                     self.world.world().players.remove(&player_id);
                 }
                 ServerMessage::Connected => {}
+                ServerMessage::Rect(rect) => {
+                    self.world.world().apply_updated_rect(&rect);
+                }
             }
         }
 
