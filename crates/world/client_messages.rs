@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::{Position, Rect};
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 #[derive(Serialize, Deserialize)]
 pub enum ClientMessage {
     Connected,

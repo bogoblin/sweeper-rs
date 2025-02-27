@@ -2,7 +2,7 @@ use crate::{Position, Tile, UpdatedRect, UpdatedTile};
 use serde::{Deserialize, Serialize};
 use std::i32;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(Serialize, Deserialize)]
 pub enum Event {
     Clicked {
@@ -43,6 +43,17 @@ impl Event {
                     position: at.clone(),
                     tile: Tile::empty()
                 }]
+            }
+        }
+    }
+    
+    pub fn player_id(&self) -> String {
+        match self {
+            Event::Clicked { player_id, .. } |
+            Event::DoubleClicked { player_id, .. } |
+            Event::Flag { player_id, .. } |
+            Event::Unflag { player_id, .. } => {
+                player_id.clone()
             }
         }
     }

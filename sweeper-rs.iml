@@ -12,6 +12,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/quadtree/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/wgpu-frontend/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/socketio-local/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/load-tester/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

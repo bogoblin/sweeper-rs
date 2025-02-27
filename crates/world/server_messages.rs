@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 // ServerMessage is anything the server sends that gets compressed to bytes
 #[repr(u8)]
 #[derive(Serialize, Deserialize)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ServerMessage {
     Event(Event) = 'e' as u8,
     Chunk(Chunk) = 'h' as u8,
