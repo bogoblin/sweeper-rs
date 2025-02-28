@@ -1,6 +1,6 @@
-mod backup;
 mod eventlog;
 
+use std::collections::VecDeque;
 use axum::extract::{Path, State};
 use axum::extract::{ws::WebSocket, WebSocketUpgrade};
 use axum::http::{header, HeaderValue, StatusCode};
@@ -15,7 +15,6 @@ use futures_util::{
 use include_dir::{include_dir, Dir};
 use serde_json::{Value};
 use std::net::SocketAddr;
-use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::{Arc};
 use axum::extract::ws::Message;
@@ -24,12 +23,13 @@ use tokio::net::TcpListener;
 use log::{error, info, trace};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::{broadcast, Mutex};
-use crate::backup::{Backup, BackupError};
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
+use world::events::Event;
 use world::player::Player;
 use world::server_messages::ServerMessage;
 use world::World;
+use crate::eventlog::{EventLogReader, EventLogWriter, SourcedEvent};
 
 #[derive(Parser)]
 struct Cli {
@@ -42,33 +42,13 @@ struct Cli {
 
 #[derive(Clone)]
 struct AppState {
-    world: Arc<Mutex<WorldBackup>>,
-    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+    world: Arc<Mutex<World>>,
+    event_sender: Arc<Mutex<EventSender>>,
 }
 
-struct WorldBackup {
-    world: World,
-    backup: Backup,
-}
-
-impl WorldBackup {
-    fn write_backup(&mut self) -> Result<usize, BackupError> {
-        self.backup.save(&self.world)
-    }
-}
-
-impl Deref for WorldBackup {
-    type Target = World;
-
-    fn deref(&self) -> &Self::Target {
-        &self.world
-    }
-}
-
-impl DerefMut for WorldBackup {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.world
-    }
+struct EventSender {
+    broadcast_tx: Sender<Message>,
+    event_log_writer: EventLogWriter,
 }
 
 
@@ -77,16 +57,47 @@ async fn main() {
     let cli = Cli::parse();
     
     env_logger::init();
-    
-    let backup = Backup::new(cli.world_file.unwrap_or("worldfile".into()));
-    let world = backup.load().unwrap_or_else(|_| World::new());
+
+    let mut world = World::new();
+    if let Ok(mut reader) = EventLogReader::open("eventlog".into()).await {
+        while let Some(event) = reader.read().await {
+            match event {
+                SourcedEvent::Click(position) => {
+                    world.click(position, "");
+                }
+                SourcedEvent::DoubleClick(position) => {
+                    world.double_click(position, "");
+                }
+                SourcedEvent::Flag(position) |
+                SourcedEvent::Unflag(position) => {
+                    // TODO: should probably handle this properly
+                    world.flag(position, "");
+                }
+                SourcedEvent::ChunkGenerated(position, mines) => {
+                    if world.get_chunk(position.position()).is_none() {
+                        let chunk = mines.to_chunk(position);
+                        world.insert_chunk(chunk);
+                    }
+                }
+            }
+        }
+    } else {
+        info!("No event log found, starting a new world.");
+    }
+    // We don't need to broadcast these events, so clear the queue:
+    world.events.clear();
+    world.players.clear();
+
+    let event_log_writer = EventLogWriter::new("eventlog".into()).await
+        .expect("Unable to create event log writer");
 
     let (tx, _) = broadcast::channel(32);
     let app = AppState {
-        world: Arc::new(Mutex::new(WorldBackup {
-            world, backup
-        })),
-        broadcast_tx: Arc::new(Mutex::new(tx)),
+        world: Arc::new(Mutex::new(world)),
+        event_sender: Arc::new(Mutex::new(EventSender {
+            broadcast_tx: tx,
+            event_log_writer,
+        }))
     };
 
     let router: Router<> = Router::new()
@@ -111,17 +122,17 @@ async fn handle_socket(ws: WebSocket, app: AppState) {
     let (ws_tx, ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
     
-    let player_id = app.world.lock().await.world.new_player_id();
+    let player_id = app.world.lock().await.new_player_id();
 
     let tx_clone = ws_tx.clone();
     {
-        let broadcast_rx = app.broadcast_tx.lock().await.subscribe();
+        let broadcast_rx = app.event_sender.lock().await.broadcast_tx.subscribe();
         tokio::spawn(async move {
             recv_broadcast(tx_clone, broadcast_rx).await;
         });
     }
     
-    recv_from_client(ws_rx, ws_tx, app.broadcast_tx, app.world, &player_id).await;
+    recv_from_client(ws_rx, ws_tx, app.event_sender, app.world, &player_id).await;
 }
 
 async fn recv_broadcast(
@@ -139,13 +150,14 @@ async fn recv_broadcast(
 async fn recv_from_client(
     mut client_rx: SplitStream<WebSocket>,
     client_tx: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-    broadcast_tx: Arc<Mutex<Sender<Message>>>,
-    world: Arc<Mutex<WorldBackup>>,
+    event_sender: Arc<Mutex<EventSender>>,
+    world: Arc<Mutex<World>>,
     player_id: &str,
 ) {
     while let Some(Ok(msg)) = client_rx.next().await {
         let mut to_broadcast = vec![];
         let mut to_client = vec![];
+        let mut new_chunks = VecDeque::new();
         match msg {
             Message::Text(text) => {
                 if let Ok(message) = serde_json::from_str::<Value>(&text) {
@@ -193,17 +205,7 @@ async fn recv_from_client(
                                 to_broadcast.push(ServerMessage::Event(event))
                             }
                         }
-
-                        match world.write_backup() {
-                            Ok(bytes_saved) => {
-                                if bytes_saved > 0 {
-                                    info!("{} bytes written to {:?}", bytes_saved, world.backup.location());
-                                }
-                            }
-                            Err(err) => {
-                                error!("Unable to backup world: {:?}", err);
-                            }
-                        }
+                        std::mem::swap(&mut world.generated_chunks, &mut new_chunks);
                     }
                 }
             }
@@ -220,23 +222,52 @@ async fn recv_from_client(
                 });
             let mut lock = client_tx.lock().await;
             for message in messages {
-                trace!("to player: {:?}", message);
                 lock.send(message).await.unwrap_or_default();
             }
         }
         
         {
-            let messages = to_broadcast.into_iter()
-                .map(|message| {
-                    Message::Binary(Vec::<u8>::from(message))
-                });
-            let lock = broadcast_tx.lock().await;
-            for message in messages {
-                trace!("to all: {:?}", message);
-                if lock.send(message).is_err() {
-                    println!("Failed to broadcast a message");
+            let mut lock = event_sender.lock().await;
+            
+            for (position, mines) in new_chunks {
+                lock.event_log_writer.write(SourcedEvent::ChunkGenerated(position, mines)).await.unwrap();
+            }
+            
+            for message in to_broadcast {
+                if let Some(sourced) = match &message {
+                    ServerMessage::Event(event) => {
+                        match event {
+                            Event::Clicked { at, .. } => {
+                                Some(SourcedEvent::Click(*at))
+                            }
+                            Event::DoubleClicked { at, .. } => {
+                                Some(SourcedEvent::DoubleClick(*at))
+                            }
+                            Event::Flag { at, .. } => {
+                                Some(SourcedEvent::Flag(*at))
+                            }
+                            Event::Unflag { at, .. } => {
+                                Some(SourcedEvent::Unflag(*at))
+                            }
+                        }
+                    }
+                    _ => None
+                } {
+                    match lock.event_log_writer.write(sourced).await {
+                        Ok(_) => {}
+                        Err(err) => {
+                            error!("Unable to write to event log: {}", err);
+                        }
+                    }
+                }
+                match lock.broadcast_tx.send(Message::Binary(Vec::<u8>::from(message))) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        error!("Unable to broadcast message: {}", err);
+                    }
                 }
             }
+            lock.event_log_writer.flush().await.expect("Unable to flush event log");
         }
         
     }

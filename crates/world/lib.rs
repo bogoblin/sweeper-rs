@@ -27,18 +27,15 @@ pub mod client_messages;
 pub mod chunk_store;
 pub mod player;
 
-#[derive(Serialize, Deserialize)]
 pub struct World {
     pub chunk_ids: HashMap<ChunkPosition, usize>,
     pub positions: Vec<ChunkPosition>,
     pub chunks: Vec<Chunk>,
     pub seed: u64,
 
-    #[serde(skip)]
     pub events: VecDeque<Event>,
-    #[serde(skip)]
+    pub generated_chunks: VecDeque<(ChunkPosition, ChunkMines)>,
     pub chunk_store: ChunkStore,
-    #[serde(skip)]
     pub players: HashMap<String, Player>,
 }
 
@@ -67,11 +64,7 @@ impl World {
     pub fn apply_server_message(&mut self, message: &ServerMessage) {
         match message {
             ServerMessage::Event(event) => {
-                self.create_or_update_player(event);
-                for UpdatedTile {position, tile} in event.tiles_updated() {
-                    let chunk_id = self.generate_chunk(position);
-                    self.chunks[chunk_id].set_tile(position, tile);
-                }
+                self.apply_event(event);
             }
             ServerMessage::Chunk(chunk) => {
                 self.insert_chunk(chunk.clone());
@@ -85,6 +78,14 @@ impl World {
             ServerMessage::Rect(rect) => {
                 self.apply_updated_rect(rect);
             }
+        }
+    }
+
+    pub fn apply_event(&mut self, event: &Event) {
+        self.create_or_update_player(event);
+        for UpdatedTile {position, tile} in event.tiles_updated() {
+            let chunk_id = self.generate_chunk(position);
+            self.chunks[chunk_id].set_tile(position, tile);
         }
     }
     
@@ -104,6 +105,7 @@ impl World {
             chunks: vec![],
             seed: 0,
             events: vec![].into(),
+            generated_chunks: Default::default(),
             chunk_store: ChunkStore::new(),
             players: Default::default(),
         };
@@ -200,6 +202,7 @@ impl World {
                 self.positions.push(position);
                 self.chunks.push(new_chunk);
                 self.chunk_store.insert(position, new_id);
+                self.generated_chunks.push_back((position, mines));
                 new_id
             }
         }
@@ -356,9 +359,7 @@ impl World {
 
 #[derive(Serialize, Deserialize)]
 #[derive(Default, Clone, Debug)]
-pub struct ChunkMines {
-    mines: [u16; 16]
-}
+pub struct ChunkMines ([u32; 8]);
 
 impl ChunkMines {
     pub fn random(number_of_mines: u8, mut rng: StdRng) -> Self {
@@ -368,7 +369,7 @@ impl ChunkMines {
         }
         result
     }
-    
+
     pub fn positions(&self) -> Vec<PositionInChunk> {
         let n_ones = self.count_ones();
         let mut result = Vec::with_capacity(n_ones);
@@ -377,7 +378,7 @@ impl ChunkMines {
         }
         result
     }
-    
+
     pub fn to_chunk(&self, position: ChunkPosition) -> Chunk {
         let mut new_chunk = Chunk {
             tiles: ChunkTiles([Tile::empty(); 256]),
@@ -392,16 +393,16 @@ impl ChunkMines {
 }
 
 impl Deref for ChunkMines {
-    type Target = BitSlice<u16>;
+    type Target = BitSlice<u32>;
 
     fn deref(&self) -> &Self::Target {
-        self.mines.view_bits::<Lsb0>()
+        self.0.view_bits::<Lsb0>()
     }
 }
 
 impl DerefMut for ChunkMines {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.mines.view_bits_mut::<Lsb0>()
+        self.0.view_bits_mut::<Lsb0>()
     }
 }
 

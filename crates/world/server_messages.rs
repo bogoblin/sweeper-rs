@@ -100,7 +100,7 @@ impl ServerMessage {
             Ok(ServerMessage::Disconnected(player_id.into()))
         }
         else {
-            match Event::from_compressed(compressed) {
+            match Event::from_compressed(&*compressed) {
                 Some(event) => Ok(ServerMessage::Event(event)),
                 None => Err(ServerMessageError::BadEvent)
             }

@@ -1,7 +1,7 @@
+use crate::sweeper_socket::SweeperSocket;
 use world::client_messages::ClientMessage;
 use world::server_messages::ServerMessage;
-use world::{Chunk, Rect, World};
-use crate::sweeper_socket::SweeperSocket;
+use world::World;
 
 pub struct LocalWorld {
     world: World,

@@ -90,7 +90,7 @@ impl Event {
         binary
     }
     
-    pub fn from_compressed(compressed: Vec<u8>) -> Option<Event> {
+    pub fn from_compressed(compressed: &[u8]) -> Option<Event> {
         let header = String::from_utf8_lossy(&compressed[0..=0]);
         let mut index = 1;
         loop {
@@ -144,7 +144,7 @@ fn compression_test() -> Result<(), String> {
         player_id: p.to_string(),
         at: pos
     };
-    let decompressed = Event::from_compressed(flag.compress()).ok_or("uh oh")?;
+    let decompressed = Event::from_compressed(&*flag.compress()).ok_or("uh oh")?;
     match decompressed {
         Event::Flag { player_id, at } => {
             assert_eq!(player_id, p);
@@ -164,7 +164,7 @@ fn compression_test() -> Result<(), String> {
         at: pos,
         updated: UpdatedRect::new(to_update.clone())
     };
-    let decompressed = Event::from_compressed(clicked.compress()).ok_or("uh oh")?;
+    let decompressed = Event::from_compressed(&*clicked.compress()).ok_or("uh oh")?;
     match decompressed {
         Event::Clicked { player_id, at, updated } => {
             assert_eq!(player_id, p);

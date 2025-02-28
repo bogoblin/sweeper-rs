@@ -1,24 +1,63 @@
-use std::fs;
-use std::fs::File;
-use std::io::BufReader;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use world::events::Event;
-use world::World;
+use tokio::fs::{File, OpenOptions};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io;
+use world::{ChunkMines, ChunkPosition, Position};
 
-pub struct EventLog {
-    
+#[derive(Serialize, Deserialize)]
+pub enum SourcedEvent {
+    Click(Position),
+    DoubleClick(Position),
+    Flag(Position),
+    Unflag(Position),
+    ChunkGenerated(ChunkPosition, ChunkMines)
 }
 
-impl EventLog {
-    pub fn open(file_path: PathBuf) -> World {
-        match fs::read(file_path) {
-            Ok(event_log) => {
-                // Event::from_compressed()
-                todo!()
-            },
-            Err(err) => {
-                World::new()
-            }
+pub struct EventLogWriter {
+    file: BufWriter<File>,
+}
+
+impl EventLogWriter {
+    pub async fn new(file_path: PathBuf) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(file_path).await?;
+        Ok(Self { file: BufWriter::new(file) })
+    }
+    
+    pub async fn write(&mut self, event: SourcedEvent) -> io::Result<()> {
+        let mut json = serde_json::to_string(&event)?;
+        json.push('\n');
+        self.file.write_all(json.as_bytes()).await?;
+        Ok(())
+    }
+    
+    pub async fn flush(&mut self) -> io::Result<()> {
+        self.file.flush().await
+    }
+}
+
+pub struct EventLogReader {
+    file: BufReader<File>
+}
+
+impl EventLogReader {
+    pub async fn open(file_path: PathBuf) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(file_path).await?;
+        Ok(Self { file: BufReader::new(file) })
+    }
+
+    // TODO: would like to handle EOFs and invalid events differently
+    pub async fn read(&mut self) -> Option<SourcedEvent> {
+        let mut line = String::new();
+        self.file.read_line(&mut line).await.unwrap();
+        match serde_json::from_str(&line) {
+            Ok(event) => Some(event),
+            Err(_) => None
         }
     }
 }
