@@ -1,4 +1,3 @@
-use futures_util::FutureExt;
 mod eventlog;
 
 use std::collections::VecDeque;
@@ -7,17 +6,16 @@ use axum::extract::{ws::WebSocket, WebSocketUpgrade};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::{body, Router};
+use axum::{body, Error, Router};
 use clap::Parser;
-use futures_util::{
-    stream::{SplitSink, SplitStream},
-    SinkExt, StreamExt,
-};
+use futures_util::{stream::{SplitSink, SplitStream}, Sink, SinkExt, StreamExt};
 use include_dir::{include_dir, Dir};
 use serde_json::{Value};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc};
+use std::task::Poll;
+use std::time::Duration;
 use axum::extract::ws::Message;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
@@ -46,7 +44,7 @@ struct Cli {
 struct AppState {
     world: Arc<Mutex<World>>,
     broadcast_tx: Arc<Sender<Message>>,
-    event_log_writer: Arc<Mutex<EventLogWriter>>,
+    event_log_writer: Arc<UnboundedSender<SourcedEvent>>,
 }
 
 #[tokio::main]
@@ -85,14 +83,28 @@ async fn main() {
     world.events.clear();
     world.players.clear();
 
-    let event_log_writer = EventLogWriter::new("eventlog".into()).await
+    let mut event_log_writer = EventLogWriter::new("eventlog".into()).await
         .expect("Unable to create event log writer");
 
-    let (tx, _) = broadcast::channel(32);
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn((|| async move {
+        let mut events = vec![];
+        while event_rx.recv_many(&mut events, 1024).await != 0 {
+            let events = std::mem::replace(&mut events, vec![]);
+            for event in events {
+                event_log_writer.write(event).await.unwrap()
+            }
+            event_log_writer.flush().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    })());
+    
+    let (broadcast_tx, _) = broadcast::channel(1024);
+    
     let app = AppState {
         world: Arc::new(Mutex::new(world)),
-        broadcast_tx: Arc::new(tx),
-        event_log_writer: Arc::new(Mutex::new(event_log_writer)),
+        broadcast_tx: Arc::new(broadcast_tx),
+        event_log_writer: Arc::new(event_tx),
     };
 
     let router: Router<> = Router::new()
@@ -115,7 +127,7 @@ async fn ws_upgrade_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -
 
 async fn handle_socket(ws: WebSocket, app: AppState) {
     let (ws_tx, ws_rx) = ws.split();
-    
+
     let player_id = app.world.lock().await.new_player_id();
 
     let (client_tx, client_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -138,7 +150,9 @@ async fn recv_broadcast(
     client_tx: UnboundedSender<Message>,
 ) {
     while let Ok(msg) = broadcast_rx.recv().await {
-        client_tx.send(msg).unwrap_or_default();
+        if client_tx.send(msg).is_err() {
+            return;
+        }
     }
 }
 
@@ -151,9 +165,12 @@ async fn send_client_messages(
         let messages = std::mem::replace(&mut messages, vec![]);
         // TODO: find a way to bundle messages together
         for message in messages {
-            if client_tx.send(message).await.is_err() {
+            if client_tx.feed(message).await.is_err() {
                 return; // Disconnected
             }
+        }
+        if client_tx.flush().await.is_err() {
+            return;
         }
     }
 }
@@ -162,7 +179,7 @@ async fn recv_from_client(
     mut client_rx: SplitStream<WebSocket>,
     client_tx: UnboundedSender<Message>,
     broadcast_tx: Arc<Sender<Message>>,
-    event_log_writer: Arc<Mutex<EventLogWriter>>,
+    event_log_writer: Arc<UnboundedSender<SourcedEvent>>,
     world: Arc<Mutex<World>>,
     player_id: &str,
 ) {
@@ -180,15 +197,15 @@ async fn recv_from_client(
                             // in case nothing has been updated.
                             Click(position) => {
                                 let rect = world.click(position, player_id);
-                                to_client.push(ServerMessage::Rect(rect))
+                                // to_client.push(ServerMessage::Rect(rect))
                             }
                             Flag(position) => {
                                 let rect = world.flag(position, player_id);
-                                to_client.push(ServerMessage::Rect(rect))
+                                // to_client.push(ServerMessage::Rect(rect))
                             }
                             DoubleClick(position) => {
                                 let rect = world.double_click(position, player_id);
-                                to_client.push(ServerMessage::Rect(rect))
+                                // to_client.push(ServerMessage::Rect(rect))
                             }
                             Connected => {
                                 for (_player_id, player) in &world.players {
@@ -240,9 +257,8 @@ async fn recv_from_client(
             }
         }
 
-        let mut sourced_events = vec![];
         for (position, mines) in new_chunks {
-            sourced_events.push(SourcedEvent::ChunkGenerated(position, mines));
+            event_log_writer.send(SourcedEvent::ChunkGenerated(position, mines)).unwrap_or_default();
         }
         for message in &to_broadcast {
             if let Some(sourced) = match message {
@@ -264,24 +280,13 @@ async fn recv_from_client(
                 }
                 _ => None
             } {
-                sourced_events.push(sourced);
+                event_log_writer.send(sourced).unwrap_or_default();
             }
-        }
-        if !sourced_events.is_empty() {
-            event_log_writer.lock().then(|mut lock| async move {
-                for event in sourced_events {
-                    lock.write(event).await.expect("Unable to write event to log");
-                }
-                lock.flush().await.expect("Unable to flush event log");
-            }).await;
         }
 
-        if !to_client.is_empty() {
-            let client_messages = to_client.into_iter()
-                .map(|message| Message::Binary(Vec::<u8>::from(&message)));
-            for message in client_messages {
-                client_tx.send(message).unwrap_or_default();
-            }
+        for message in to_client {
+            let message = Message::Binary(Vec::<u8>::from(&message));
+            client_tx.send(message).unwrap_or_default();
         }
     }
 }
