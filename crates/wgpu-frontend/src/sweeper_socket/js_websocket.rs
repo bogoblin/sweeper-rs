@@ -14,7 +14,6 @@ use crate::sweeper_socket::SweeperSocket;
 pub struct WebSocketWorld {
     world: World,
     send_queue: VecDeque<ClientMessage>,
-    receive_queue: VecDeque<ServerMessage>,
     connection: ConnectionState,
 }
 
@@ -23,7 +22,6 @@ impl WebSocketWorld {
         Self {
             world: World::new(),
             send_queue: Default::default(),
-            receive_queue: Default::default(),
             connection: ConnectionState::Disconnected,
         }
     }

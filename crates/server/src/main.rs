@@ -43,14 +43,9 @@ struct Cli {
 #[derive(Clone)]
 struct AppState {
     world: Arc<Mutex<World>>,
-    event_sender: Arc<Mutex<EventSender>>,
+    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+    event_log_writer: Arc<Mutex<EventLogWriter>>,
 }
-
-struct EventSender {
-    broadcast_tx: Sender<Message>,
-    event_log_writer: EventLogWriter,
-}
-
 
 #[tokio::main]
 async fn main() {
@@ -94,10 +89,8 @@ async fn main() {
     let (tx, _) = broadcast::channel(32);
     let app = AppState {
         world: Arc::new(Mutex::new(world)),
-        event_sender: Arc::new(Mutex::new(EventSender {
-            broadcast_tx: tx,
-            event_log_writer,
-        }))
+        broadcast_tx: Arc::new(Mutex::new(tx)),
+        event_log_writer: Arc::new(Mutex::new(event_log_writer)),
     };
 
     let router: Router<> = Router::new()
@@ -126,13 +119,13 @@ async fn handle_socket(ws: WebSocket, app: AppState) {
 
     let tx_clone = ws_tx.clone();
     {
-        let broadcast_rx = app.event_sender.lock().await.broadcast_tx.subscribe();
+        let broadcast_rx = app.broadcast_tx.lock().await.subscribe();
         tokio::spawn(async move {
             recv_broadcast(tx_clone, broadcast_rx).await;
         });
     }
     
-    recv_from_client(ws_rx, ws_tx, app.event_sender, app.world, &player_id).await;
+    recv_from_client(ws_rx, ws_tx, app.broadcast_tx, app.event_log_writer, app.world, &player_id).await;
 }
 
 async fn recv_broadcast(
@@ -150,7 +143,8 @@ async fn recv_broadcast(
 async fn recv_from_client(
     mut client_rx: SplitStream<WebSocket>,
     client_tx: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-    event_sender: Arc<Mutex<EventSender>>,
+    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+    event_log_writer: Arc<Mutex<EventLogWriter>>,
     world: Arc<Mutex<World>>,
     player_id: &str,
 ) {
@@ -218,7 +212,7 @@ async fn recv_from_client(
         {
             let messages = to_client.into_iter()
                 .map(|message| {
-                    Message::Binary(Vec::<u8>::from(message))
+                    Message::Binary(Vec::<u8>::from(&message))
                 });
             let mut lock = client_tx.lock().await;
             for message in messages {
@@ -227,14 +221,27 @@ async fn recv_from_client(
         }
         
         {
-            let mut lock = event_sender.lock().await;
+            let lock = broadcast_tx.lock().await;
+            
+            for message in &to_broadcast {
+                match lock.send(Message::Binary(Vec::<u8>::from(message))) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        error!("Unable to broadcast message: {}", err);
+                    }
+                }
+            }
+        }
+
+        {
+            let mut lock = event_log_writer.lock().await;
             
             for (position, mines) in new_chunks {
-                lock.event_log_writer.write(SourcedEvent::ChunkGenerated(position, mines)).await.unwrap();
+                lock.write(SourcedEvent::ChunkGenerated(position, mines)).await.unwrap();
             }
-            
-            for message in to_broadcast {
-                if let Some(sourced) = match &message {
+
+            for message in &to_broadcast {
+                if let Some(sourced) = match message {
                     ServerMessage::Event(event) => {
                         match event {
                             Event::Clicked { at, .. } => {
@@ -253,21 +260,16 @@ async fn recv_from_client(
                     }
                     _ => None
                 } {
-                    match lock.event_log_writer.write(sourced).await {
+                    match lock.write(sourced).await {
                         Ok(_) => {}
                         Err(err) => {
                             error!("Unable to write to event log: {}", err);
                         }
                     }
                 }
-                match lock.broadcast_tx.send(Message::Binary(Vec::<u8>::from(message))) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("Unable to broadcast message: {}", err);
-                    }
-                }
             }
-            lock.event_log_writer.flush().await.expect("Unable to flush event log");
+            
+            lock.flush().await.expect("Unable to flush event log");
         }
         
     }

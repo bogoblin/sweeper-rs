@@ -51,7 +51,7 @@ struct Drag {
 impl Camera {
     pub fn new(device: &wgpu::Device, size: &PhysicalSize<u32>) -> Self {
         let mut center: Vector2<f64> = Vector2::zero();
-        let mut zoom_level = 0.0;
+        let zoom_level = 0.0;
         #[cfg(target_arch = "wasm32")]
         {
             let url = UrlInfo::new();

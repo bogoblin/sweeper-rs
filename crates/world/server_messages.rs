@@ -26,8 +26,8 @@ impl ServerMessage {
     }
 }
 
-impl From<ServerMessage> for Vec<u8> {
-    fn from(value: ServerMessage) -> Self {
+impl From<&ServerMessage> for Vec<u8> {
+    fn from(value: &ServerMessage) -> Self {
         let header = value.header();
         match value {
             ServerMessage::Event(event) => {
@@ -38,7 +38,7 @@ impl From<ServerMessage> for Vec<u8> {
             }
             ServerMessage::Rect(rect) => {
                 let mut result = vec![header];
-                result.append(&mut (&rect).into());
+                result.append(&mut rect.into());
                 result
             }
             ServerMessage::Player(player) |
@@ -123,7 +123,7 @@ mod tests {
             });
         }
         let rect = UpdatedRect::new(updated);
-        let compressed: Vec<u8> = ServerMessage::Rect(rect.clone()).into();
+        let compressed: Vec<u8> = (&ServerMessage::Rect(rect.clone())).into();
         match ServerMessage::from_compressed(compressed) {
             Ok(ServerMessage::Rect(updated)) => {
                 assert_eq!(updated.top_left, rect.top_left);

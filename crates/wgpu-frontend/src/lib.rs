@@ -140,9 +140,13 @@ impl State {
                 },
             ).await.unwrap();
 
-            let mut texture_size = 2 << 12;
-            #[cfg(target_arch = "wasm32")] {
-                texture_size = 2 << 14;
+            let mut texture_size;
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "wasm32")] {
+                    texture_size = 2 << 14;
+                } else {
+                    texture_size = 2 << 12;
+                }
             }
             
             let (device, queue) = loop {
@@ -240,7 +244,7 @@ impl State {
                 cache: None,
             });
 
-            let mut world;
+            let world;
             cfg_if::cfg_if! {
                 if #[cfg(target_arch = "wasm32")] {
                     world = Box::new(sweeper_socket::js_websocket::WebSocketWorld::new())
