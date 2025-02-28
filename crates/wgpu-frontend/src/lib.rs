@@ -474,7 +474,7 @@ impl State {
             self.world.world().apply_server_message(&message);
             match message {
                 ServerMessage::Event(event) => {
-                    let player_id = self.world.world().create_or_update_player(&event);
+                    let player_id = event.player_id();
                     if let Some(player) = self.world.world().players.get(&player_id) {
                         self.cursors.update_player(player, &self.queue);
                     }

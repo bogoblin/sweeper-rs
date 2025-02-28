@@ -6,15 +6,14 @@ use axum::extract::{ws::WebSocket, WebSocketUpgrade};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::{body, Error, Router};
+use axum::{body, Router};
 use clap::Parser;
-use futures_util::{stream::{SplitSink, SplitStream}, Sink, SinkExt, StreamExt};
+use futures_util::{stream::{SplitSink, SplitStream}, SinkExt, StreamExt};
 use include_dir::{include_dir, Dir};
 use serde_json::{Value};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc};
-use std::task::Poll;
 use std::time::Duration;
 use axum::extract::ws::Message;
 use mime_guess::mime::TEXT_HTML;
@@ -25,10 +24,9 @@ use tokio::sync::{broadcast, Mutex};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
-use world::events::Event;
 use world::player::Player;
 use world::server_messages::ServerMessage;
-use world::World;
+use world::{Rect, World};
 use crate::eventlog::{EventLogReader, EventLogWriter, SourcedEvent};
 
 #[derive(Parser)]
@@ -79,8 +77,6 @@ async fn main() {
     } else {
         info!("No event log found, starting a new world.");
     }
-    // We don't need to broadcast these events, so clear the queue:
-    world.events.clear();
     world.players.clear();
 
     let mut event_log_writer = EventLogWriter::new("eventlog".into()).await
@@ -183,10 +179,15 @@ async fn recv_from_client(
     world: Arc<Mutex<World>>,
     player_id: &str,
 ) {
+    let broadcast = move |message: &ServerMessage| {
+        if broadcast_tx.send(Message::Binary(message.into())).is_err() {
+            error!("Unable to broadcast message");
+        }
+    };
     while let Some(Ok(msg)) = client_rx.next().await {
-        let mut to_broadcast = vec![];
         let mut to_client = vec![];
         let mut new_chunks = VecDeque::new();
+        let mut event = None;
         match msg {
             Message::Text(text) => {
                 if let Ok(message) = serde_json::from_str::<Value>(&text) {
@@ -196,28 +197,37 @@ async fn recv_from_client(
                             // Click, Flag, and DoubleClick return a safety rect to send to the client
                             // in case nothing has been updated.
                             Click(position) => {
-                                let rect = world.click(position, player_id);
-                                // to_client.push(ServerMessage::Rect(rect))
+                                event = world.click(position, player_id);
+                                if event.is_none() {
+                                    let rect = world.get_rect(&Rect::from_center_and_size(position, 1, 1));
+                                    to_client.push(ServerMessage::Rect(rect));
+                                }
                             }
                             Flag(position) => {
-                                let rect = world.flag(position, player_id);
-                                // to_client.push(ServerMessage::Rect(rect))
+                                event = world.flag(position, player_id);
+                                if event.is_none() {
+                                    let rect = world.get_rect(&Rect::from_center_and_size(position, 1, 1));
+                                    to_client.push(ServerMessage::Rect(rect));
+                                }
                             }
                             DoubleClick(position) => {
-                                let rect = world.double_click(position, player_id);
-                                // to_client.push(ServerMessage::Rect(rect))
+                                event = world.double_click(position, player_id);
+                                if event.is_none() {
+                                    let rect = world.get_rect(&Rect::from_center_and_size(position, 3, 3));
+                                    to_client.push(ServerMessage::Rect(rect));
+                                }
                             }
                             Connected => {
                                 for (_player_id, player) in &world.players {
                                     to_client.push(ServerMessage::Player(player.clone()))
                                 }
                                 let player = Player::new(player_id.to_string());
-                                to_broadcast.push(ServerMessage::Player(player.clone()));
-                                to_client.push(ServerMessage::Welcome(player));
+                                to_client.push(ServerMessage::Welcome(player.clone()));
+                                broadcast(&ServerMessage::Player(player));
                             },
                             Disconnected(player_id) => {
                                 world.players.remove(&player_id);
-                                to_broadcast.push(ServerMessage::Disconnected(player_id));
+                                broadcast(&ServerMessage::Disconnected(player_id));
                             }
                             Query(rect) => {
                                 let query = world.query_chunks(&rect);
@@ -229,11 +239,6 @@ async fn recv_from_client(
                                 }
                             }
                         }
-                        while let Some(event) = world.events.pop_front() {
-                            if event.should_send() {
-                                to_broadcast.push(ServerMessage::Event(event))
-                            }
-                        }
                         std::mem::swap(&mut world.generated_chunks, &mut new_chunks);
                     }
                 }
@@ -243,50 +248,20 @@ async fn recv_from_client(
             Message::Pong(_) => {}
             Message::Close(_) => return
         }
-
-        if !to_broadcast.is_empty() {
-            let broadcast_messages = to_broadcast.iter()
-                .map(|message| Message::Binary(Vec::<u8>::from(message)));
-            for message in broadcast_messages {
-                match broadcast_tx.send(message) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("Unable to broadcast message: {}", err);
-                    }
-                }
-            }
-        }
-
-        for (position, mines) in new_chunks {
-            event_log_writer.send(SourcedEvent::ChunkGenerated(position, mines)).unwrap_or_default();
-        }
-        for message in &to_broadcast {
-            if let Some(sourced) = match message {
-                ServerMessage::Event(event) => {
-                    match event {
-                        Event::Clicked { at, .. } => {
-                            Some(SourcedEvent::Click(*at))
-                        }
-                        Event::DoubleClicked { at, .. } => {
-                            Some(SourcedEvent::DoubleClick(*at))
-                        }
-                        Event::Flag { at, .. } => {
-                            Some(SourcedEvent::Flag(*at))
-                        }
-                        Event::Unflag { at, .. } => {
-                            Some(SourcedEvent::Unflag(*at))
-                        }
-                    }
-                }
-                _ => None
-            } {
-                event_log_writer.send(sourced).unwrap_or_default();
-            }
+        
+        if let Some(event) = event {
+            event_log_writer.send(SourcedEvent::from_event(&event))
+                .unwrap_or_default();
+            broadcast(&ServerMessage::Event(event));
         }
 
         for message in to_client {
             let message = Message::Binary(Vec::<u8>::from(&message));
             client_tx.send(message).unwrap_or_default();
+        }
+        
+        for (position, mines) in new_chunks {
+            event_log_writer.send(SourcedEvent::ChunkGenerated(position, mines)).unwrap_or_default();
         }
     }
 }

@@ -33,7 +33,6 @@ pub struct World {
     pub chunks: Vec<Chunk>,
     pub seed: u64,
 
-    pub events: VecDeque<Event>,
     pub generated_chunks: VecDeque<(ChunkPosition, ChunkMines)>,
     pub chunk_store: ChunkStore,
     pub players: HashMap<String, Player>,
@@ -82,7 +81,6 @@ impl World {
     }
 
     pub fn apply_event(&mut self, event: &Event) {
-        self.create_or_update_player(event);
         for UpdatedTile {position, tile} in event.tiles_updated() {
             let chunk_id = self.generate_chunk(position);
             self.chunks[chunk_id].set_tile(position, tile);
@@ -104,7 +102,6 @@ impl World {
             positions: vec![],
             chunks: vec![],
             seed: 0,
-            events: vec![].into(),
             generated_chunks: Default::default(),
             chunk_store: ChunkStore::new(),
             players: Default::default(),
@@ -122,30 +119,6 @@ impl World {
         player_id
     }
     
-    pub fn create_or_update_player(&mut self, event: &Event) -> String {
-        let player_id = match event {
-            Event::Clicked { player_id,.. } |
-            Event::DoubleClicked { player_id,.. } |
-            Event::Flag { player_id,.. } |
-            Event::Unflag { player_id,.. } => {
-                player_id.clone()
-            }
-        };
-        let player_entry = self.players.get_mut(&player_id);
-        match player_entry {
-            None => {
-                let mut new_player = Player::new(player_id.clone());
-                new_player.update(event);
-                self.players.insert(player_id.clone(), new_player);
-                player_id
-            }
-            Some(player) => {
-                player.update(event);
-                player_id
-            }
-        }
-    }
-
     pub fn get_chunk_id(&self, position: Position) -> Option<&usize> {
         self.chunk_ids.get(&position.chunk_position())
     }
@@ -235,22 +208,28 @@ impl World {
         });
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
-
-    pub fn click(&mut self, at: Position, by_player_id: &str) -> UpdatedRect {
-        let updated = self.reveal(vec![at]);
-        self.push_event(Event::Clicked {
-            player_id: by_player_id.to_string(),
-            at,
-            updated
+    
+    fn set_player_position(&mut self, player_id: &str, position: Position) {
+        self.players.insert(player_id.to_string(), Player {
+            player_id: player_id.to_string(),
+            position,
         });
-        self.get_rect(&Rect::from_center_and_size(at, 1, 1))
+    }
+
+    pub fn click(&mut self, at: Position, by_player_id: &str) -> Option<Event> {
+        self.set_player_position(by_player_id, at);
+        let updated = self.reveal(vec![at]);
+        if !updated.updated.is_empty() {
+            Some(Event::Clicked {
+                player_id: by_player_id.to_string(),
+                at,
+                updated,
+            })
+        } else {
+            None
+        }
     }
     
-    fn push_event(&mut self, event: Event) {
-        self.create_or_update_player(&event);
-        self.events.push_back(event);
-    }
-
     fn reveal(&mut self, mut to_reveal: Vec<Position>) -> UpdatedRect {
         if to_reveal.is_empty() {
             return Default::default();
@@ -317,43 +296,44 @@ impl World {
         }
     }
 
-    pub fn double_click(&mut self, position: Position, by_player_id: &str) -> UpdatedRect {
+    pub fn double_click(&mut self, position: Position, by_player_id: &str) -> Option<Event> {
+        self.set_player_position(by_player_id, position);
         if let Some(to_reveal) = self.check_double_click(&position) {
             let updated = self.reveal(to_reveal);
-            self.push_event(Event::DoubleClicked {
+            Some(Event::DoubleClicked {
                 player_id: by_player_id.to_string(),
                 at: position,
                 updated
-            });
-        }
-        self.get_rect(&Rect::from_center_and_size(position, 3, 3))
+            })
+        } else { None }
     }
 
-    pub fn flag(&mut self, position: Position, by_player_id: &str) -> UpdatedRect {
+    pub fn flag(&mut self, position: Position, by_player_id: &str) -> Option<Event> {
+        self.set_player_position(by_player_id, position);
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
                 if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
                     if !tile.is_revealed() {
-                        if tile.is_flag() {
+                        return if tile.is_flag() {
                             // Unflag
                             *tile = tile.without_flag();
-                            self.push_event(Event::Unflag {
+                            Some(Event::Unflag {
                                 player_id: by_player_id.to_string(),
                                 at: position
-                            });
+                            })
                         } else {
                             // Flag
                             *tile = tile.with_flag();
-                            self.push_event(Event::Flag {
+                            Some(Event::Flag {
                                 player_id: by_player_id.to_string(),
                                 at: position
-                            });
+                            })
                         }
                     }
                 }
             }
-        }
-        self.get_rect(&Rect::from_center_and_size(position, 1, 1))
+        } 
+        None
     }
 }
 

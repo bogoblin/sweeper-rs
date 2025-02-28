@@ -8,6 +8,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::io;
 use world::{ChunkMines, ChunkPosition, Position};
+use world::events::Event;
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
@@ -21,6 +22,25 @@ pub enum SourcedEvent {
         #[serde_as(as = "Base64<Standard, Unpadded>")]
         ChunkMines
     )
+}
+
+impl SourcedEvent {
+    pub(crate) fn from_event(event: &Event) -> SourcedEvent {
+        match event {
+            Event::Clicked { at, .. } => {
+                SourcedEvent::Click(*at)
+            }
+            Event::DoubleClicked { at, .. } => {
+                SourcedEvent::DoubleClick(*at)
+            }
+            Event::Flag { at, .. } => {
+                SourcedEvent::Flag(*at)
+            }
+            Event::Unflag { at, .. } => {
+                SourcedEvent::Unflag(*at)
+            }
+        }
+    }
 }
 
 pub struct EventLogWriter {
