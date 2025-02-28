@@ -1,3 +1,7 @@
+use serde_with::base64::Standard;
+use serde_with::base64::Base64;
+use serde_with::formats::Unpadded;
+use serde_with::serde_as;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs::{File, OpenOptions};
@@ -5,13 +9,18 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::io;
 use world::{ChunkMines, ChunkPosition, Position};
 
+#[serde_as]
 #[derive(Serialize, Deserialize)]
 pub enum SourcedEvent {
     Click(Position),
     DoubleClick(Position),
     Flag(Position),
     Unflag(Position),
-    ChunkGenerated(ChunkPosition, ChunkMines)
+    ChunkGenerated(
+        ChunkPosition, 
+        #[serde_as(as = "Base64<Standard, Unpadded>")]
+        ChunkMines
+    )
 }
 
 pub struct EventLogWriter {

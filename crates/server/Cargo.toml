@@ -4,12 +4,10 @@ edition = "2021"
 version = "1.0.0"
 
 [dependencies]
-derive_more = "0.99.17"
 tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "macros", "time", "fs"] }
 axum = { version = "0.7.5", features = ["ws"] }
 serde = { version = "1.0.202", features = ["derive"] }
 serde_json = "1.0.117"
-postcard = { version = "1.0.8", features = ["alloc"] }
 world = { path = "../world" }
 clap = { version = "4.5.17", features = ["derive"] }
 include_dir = "0.7.4"
@@ -17,3 +15,4 @@ mime_guess = "2.0.4"
 log = "0.4.21"
 futures-util = "0.3.31"
 env_logger = "0.11.6"
+serde_with = { version = "3.12.0", features = ["base64"] }
