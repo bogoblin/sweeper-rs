@@ -485,7 +485,6 @@ impl State {
                         Event::Unflag { at, .. } => {
                             self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
                         }
-                        Event::GeneratedChunk { .. } => {}
                     }
                 }
                 ServerMessage::Chunk(chunk) => {

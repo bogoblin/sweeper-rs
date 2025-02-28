@@ -1,4 +1,5 @@
 mod backup;
+mod eventlog;
 
 use axum::extract::{Path, State};
 use axum::extract::{ws::WebSocket, WebSocketUpgrade};

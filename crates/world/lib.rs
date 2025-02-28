@@ -128,7 +128,6 @@ impl World {
             Event::Unflag { player_id,.. } => {
                 player_id.clone()
             }
-            Event::GeneratedChunk { .. } => { "".to_string() }
         };
         let player_entry = self.players.get_mut(&player_id);
         match player_entry {
@@ -201,7 +200,6 @@ impl World {
                 self.positions.push(position);
                 self.chunks.push(new_chunk);
                 self.chunk_store.insert(position, new_id);
-                self.push_event(Event::GeneratedChunk { position, mines });
                 new_id
             }
         }

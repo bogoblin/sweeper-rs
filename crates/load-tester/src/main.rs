@@ -138,7 +138,6 @@ impl Client {
                         Event::DoubleClicked { at, .. } => ClientMessage::DoubleClick(at.clone()),
                         Event::Flag { at, .. } |
                         Event::Unflag { at, .. } => ClientMessage::Flag(at.clone()),
-                        Event::GeneratedChunk { .. } => return,
                     };
                     for sent in &mut self.sent_messages {
                         if sent.response.is_none() {

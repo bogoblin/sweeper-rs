@@ -1,4 +1,4 @@
-use crate::{ChunkMines, ChunkPosition, Position, Tile, UpdatedRect, UpdatedTile};
+use crate::{Position, Tile, UpdatedRect, UpdatedTile};
 use serde::{Deserialize, Serialize};
 use std::i32;
 
@@ -23,10 +23,6 @@ pub enum Event {
         player_id: String,
         at: Position,
     },
-    GeneratedChunk {
-        position: ChunkPosition,
-        mines: ChunkMines,
-    }
 }
 
 impl Event {
@@ -48,7 +44,6 @@ impl Event {
                     tile: Tile::empty()
                 }]
             }
-            Event::GeneratedChunk { .. } => { vec![] }
         }
     }
     
@@ -60,15 +55,11 @@ impl Event {
             Event::Unflag { player_id, .. } => {
                 player_id.clone()
             }
-            Event::GeneratedChunk { .. } => { "".to_string() }
         }
     }
     
     pub fn should_send(&self) -> bool {
-        match self {
-            Event::GeneratedChunk { .. } => false,
-            _ => true
-        }
+        true
     }
 }
 impl Event {
@@ -84,9 +75,6 @@ impl Event {
             }
             Event::Unflag { player_id, at } => {
                 ("u", player_id, at, None)
-            }
-            Event::GeneratedChunk { position, .. } => {
-                ("Q", &"".to_string(), &position.position(), None)
             }
         };
 
