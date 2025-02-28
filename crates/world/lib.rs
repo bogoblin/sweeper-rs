@@ -2,7 +2,13 @@ use crate::chunk_store::ChunkStore;
 use crate::compression::PublicTile;
 use crate::events::Event;
 use crate::player::Player;
+use crate::server_messages::ServerMessage;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use bitvec::prelude::*;
 use bytes_cast::BytesCast;
+use derive_more::{Div, Mul};
+use huffman::{BitWriter, HuffmanCode};
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::{thread_rng, RngCore, SeedableRng};
@@ -12,12 +18,7 @@ use std::cmp::{max, min, PartialEq};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, AddAssign, Sub};
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
-use derive_more::{Div, Mul};
-use huffman::{BitWriter, HuffmanCode};
-use crate::server_messages::ServerMessage;
+use std::ops::{Add, AddAssign, Deref, DerefMut, Sub};
 
 pub mod server_messages;
 pub mod events;
@@ -127,6 +128,7 @@ impl World {
             Event::Unflag { player_id,.. } => {
                 player_id.clone()
             }
+            Event::GeneratedChunk { .. } => { "".to_string() }
         };
         let player_entry = self.players.get_mut(&player_id);
         match player_entry {
@@ -192,11 +194,14 @@ impl World {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 let position = entry.key().clone();
-                let new_chunk = Chunk::generate(position.clone(), 40, self.seed);
+                let rng = StdRng::seed_from_u64(position.seed(0));
+                let mines = ChunkMines::random(40, rng);
+                let new_chunk = mines.to_chunk(position);
                 entry.insert(new_id);
                 self.positions.push(position);
                 self.chunks.push(new_chunk);
                 self.chunk_store.insert(position, new_id);
+                self.push_event(Event::GeneratedChunk { position, mines });
                 new_id
             }
         }
@@ -348,6 +353,57 @@ impl World {
             }
         }
         self.get_rect(&Rect::from_center_and_size(position, 1, 1))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[derive(Default, Clone, Debug)]
+pub struct ChunkMines {
+    mines: [u16; 16]
+}
+
+impl ChunkMines {
+    pub fn random(number_of_mines: u8, mut rng: StdRng) -> Self {
+        let mut result = Self::default();
+        for mine_index in (0..255).choose_multiple(&mut rng, number_of_mines as usize) {
+            result.set(mine_index, true);
+        }
+        result
+    }
+    
+    pub fn positions(&self) -> Vec<PositionInChunk> {
+        let n_ones = self.count_ones();
+        let mut result = Vec::with_capacity(n_ones);
+        for index in self.iter_ones() {
+            result.push(PositionInChunk(index as u8))
+        }
+        result
+    }
+    
+    pub fn to_chunk(&self, position: ChunkPosition) -> Chunk {
+        let mut new_chunk = Chunk {
+            tiles: ChunkTiles([Tile::empty(); 256]),
+            position,
+            adjacent_mines_filled: false
+        };
+        for index in self.iter_ones() {
+            new_chunk.tiles.0[index] = Tile::mine();
+        }
+        new_chunk
+    }
+}
+
+impl Deref for ChunkMines {
+    type Target = BitSlice<u16>;
+
+    fn deref(&self) -> &Self::Target {
+        self.mines.view_bits::<Lsb0>()
+    }
+}
+
+impl DerefMut for ChunkMines {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.mines.view_bits_mut::<Lsb0>()
     }
 }
 
@@ -617,21 +673,6 @@ impl AddAssign<u8> for Tile {
 }
 
 impl Chunk {
-    pub fn generate(position: ChunkPosition, number_of_mines: u8, salt: u64) -> Chunk {
-        let mut new_chunk = Chunk {
-            tiles: ChunkTiles([Tile::empty(); 256]),
-            position,
-            adjacent_mines_filled: false
-        };
-        let mut rng = StdRng::seed_from_u64(position.seed(salt));
-        for mine_index in (0..255).choose_multiple(&mut rng, number_of_mines as usize) {
-            let x = mine_index % 16;
-            let y = (mine_index - x) >> 4;
-            new_chunk.set_tile(Position(x, y), Tile::mine());
-        }
-        new_chunk
-    }
-    
     pub fn should_send(&self) -> bool {
         self.adjacent_mines_filled
     }

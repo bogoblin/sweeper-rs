@@ -245,7 +245,7 @@ impl State {
                 if #[cfg(target_arch = "wasm32")] {
                     world = Box::new(sweeper_socket::js_websocket::WebSocketWorld::new())
                 } else {
-                    world = Box::new(sweeper_socket::native_websocket::WebSocketWorld::new())
+                    world = Box::new(sweeper_socket::local::LocalWorld::new())
                 }
             }
             let cursors = Cursors::new(&device, &queue, surface_format, &camera);
@@ -485,6 +485,7 @@ impl State {
                         Event::Unflag { at, .. } => {
                             self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
                         }
+                        Event::GeneratedChunk { .. } => {}
                     }
                 }
                 ServerMessage::Chunk(chunk) => {

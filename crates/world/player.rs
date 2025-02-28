@@ -25,6 +25,7 @@ impl Player {
             Event::Unflag { at, .. } => {
                 self.position = at.clone();
             }
+            Event::GeneratedChunk { .. } => {}
         }
     }
 

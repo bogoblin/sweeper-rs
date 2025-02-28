@@ -6,7 +6,7 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         pub mod js_websocket;
     } else {
-        pub mod native_websocket;
+        pub mod local;
     }
 }
 

@@ -1,7 +1,7 @@
 use futures_util::future::join_all;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use rand::RngCore;
+use rand::{thread_rng, RngCore};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
@@ -87,7 +87,7 @@ impl Client {
         }
         loop {
             let mut client = client.lock().await;
-            let message = ClientMessage::Click(Position(rand::rng().next_u32() as i32, rand::rng().next_u32() as i32));
+            let message = ClientMessage::Click(Position(thread_rng().next_u32() as i32, thread_rng().next_u32() as i32));
             client.send_message(message, &mut write).await;
             tokio::time::sleep(TIME_BETWEEN_MESSAGES).await;
         }
@@ -138,6 +138,7 @@ impl Client {
                         Event::DoubleClicked { at, .. } => ClientMessage::DoubleClick(at.clone()),
                         Event::Flag { at, .. } |
                         Event::Unflag { at, .. } => ClientMessage::Flag(at.clone()),
+                        Event::GeneratedChunk { .. } => return,
                     };
                     for sent in &mut self.sent_messages {
                         if sent.response.is_none() {

@@ -19,9 +19,9 @@ impl SweeperSocket for LocalWorld {
     fn send(&mut self, message: ClientMessage) {
         match message {
             ClientMessage::Connected => {}
-            ClientMessage::Click(position) => { self.world.click(position, "") }
-            ClientMessage::Flag(position) => { self.world.flag(position, "") }
-            ClientMessage::DoubleClick(position) => { self.world.double_click(position, "") }
+            ClientMessage::Click(position) => { self.world.click(position, ""); }
+            ClientMessage::Flag(position) => { self.world.flag(position, ""); }
+            ClientMessage::DoubleClick(position) => { self.world.double_click(position, ""); }
             ClientMessage::Query(_) => {}
             ClientMessage::Disconnected(player_id) => { self.world.players.remove(&player_id); }
         }

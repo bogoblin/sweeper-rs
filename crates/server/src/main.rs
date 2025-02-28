@@ -188,7 +188,9 @@ async fn recv_from_client(
                             }
                         }
                         while let Some(event) = world.events.pop_front() {
-                            to_broadcast.push(ServerMessage::Event(event))
+                            if event.should_send() {
+                                to_broadcast.push(ServerMessage::Event(event))
+                            }
                         }
 
                         match world.write_backup() {
