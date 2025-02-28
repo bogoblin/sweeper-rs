@@ -1,3 +1,4 @@
+use futures_util::FutureExt;
 mod eventlog;
 
 use std::collections::VecDeque;
@@ -23,6 +24,7 @@ use tokio::net::TcpListener;
 use log::{error, info, trace};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::{broadcast, Mutex};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use world::client_messages::ClientMessage;
 use world::client_messages::ClientMessage::*;
 use world::events::Event;
@@ -43,7 +45,7 @@ struct Cli {
 #[derive(Clone)]
 struct AppState {
     world: Arc<Mutex<World>>,
-    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+    broadcast_tx: Arc<Sender<Message>>,
     event_log_writer: Arc<Mutex<EventLogWriter>>,
 }
 
@@ -89,7 +91,7 @@ async fn main() {
     let (tx, _) = broadcast::channel(32);
     let app = AppState {
         world: Arc::new(Mutex::new(world)),
-        broadcast_tx: Arc::new(Mutex::new(tx)),
+        broadcast_tx: Arc::new(tx),
         event_log_writer: Arc::new(Mutex::new(event_log_writer)),
     };
 
@@ -113,37 +115,53 @@ async fn ws_upgrade_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -
 
 async fn handle_socket(ws: WebSocket, app: AppState) {
     let (ws_tx, ws_rx) = ws.split();
-    let ws_tx = Arc::new(Mutex::new(ws_tx));
     
     let player_id = app.world.lock().await.new_player_id();
 
-    let tx_clone = ws_tx.clone();
+    let (client_tx, client_rx) = tokio::sync::mpsc::unbounded_channel();
+    let client_tx_clone = client_tx.clone();
     {
-        let broadcast_rx = app.broadcast_tx.lock().await.subscribe();
+        let broadcast_rx = app.broadcast_tx.subscribe();
         tokio::spawn(async move {
-            recv_broadcast(tx_clone, broadcast_rx).await;
+            recv_broadcast(broadcast_rx, client_tx_clone).await;
+        });
+        tokio::spawn(async move {
+            send_client_messages(ws_tx, client_rx).await;
         });
     }
     
-    recv_from_client(ws_rx, ws_tx, app.broadcast_tx, app.event_log_writer, app.world, &player_id).await;
+    recv_from_client(ws_rx, client_tx, app.broadcast_tx, app.event_log_writer, app.world, &player_id).await;
 }
 
 async fn recv_broadcast(
-    client_tx: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     mut broadcast_rx: Receiver<Message>,
+    client_tx: UnboundedSender<Message>,
 ) {
     while let Ok(msg) = broadcast_rx.recv().await {
-        trace!("Broadcasting message: {:?}", msg);
-        if client_tx.lock().await.send(msg).await.is_err() {
-            return; // disconnected.
+        client_tx.send(msg).unwrap_or_default();
+    }
+}
+
+async fn send_client_messages(
+    mut client_tx: SplitSink<WebSocket, Message>,
+    mut client_rx: UnboundedReceiver<Message>,
+) {
+    let mut messages = vec![];
+    while client_rx.recv_many(&mut messages, 1024).await != 0 {
+        let messages = std::mem::replace(&mut messages, vec![]);
+        // TODO: find a way to bundle messages together
+        for message in messages {
+            if client_tx.send(message).await.is_err() {
+                return; // Disconnected
+            }
         }
     }
 }
 
 async fn recv_from_client(
     mut client_rx: SplitStream<WebSocket>,
-    client_tx: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-    broadcast_tx: Arc<Mutex<Sender<Message>>>,
+    client_tx: UnboundedSender<Message>,
+    broadcast_tx: Arc<Sender<Message>>,
     event_log_writer: Arc<Mutex<EventLogWriter>>,
     world: Arc<Mutex<World>>,
     player_id: &str,
@@ -209,22 +227,11 @@ async fn recv_from_client(
             Message::Close(_) => return
         }
 
-        {
-            let messages = to_client.into_iter()
-                .map(|message| {
-                    Message::Binary(Vec::<u8>::from(&message))
-                });
-            let mut lock = client_tx.lock().await;
-            for message in messages {
-                lock.send(message).await.unwrap_or_default();
-            }
-        }
-        
-        {
-            let lock = broadcast_tx.lock().await;
-            
-            for message in &to_broadcast {
-                match lock.send(Message::Binary(Vec::<u8>::from(message))) {
+        if !to_broadcast.is_empty() {
+            let broadcast_messages = to_broadcast.iter()
+                .map(|message| Message::Binary(Vec::<u8>::from(message)));
+            for message in broadcast_messages {
+                match broadcast_tx.send(message) {
                     Ok(_) => {}
                     Err(err) => {
                         error!("Unable to broadcast message: {}", err);
@@ -233,45 +240,49 @@ async fn recv_from_client(
             }
         }
 
-        {
-            let mut lock = event_log_writer.lock().await;
-            
-            for (position, mines) in new_chunks {
-                lock.write(SourcedEvent::ChunkGenerated(position, mines)).await.unwrap();
-            }
-
-            for message in &to_broadcast {
-                if let Some(sourced) = match message {
-                    ServerMessage::Event(event) => {
-                        match event {
-                            Event::Clicked { at, .. } => {
-                                Some(SourcedEvent::Click(*at))
-                            }
-                            Event::DoubleClicked { at, .. } => {
-                                Some(SourcedEvent::DoubleClick(*at))
-                            }
-                            Event::Flag { at, .. } => {
-                                Some(SourcedEvent::Flag(*at))
-                            }
-                            Event::Unflag { at, .. } => {
-                                Some(SourcedEvent::Unflag(*at))
-                            }
+        let mut sourced_events = vec![];
+        for (position, mines) in new_chunks {
+            sourced_events.push(SourcedEvent::ChunkGenerated(position, mines));
+        }
+        for message in &to_broadcast {
+            if let Some(sourced) = match message {
+                ServerMessage::Event(event) => {
+                    match event {
+                        Event::Clicked { at, .. } => {
+                            Some(SourcedEvent::Click(*at))
                         }
-                    }
-                    _ => None
-                } {
-                    match lock.write(sourced).await {
-                        Ok(_) => {}
-                        Err(err) => {
-                            error!("Unable to write to event log: {}", err);
+                        Event::DoubleClicked { at, .. } => {
+                            Some(SourcedEvent::DoubleClick(*at))
+                        }
+                        Event::Flag { at, .. } => {
+                            Some(SourcedEvent::Flag(*at))
+                        }
+                        Event::Unflag { at, .. } => {
+                            Some(SourcedEvent::Unflag(*at))
                         }
                     }
                 }
+                _ => None
+            } {
+                sourced_events.push(sourced);
             }
-            
-            lock.flush().await.expect("Unable to flush event log");
         }
-        
+        if !sourced_events.is_empty() {
+            event_log_writer.lock().then(|mut lock| async move {
+                for event in sourced_events {
+                    lock.write(event).await.expect("Unable to write event to log");
+                }
+                lock.flush().await.expect("Unable to flush event log");
+            }).await;
+        }
+
+        if !to_client.is_empty() {
+            let client_messages = to_client.into_iter()
+                .map(|message| Message::Binary(Vec::<u8>::from(&message)));
+            for message in client_messages {
+                client_tx.send(message).unwrap_or_default();
+            }
+        }
     }
 }
 
