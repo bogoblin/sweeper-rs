@@ -30,6 +30,7 @@ use crate::tilerender_texture::{TileMapTexture};
 use wasm_bindgen::prelude::*;
 use winit::application::ApplicationHandler;
 use world::client_messages::ClientMessage;
+use world::player::Player;
 use world::server_messages::ServerMessage;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
@@ -475,19 +476,28 @@ impl State {
             match message {
                 ServerMessage::Event(event) => {
                     let player_id = event.player_id();
-                    if let Some(player) = self.world.world().players.get(&player_id) {
-                        self.cursors.update_player(player, &self.queue);
-                    }
                     match event {
-                        Event::Clicked { updated, .. }
-                        | Event::DoubleClicked { updated, .. } => {
+                        Event::Clicked { updated, at, .. }
+                        | Event::DoubleClicked { updated, at, .. } => {
                             self.tile_map_texture.write_updated_rect(&self.queue, &updated);
+                            self.cursors.update_player(&Player {
+                                player_id,
+                                position: at,
+                            }, &self.queue);
                         }
                         Event::Flag { at, .. } => {
                             self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
+                            self.cursors.update_player(&Player {
+                                player_id,
+                                position: at,
+                            }, &self.queue);
                         }
                         Event::Unflag { at, .. } => {
                             self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
+                            self.cursors.update_player(&Player {
+                                player_id,
+                                position: at,
+                            }, &self.queue);
                         }
                     }
                 }
@@ -496,8 +506,8 @@ impl State {
                     self.world.world().insert_chunk(chunk);
                 }
                 ServerMessage::Player(player) => {
+                    self.world.world().players.insert(player.player_id.clone(), player.clone());
                     self.cursors.update_player(&player, &self.queue);
-                    self.world.world().players.insert(player.player_id.clone(), player);
                 }
                 ServerMessage::Welcome(player) => {
                     info!("Welcome");

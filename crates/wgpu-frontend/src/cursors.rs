@@ -12,6 +12,7 @@ use world::player::Player;
 #[derive(Debug)]
 pub struct Cursors {
     cursor_texture: Texture,
+    colors_texture: Texture,
     cursors: [CursorInstance; Cursors::N_CURSORS],
     render_pipeline: RenderPipeline,
     instance_buffer: wgpu::Buffer,
@@ -36,12 +37,16 @@ impl Cursors {
                 source: ShaderSource::Wgsl(wgsl_source.into()),
             }
         );
+        
+        let colors_texture = Texture::from_bytes(device, queue, include_bytes!("hue-saturation.png"), "Colors Texture").unwrap();
+        
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Cursors Render Pipeline Layout"),
                 bind_group_layouts: &[
                     &camera.bind_group_layout(),
                     &cursor_texture.bind_group_layout(),
+                    &colors_texture.bind_group_layout(),
                 ],
                 push_constant_ranges: &[],
             });
@@ -96,6 +101,7 @@ impl Cursors {
         );
         Self {
             cursor_texture,
+            colors_texture,
             cursors,
             render_pipeline,
             instance_buffer,
@@ -128,6 +134,7 @@ impl Cursors {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, camera.bind_group(), &[]);
             render_pass.set_bind_group(1, self.cursor_texture.bind_group(), &[]);
+            render_pass.set_bind_group(2, self.colors_texture.bind_group(), &[]);
             render_pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
             render_pass.draw(0..6, 0..self.cursors.len() as _);
         }
@@ -150,7 +157,7 @@ impl Cursors {
         #[cfg(target_arch = "wasm32")] {
             cursor_instance.time_moved = self.performance.now() as i32;
         }
-        let offset = (mem::size_of::<CursorInstance>() * index) as BufferAddress;
+        let offset = (size_of::<CursorInstance>() * index) as BufferAddress;
         let is_you = match &self.your_player_id {
             None => false,
             Some(player_id) => {
@@ -160,13 +167,16 @@ impl Cursors {
         if is_you {
             info!("Updating your cursor");
         }
-        cursor_instance.properties = CursorProperties::new(is_you);
+        
+        cursor_instance.properties = CursorProperties::new(is_you, &player.player_id);
         queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&self.cursors[index..index+1]));
     }
     
-    pub fn delete_player(&self, player_id: &String, queue: &wgpu::Queue) {
-        let offset = (mem::size_of::<CursorInstance>() * Player::numeric_hash(player_id, Self::N_CURSORS)) as BufferAddress;
-        queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&[CursorInstance::deleted()]));
+    pub fn delete_player(&mut self, player_id: &String, queue: &wgpu::Queue) {
+        let index = Player::numeric_hash(player_id, Self::N_CURSORS);
+        let offset = (size_of::<CursorInstance>() * index) as BufferAddress;
+        self.cursors[index] = CursorInstance::deleted();
+        queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&self.cursors[index..index+1]));
     }
 }
 
@@ -189,10 +199,13 @@ struct CursorProperties(u32);
 impl CursorProperties {
     const IS_YOU: u32 = 1;
     const CONNECTED: u32 = 2;
-    fn new(is_you: bool) -> Self {
+    fn new(is_you: bool, player_id: &str) -> Self {
         let mut props = 0;
         if is_you { props |= Self::IS_YOU }
         props |= Self::CONNECTED;
+        let hue = Player::numeric_hash(player_id, 256) as u32;
+        props |= hue << 8;
+        
         Self(props)
     }
     
