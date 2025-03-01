@@ -47,11 +47,6 @@ impl World {
         }
     }
     
-    pub fn get_tile_mut(&mut self, position: &Position) -> &mut Tile {
-        let chunk_id = self.generate_chunk(position.chunk_position());
-        self.chunks[chunk_id].get_tile_mut(&position)
-    }
-    
     pub fn get_rect(&self, rect: &Rect) -> UpdatedRect {
         let mut updated_tiles = vec![];
         for position in rect.positions() {
@@ -87,14 +82,14 @@ impl World {
 
     pub fn apply_event(&mut self, event: &Event) {
         for UpdatedTile {position, tile} in event.tiles_updated() {
-            let chunk_id = self.generate_chunk(position.chunk_position());
+            let chunk_id = self.generate_chunk(position);
             self.chunks[chunk_id].set_tile(position, tile);
         }
     }
     
     pub fn apply_updated_rect(&mut self, updated_rect: &UpdatedRect) {
         for UpdatedTile {position, tile} in updated_rect.tiles_updated() {
-            let chunk_id = self.generate_chunk(position.chunk_position());
+            let chunk_id = self.generate_chunk(position);
             self.chunks[chunk_id].set_tile(position, tile);
         }
     }
@@ -111,7 +106,7 @@ impl World {
             chunk_store: ChunkStore::new(),
             players: Default::default(),
         };
-        world.generate_chunk(ChunkPosition(0, 0));
+        world.generate_chunk(Position(0, 0));
         world
     }
     
@@ -166,9 +161,9 @@ impl World {
         }
     }
 
-    pub fn generate_chunk(&mut self, position: ChunkPosition) -> usize {
+    pub fn generate_chunk(&mut self, position: Position) -> usize {
         let new_id = self.chunk_ids.len();
-        let existing = self.chunk_ids.entry(position);
+        let existing = self.chunk_ids.entry(position.chunk_position());
         match existing {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
@@ -187,8 +182,17 @@ impl World {
     }
 
     pub fn generate_surrounding_chunks(&mut self, position: Position) -> [usize; 9] {
-        position.chunk_position().neighbours_and_self()
-            .map(|p| self.generate_chunk(p))
+        [
+            self.generate_chunk(&position + (-16, -16)),
+            self.generate_chunk(&position + (-16,   0)),
+            self.generate_chunk(&position + (-16,  16)),
+            self.generate_chunk(&position + (  0, -16)),
+            self.generate_chunk(&position + (  0,   0)),
+            self.generate_chunk(&position + (  0,  16)),
+            self.generate_chunk(&position + ( 16, -16)),
+            self.generate_chunk(&position + ( 16,   0)),
+            self.generate_chunk(&position + ( 16,  16)),
+        ]
     }
 
     pub fn fill_adjacent_mines(&mut self, position: Position) {
@@ -214,7 +218,7 @@ impl World {
 
     pub fn click(&mut self, at: Position, by_player_id: &str) -> Option<Event> {
         self.set_player_position(by_player_id, at);
-        let updated = self.reveal(VecDeque::from([at]));
+        let updated = self.reveal(vec![at]);
         if !updated.updated.is_empty() {
             Some(Event::Clicked {
                 player_id: by_player_id.to_string(),
@@ -226,7 +230,7 @@ impl World {
         }
     }
     
-    fn reveal(&mut self, mut to_reveal: VecDeque<Position>) -> UpdatedRect {
+    fn reveal(&mut self, mut to_reveal: Vec<Position>) -> UpdatedRect {
         if to_reveal.is_empty() {
             return Default::default();
         }
@@ -234,8 +238,8 @@ impl World {
         let mut updated_chunk_ids = HashSet::new();
         let mut updated_tiles = vec![];
 
-        while let Some(position) = to_reveal.pop_front() {
-            let current_chunk_id = self.generate_chunk(position.chunk_position());
+        while let Some(position) = to_reveal.pop() {
+            let current_chunk_id = self.generate_chunk(position);
             self.fill_adjacent_mines(position);
             let current_chunk = match self.chunks.get_mut(current_chunk_id) {
                 None => continue,
@@ -248,7 +252,7 @@ impl World {
                 if tile.adjacent() == 0 {
                     for x in -1..=1 {
                         for y in -1..=1 {
-                            to_reveal.push_back(Position(position.0 + x, position.1 + y));
+                            to_reveal.push(Position(position.0 + x, position.1 + y));
                         }
                     }
                 }
@@ -259,24 +263,30 @@ impl World {
 
         UpdatedRect::new(updated_tiles)
     }
-
-    pub fn check_double_click(&self, position: &Position) -> Option<VecDeque<Position>> {
+    
+    pub fn check_double_click(&self, position: &Position) -> Option<Vec<Position>> {
         let tile = self.get_tile(position);
         if !tile.is_revealed() || tile.adjacent() == 0 {
             return None;
         }
         let mut surrounding_flags = 0;
-        let mut to_reveal = VecDeque::with_capacity(7);
-        for pos in position.neighbors() {
-            let t = self.get_tile(&pos);
-            if !t.is_revealed() {
-                if t.is_flag() {
-                    surrounding_flags += 1;
-                } else {
-                    to_reveal.push_back(pos);
+        let mut to_reveal = vec![];
+        for x in -1..=1 {
+            for y in -1..=1 {
+                let pos = Position(position.0 + x, position.1 + y);
+                // TODO: speed up this part, it will be slow because it keeps getting the same chunk from the hashmap
+                if let Some(chunk) = self.get_chunk(pos) {
+                    let t = chunk.get_tile(pos);
+                    if !t.is_revealed() {
+                        if t.is_flag() {
+                            surrounding_flags += 1;
+                        } else {
+                            to_reveal.push(pos);
+                        }
+                    } else if t.is_mine() {
+                        surrounding_flags += 1;
+                    }
                 }
-            } else if t.is_mine() {
-                surrounding_flags += 1;
             }
         }
         if surrounding_flags == tile.adjacent() {
@@ -300,24 +310,29 @@ impl World {
 
     pub fn flag(&mut self, position: Position, by_player_id: &str) -> Option<Event> {
         self.set_player_position(by_player_id, position);
-        let tile = self.get_tile_mut(&position);
-        if !tile.is_revealed() {
-            return if tile.is_flag() {
-                // Unflag
-                *tile = tile.without_flag();
-                Some(Event::Unflag {
-                    player_id: by_player_id.to_string(),
-                    at: position
-                })
-            } else {
-                // Flag
-                *tile = tile.with_flag();
-                Some(Event::Flag {
-                    player_id: by_player_id.to_string(),
-                    at: position
-                })
+        if let Some(&chunk_id) = self.get_chunk_id(position) {
+            if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
+                if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
+                    if !tile.is_revealed() {
+                        return if tile.is_flag() {
+                            // Unflag
+                            *tile = tile.without_flag();
+                            Some(Event::Unflag {
+                                player_id: by_player_id.to_string(),
+                                at: position
+                            })
+                        } else {
+                            // Flag
+                            *tile = tile.with_flag();
+                            Some(Event::Flag {
+                                player_id: by_player_id.to_string(),
+                                at: position
+                            })
+                        }
+                    }
+                }
             }
-        }
+        } 
         None
     }
 }
@@ -386,24 +401,9 @@ impl AsRef<[u8]> for ChunkMines {
     }
 }
 
-#[derive(Default, Copy, Clone, Eq, Hash, PartialEq, Debug, derive_more::Add, derive_more::Sub)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq, Debug, derive_more::Add, derive_more::Sub)]
 #[derive(Serialize, Deserialize)]
 pub struct ChunkPosition(pub i32, pub i32);
-
-impl ChunkPosition {
-    pub fn neighbours_and_self(&self) -> [ChunkPosition; 9] {
-        let mut result = [ChunkPosition::default(); 9];
-        let mut index = 0;
-        for y in -1..=1 {
-            for x in -1..=1 {
-                result[index].0 = self.0 + x*16;
-                result[index].1 = self.1 + y*16;
-                index += 1;
-            }
-        }
-        result
-    }
-}
 
 impl ChunkPosition {
     pub fn new(x: i32, y: i32) -> Self {
@@ -460,7 +460,7 @@ pub struct Position(pub i32, pub i32);
 
 impl Position {
     pub fn neighbors(&self) -> Vec<Position> {
-        let mut result = Vec::with_capacity(8);
+        let mut result = vec![];
         
         for x in self.0-1..=self.0+1 {
             for y in self.1-1..=self.1+1 {
@@ -474,7 +474,7 @@ impl Position {
     }
     
     pub fn neighbours_and_self(&self) -> Vec<Position> {
-        let mut result = Vec::with_capacity(9);
+        let mut result = vec![];
 
         for x in self.0-1..=self.0+1 {
             for y in self.1-1..=self.1+1 {
@@ -674,11 +674,6 @@ impl Chunk {
     pub fn get_tile(&self, position: Position) -> Tile {
         self.tiles.0[position.position_in_chunk().index()]
     }
-    
-    pub fn get_tile_mut(&mut self, position: &Position) -> &mut Tile {
-        &mut self.tiles.0[position.position_in_chunk().index()]
-    }
-    
     pub fn set_tile(&mut self, position: Position, tile: Tile) -> Tile {
         self.tiles.0[position.position_in_chunk().index()] = tile;
         tile
