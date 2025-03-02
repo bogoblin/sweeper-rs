@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use world::client_messages::ClientMessage;
@@ -14,14 +15,15 @@ use world::server_messages::ServerMessage;
 use world::Position;
 
 static THREADS: usize = 50;
-static TEST_DURATION: Duration = Duration::from_secs(20);
-static TIME_BETWEEN_MESSAGES: Duration = Duration::from_millis(10);
+static TEST_DURATION: Duration = Duration::from_secs(600);
+static TIME_BETWEEN_MESSAGES: Duration = Duration::from_millis(1000);
 
 #[tokio::main]
 async fn main() {
     let mut handles = vec![];
     for _ in 0..THREADS {
         handles.push(tokio::spawn(Client::spawn()));
+        sleep(TIME_BETWEEN_MESSAGES/THREADS as u32).await
     }
     join_all(handles).await;
 }
@@ -87,7 +89,7 @@ impl Client {
         }
         loop {
             let mut client = client.lock().await;
-            let message = ClientMessage::Click(Position(thread_rng().next_u32() as i32, thread_rng().next_u32() as i32));
+            let message = ClientMessage::Click(Position(thread_rng().next_u32() as i32%5000, thread_rng().next_u32() as i32%5000));
             client.send_message(message, &mut write).await;
             tokio::time::sleep(TIME_BETWEEN_MESSAGES).await;
         }
