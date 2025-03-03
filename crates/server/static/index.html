@@ -167,11 +167,11 @@
 </dialog>
 <script>
   const tutorial = document.getElementById("tutorial-dialog");
-  if (localStorage.getItem("done-tutorial") === null) {
-    tutorial.show();
-  } else {
+  // if (localStorage.getItem("done-tutorial") === null) {
+  //   tutorial.show();
+  // } else {
     closeTutorial();
-  }
+  // }
   function closeTutorial() {
     tutorial.remove();
     localStorage.setItem("done-tutorial", "true");
