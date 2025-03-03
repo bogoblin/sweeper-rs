@@ -7,12 +7,14 @@ mod sweeper_socket;
 mod cursors;
 mod fingers;
 mod url;
+mod chunk_loader;
 
 use std::default::Default;
 use std::future::Future;
 use std::sync::Arc;
 use cgmath::Vector2;
 use chrono::prelude::*;
+use chrono::TimeDelta;
 use log::info;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -32,6 +34,7 @@ use winit::application::ApplicationHandler;
 use world::client_messages::ClientMessage;
 use world::player::Player;
 use world::server_messages::ServerMessage;
+use crate::chunk_loader::ChunkLoader;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
 use crate::tile_sprites::DarkMode;
@@ -117,6 +120,7 @@ struct State {
     right_mouse_button_down: bool,
     fingers: Fingers,
     double_click_overlay: Option<Position>,
+    chunk_loader: ChunkLoader,
 }
 
 impl State {
@@ -272,6 +276,8 @@ impl State {
             }
 
             let view_matrix = camera.view_matrix();
+            
+            let chunk_loader = ChunkLoader::new(camera.visible_world_rect());
 
             Self {
                 window,
@@ -291,6 +297,7 @@ impl State {
                 right_mouse_button_down: false,
                 fingers: Fingers::new(view_matrix),
                 double_click_overlay: None,
+                chunk_loader,
             }
         }
     }
@@ -459,13 +466,18 @@ impl State {
         self.last_frame_time = Utc::now();
 
         self.camera.write_to_queue(&self.queue, 0, self.tile_map_texture.texture_size());
+        
+        self.chunk_loader.query(self.camera.visible_world_rect());
+        match self.chunk_loader.next_query_message() {
+            None => {}
+            Some(query) => self.world.send(query),
+        }
 
         // Load in any new chunks
         let rects = self.tile_map_texture.update_draw_area(&self.camera);
         for rect in rects {
             if rect.area() == 0 { continue }
             self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect.clone());
-            self.world.send(ClientMessage::Query(rect.clone()));
             for chunk in self.world.world().query_chunks(&rect) {
                 self.tile_map_texture.write_chunk(&self.queue, chunk);
             }

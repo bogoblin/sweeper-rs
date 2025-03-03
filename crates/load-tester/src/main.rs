@@ -14,7 +14,7 @@ use world::events::Event;
 use world::server_messages::ServerMessage;
 use world::Position;
 
-static THREADS: usize = 50;
+static THREADS: usize = 500;
 static TEST_DURATION: Duration = Duration::from_secs(600);
 static TIME_BETWEEN_MESSAGES: Duration = Duration::from_millis(1000);
 
@@ -50,7 +50,7 @@ struct Client {
 
 impl Client {
     pub async fn spawn() {
-        let (stream, _response) = connect_async("ws://64.23.244.167/ws")
+        let (stream, _response) = connect_async("ws://localhost/ws")
             .await.expect("couldn't connect");
 
         let (write, read) = stream.split();

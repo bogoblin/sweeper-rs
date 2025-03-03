@@ -893,6 +893,25 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub fn from_corners(top_left: Position, bottom_right: Position) -> Rect {
+        let Position(left, top) = top_left;
+        let Position(right, bottom) = bottom_right;
+        Self { left, top, right, bottom }
+    }
+}
+
+impl Rect {
+    pub fn from_top_left_and_size(top_left: Position, width: i32, height: i32) -> Rect {
+        let Position(left, top) = top_left;
+        Self {
+            left, top,
+            right: left + width,
+            bottom: top + height,
+        }
+    }
+}
+
+impl Rect {
     pub fn positions(&self) -> Vec<Position> {
         if self.right <= self.left || self.bottom <= self.top {
             return vec![];

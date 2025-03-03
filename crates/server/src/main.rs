@@ -14,7 +14,7 @@ use serde_json::{Value};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use axum::extract::ws::Message;
 use mime_guess::mime::TEXT_HTML;
 use tokio::net::TcpListener;
@@ -27,7 +27,7 @@ use world::client_messages::ClientMessage::*;
 use world::player::Player;
 use world::server_messages::ServerMessage;
 use world::{Rect, World};
-use crate::eventlog::{EventLogReader, EventLogWriter, SourcedEvent};
+use crate::eventlog::{EventLogReader, EventLogWriter, EventReadResult, SourcedEvent};
 
 #[derive(Parser)]
 struct Cli {
@@ -52,28 +52,45 @@ async fn main() {
     env_logger::init();
 
     let mut world = World::new();
-    if let Ok(mut reader) = EventLogReader::open("eventlog".into()).await {
-        while let Some(event) = reader.read().await {
+    let start_time = Instant::now();
+    if let Ok(reader) = EventLogReader::open("eventlog".into()).await {
+        let mut events = reader.events();
+        let mut events_read = 0;
+        while let Some(event) = events.next().await {
+            events_read += 1;
+            if events_read % 1000 == 0 {
+                info!("Read {} events", events_read);
+            }
+            trace!("read");
             match event {
-                SourcedEvent::Click(position) => {
-                    world.click(position, "");
-                }
-                SourcedEvent::DoubleClick(position) => {
-                    world.double_click(position, "");
-                }
-                SourcedEvent::Flag(position) |
-                SourcedEvent::Unflag(position) => {
-                    // TODO: should probably handle this properly
-                    world.flag(position, "");
-                }
-                SourcedEvent::ChunkGenerated(position, mines) => {
-                    if world.get_chunk(position.position()).is_none() {
-                        let chunk = mines.to_chunk(position);
-                        world.insert_chunk(chunk);
+                EventReadResult::Ok(event) => {
+                    match event {
+                        SourcedEvent::Click(position) => {
+                            world.click(position, "");
+                        }
+                        SourcedEvent::DoubleClick(position) => {
+                            world.double_click(position, "");
+                        }
+                        SourcedEvent::Flag(position) |
+                        SourcedEvent::Unflag(position) => {
+                            // TODO: should probably handle this properly
+                            world.flag(position, "");
+                        }
+                        SourcedEvent::ChunkGenerated(position, mines) => {
+                            if world.get_chunk(position.position()).is_none() {
+                                let chunk = mines.to_chunk(position);
+                                world.insert_chunk(chunk);
+                            }
+                        }
                     }
                 }
+                EventReadResult::Invalid(text) => {
+                    error!("Skipping invalid event: {}", text)
+                }
+                EventReadResult::EOF => {}
             }
         }
+        info!("{} events read in {:?}", events_read, Instant::now() - start_time);
     } else {
         info!("No event log found, starting a new world.");
     }

@@ -4,9 +4,12 @@ use serde_with::formats::Unpadded;
 use serde_with::serde_as;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use futures_util::{Stream, StreamExt};
+use log::*;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::io;
+use tokio_util::codec::{FramedRead, LinesCodec};
 use world::{ChunkMines, ChunkPosition, Position};
 use world::events::Event;
 
@@ -69,7 +72,7 @@ impl EventLogWriter {
 }
 
 pub struct EventLogReader {
-    file: BufReader<File>
+    pub reader: FramedRead<File, LinesCodec>,
 }
 
 impl EventLogReader {
@@ -77,16 +80,34 @@ impl EventLogReader {
         let file = OpenOptions::new()
             .read(true)
             .open(file_path).await?;
-        Ok(Self { file: BufReader::new(file) })
+        let reader = FramedRead::new(file, LinesCodec::new());
+        Ok(Self { reader })
     }
+    
+    pub fn events(self) -> impl Stream<Item = EventReadResult> {
+        self.reader.map(|line| EventReadResult::parse(line.ok()))
+    }
+}
 
-    // TODO: would like to handle EOFs and invalid events differently
-    pub async fn read(&mut self) -> Option<SourcedEvent> {
-        let mut line = String::new();
-        self.file.read_line(&mut line).await.unwrap();
-        match serde_json::from_str(&line) {
-            Ok(event) => Some(event),
-            Err(_) => None
+pub enum EventReadResult {
+    Ok(SourcedEvent),
+    Invalid(String),
+    EOF,
+}
+
+impl EventReadResult {
+    pub fn parse(line: Option<String>) -> Self {
+        match line {
+            None => { EventReadResult::EOF }
+            Some(line) => {
+                match serde_json::from_str(&line) {
+                    Ok(event) => {
+                        trace!("parse");
+                        EventReadResult::Ok(event)
+                    },
+                    Err(_) => EventReadResult::Invalid(line),
+                }
+            }
         }
     }
 }
