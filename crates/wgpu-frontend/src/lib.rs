@@ -488,13 +488,10 @@ impl State {
         }
         
         let mut chunks_transferred = 0;
-        while let Some(chunk_id) = self.chunk_update_queue.pop() {
+        for chunk_id in self.chunk_update_queue.by_ref().take(50) {
             let chunk = &self.world.world().chunks[chunk_id];
             self.tile_map_texture.write_chunk(&self.queue, chunk);
             chunks_transferred += 1;
-            if chunks_transferred > 50 {
-                break;
-            }
         }
         if chunks_transferred > 0 {
             info!("{} chunks written to GPU", chunks_transferred);

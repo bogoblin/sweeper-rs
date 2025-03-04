@@ -22,14 +22,18 @@ impl ChunkUpdateQueue {
         }
     }
     
-    pub fn pop(&mut self) -> Option<usize> {
-        let chunk_id = self.queue.pop_front()?;
-        self.set.remove(&chunk_id);
-        Some(chunk_id)
-    }
-    
     pub fn chunks_waiting(&self) -> usize {
         assert_eq!(self.queue.len(), self.set.len());
         self.queue.len()
+    }
+}
+
+impl Iterator for ChunkUpdateQueue {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let chunk_id = self.queue.pop_front()?;
+        self.set.remove(&chunk_id);
+        Some(chunk_id)
     }
 }
