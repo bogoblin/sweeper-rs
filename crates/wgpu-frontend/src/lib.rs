@@ -515,10 +515,8 @@ impl State {
                 }
                 ServerMessage::Chunk(chunk) => {
                     self.tile_map_texture.write_chunk(&self.queue, &chunk);
-                    self.world.world().insert_chunk(chunk);
                 }
                 ServerMessage::Player(player) => {
-                    self.world.world().players.insert(player.player_id.clone(), player.clone());
                     self.cursors.update_player(&player, &self.queue);
                 }
                 ServerMessage::Welcome(player) => {
@@ -527,12 +525,8 @@ impl State {
                 }
                 ServerMessage::Disconnected(player_id) => {
                     self.cursors.delete_player(&player_id, &self.queue);
-                    self.world.world().players.remove(&player_id);
                 }
-                ServerMessage::Connected => {}
-                ServerMessage::Rect(rect) => {
-                    self.world.world().apply_updated_rect(&rect);
-                }
+                _ => {}
             }
         }
 

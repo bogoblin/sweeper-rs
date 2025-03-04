@@ -72,7 +72,9 @@ impl World {
                 self.players.insert(player.player_id.clone(), player.clone());
             }
             ServerMessage::Welcome(_) => {}
-            ServerMessage::Disconnected(_) => {}
+            ServerMessage::Disconnected(player_id) => {
+                self.players.remove(player_id);
+            }
             ServerMessage::Connected => {}
             ServerMessage::Rect(rect) => {
                 self.apply_updated_rect(rect);
