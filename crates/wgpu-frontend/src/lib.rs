@@ -484,9 +484,9 @@ impl State {
         }
 
         while let Some(message) = self.world.next_message() {
-            self.world.world().apply_server_message(&message);
             match message {
                 ServerMessage::Event(event) => {
+                    self.world.world().apply_updated_tiles(event.tiles_updated());
                     let player_id = event.player_id();
                     match event {
                         Event::Clicked { updated, at, .. }
@@ -514,9 +514,11 @@ impl State {
                     }
                 }
                 ServerMessage::Chunk(chunk) => {
+                    self.world.world().insert_chunk(chunk.clone());
                     self.tile_map_texture.write_chunk(&self.queue, &chunk);
                 }
                 ServerMessage::Player(player) => {
+                    self.world.world().players.insert(player.player_id.clone(), player.clone());
                     self.cursors.update_player(&player, &self.queue);
                 }
                 ServerMessage::Welcome(player) => {
@@ -524,9 +526,13 @@ impl State {
                     self.cursors.set_you(player.player_id.clone(), &player, &self.queue);
                 }
                 ServerMessage::Disconnected(player_id) => {
+                    self.world.world().players.remove(&player_id);
                     self.cursors.delete_player(&player_id, &self.queue);
                 }
-                _ => {}
+                ServerMessage::Rect(rect) => {
+                    self.world.world().apply_updated_tiles(rect.tiles_updated());
+                }
+                ServerMessage::Connected => {}
             }
         }
 

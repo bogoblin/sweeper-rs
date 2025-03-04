@@ -60,37 +60,8 @@ impl World {
 }
 
 impl World {
-    pub fn apply_server_message(&mut self, message: &ServerMessage) {
-        match message {
-            ServerMessage::Event(event) => {
-                self.apply_event(event);
-            }
-            ServerMessage::Chunk(chunk) => {
-                self.insert_chunk(chunk.clone());
-            }
-            ServerMessage::Player(player) => {
-                self.players.insert(player.player_id.clone(), player.clone());
-            }
-            ServerMessage::Welcome(_) => {}
-            ServerMessage::Disconnected(player_id) => {
-                self.players.remove(player_id);
-            }
-            ServerMessage::Connected => {}
-            ServerMessage::Rect(rect) => {
-                self.apply_updated_rect(rect);
-            }
-        }
-    }
-
-    pub fn apply_event(&mut self, event: &Event) {
-        for UpdatedTile {position, tile} in event.tiles_updated() {
-            let chunk_id = self.generate_chunk(position);
-            self.chunks[chunk_id].set_tile(position, tile);
-        }
-    }
-    
-    pub fn apply_updated_rect(&mut self, updated_rect: &UpdatedRect) {
-        for UpdatedTile {position, tile} in updated_rect.tiles_updated() {
+    pub fn apply_updated_tiles(&mut self, updated_tiles: Vec<UpdatedTile>) {
+        for UpdatedTile {position, tile} in updated_tiles {
             let chunk_id = self.generate_chunk(position);
             self.chunks[chunk_id].set_tile(position, tile);
         }
