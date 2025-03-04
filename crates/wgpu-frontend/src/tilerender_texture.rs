@@ -366,31 +366,12 @@ impl TileMapTexture {
         queue.submit(std::iter::once(encoder.finish()));
     }
 
-    pub fn write_updated_rect(&mut self, queue: &wgpu::Queue, updated_rect: &UpdatedRect) {
-        for (x, col) in updated_rect.updated.iter().enumerate() {
-            for (y, tile) in col.iter().enumerate() {
-                if tile.0 == 0 { continue }
-                let position = updated_rect.top_left + Position(x as i32, y as i32);
-                self.write_tile(queue, tile.clone(), position);
-            }
-        }
-    }
-
-    pub fn write_chunk(&mut self, queue: &wgpu::Queue, chunk: &Chunk) {
-        if !self.tile_map_area.contains(chunk.position.position()) { return; }
-        
-        let Position(x, y) = chunk.position.position();
-        let x = x as usize % self.texture_size as usize;
-        let y = y as usize % self.texture_size as usize;
+    pub fn write_chunk(&mut self, queue: &wgpu::Queue, chunk: &Chunk) -> Option<()> {
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.tiles.texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: x as u32,
-                    y: y as u32,
-                    z: 0,
-                },
+                origin: self.position_in_tilemap(chunk.position.position())?,
                 aspect: wgpu::TextureAspect::All,
             },
             &chunk.tiles.bytes(),
@@ -405,24 +386,16 @@ impl TileMapTexture {
                 depth_or_array_layers: 1,
             }
         );
-        self.dirty_rect.expand_to_contain(chunk.rect())
+        self.dirty_rect.expand_to_contain(chunk.rect());
+        Some(())
     }
 
-    pub fn write_tile(&mut self, queue: &wgpu::Queue, tile: Tile, position: Position) {
-        if !self.tile_map_area.contains(position) { return; }
-        
-        let Position(x, y) = position;
-        let x = x as usize % self.texture_size as usize;
-        let y = y as usize % self.texture_size as usize;
+    pub fn write_tile(&mut self, queue: &wgpu::Queue, tile: Tile, position: Position) -> Option<()> {
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.tiles.texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: x as u32,
-                    y: y as u32,
-                    z: 0,
-                },
+                origin: self.position_in_tilemap(position)?,
                 aspect: wgpu::TextureAspect::All,
             },
             &[tile.0],
@@ -443,6 +416,18 @@ impl TileMapTexture {
             right: position.0 + 1,
             bottom: position.1 + 1,
         });
+        Some(())
+    }
+    
+    fn position_in_tilemap(&self, position: Position) -> Option<wgpu::Origin3d> {
+        match self.tile_map_area.contains(position) {
+            true => Some(wgpu::Origin3d {
+                x: (position.0 as usize % self.texture_size as usize) as u32,
+                y: (position.1 as usize % self.texture_size as usize) as u32,
+                z: 0,
+            }),
+            false => None
+        }
     }
     
     pub fn update_draw_area(&mut self, camera: &Camera) -> Vec<Rect> {
