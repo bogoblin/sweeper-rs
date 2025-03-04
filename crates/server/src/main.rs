@@ -247,8 +247,8 @@ async fn recv_from_client(
                                 broadcast(&ServerMessage::Disconnected(player_id));
                             }
                             Query(rect) => {
-                                let query = world.query_chunks(&rect);
-                                for chunk in query {
+                                for chunk in world.query_chunks(&rect)
+                                    .iter().map(|chunk_id| &world.chunks[*chunk_id]) {
                                     if chunk.should_send() {
                                         // TODO: cloning all these chunks might be expensive
                                         to_client.push(ServerMessage::Chunk(chunk.clone()));

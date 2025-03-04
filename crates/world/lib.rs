@@ -2,7 +2,6 @@ use crate::chunk_store::ChunkStore;
 use crate::compression::PublicTile;
 use crate::events::Event;
 use crate::player::Player;
-use crate::server_messages::ServerMessage;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bitvec::prelude::*;
@@ -60,10 +59,24 @@ impl World {
 }
 
 impl World {
-    pub fn apply_updated_tiles(&mut self, updated_tiles: Vec<UpdatedTile>) {
+    pub fn apply_updated_tiles(&mut self, updated_tiles: Vec<UpdatedTile>) -> Vec<usize> {
+        // OPTIMIZATION: we are able to optimize this by doing smarter caching
+        // on the chunk_ids so that we don't have to do the hash lookup each time
+        let mut chunk_ids_updated = vec![];
         for UpdatedTile {position, tile} in updated_tiles {
-            let chunk_id = self.generate_chunk(position);
+            let chunk_id = self.empty_or_existing_chunk(position.chunk_position());
             self.chunks[chunk_id].set_tile(position, tile);
+            chunk_ids_updated.push(chunk_id);
+        }
+        chunk_ids_updated
+    }
+
+    fn empty_or_existing_chunk(&mut self, position: ChunkPosition) -> usize {
+        match self.get_chunk_id(position.position()) {
+            None => {
+                self.insert_chunk(Chunk::empty(position))
+            }
+            Some(&chunk_id) => chunk_id
         }
     }
 }
@@ -103,15 +116,8 @@ impl World {
         None
     }
     
-    pub fn query_chunks(&self, rect: &Rect) -> Vec<&Chunk> {
-        let query = self.chunk_store.get_chunks(rect);
-        if let Ok(query) = query {
-            query.into_iter()
-                .map(|chunk_id| &self.chunks[chunk_id])
-                .collect()
-        } else {
-            vec![]
-        }
+    pub fn query_chunks(&self, rect: &Rect) -> Vec<usize> {
+        self.chunk_store.get_chunks(rect).unwrap_or(vec![])
     }
     
     pub fn insert_chunk(&mut self, chunk: Chunk) -> usize {
@@ -620,6 +626,16 @@ pub struct Chunk {
     pub tiles: ChunkTiles,
     pub position: ChunkPosition,
     adjacent_mines_filled: bool
+}
+
+impl Chunk {
+    fn empty(position: ChunkPosition) -> Self {
+        Self {
+            tiles: ChunkTiles([Tile(0); 256]),
+            position,
+            adjacent_mines_filled: false,
+        }
+    }
 }
 
 impl Chunk {

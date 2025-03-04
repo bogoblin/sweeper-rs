@@ -8,6 +8,7 @@ mod cursors;
 mod fingers;
 mod url;
 mod chunk_loader;
+mod chunk_update_queue;
 
 use std::default::Default;
 use std::future::Future;
@@ -35,6 +36,7 @@ use world::client_messages::ClientMessage;
 use world::player::Player;
 use world::server_messages::ServerMessage;
 use crate::chunk_loader::ChunkLoader;
+use crate::chunk_update_queue::ChunkUpdateQueue;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
 use crate::tile_sprites::DarkMode;
@@ -121,6 +123,7 @@ struct State {
     fingers: Fingers,
     double_click_overlay: Option<Position>,
     chunk_loader: ChunkLoader,
+    chunk_update_queue: ChunkUpdateQueue,
 }
 
 impl State {
@@ -298,6 +301,7 @@ impl State {
                 fingers: Fingers::new(view_matrix),
                 double_click_overlay: None,
                 chunk_loader,
+                chunk_update_queue: ChunkUpdateQueue::new(),
             }
         }
     }
@@ -458,6 +462,8 @@ impl State {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        // OPTIMIZATION: detect_dark_mode actually is about 1% of render time,
+        // and we only need to run it once every few seconds
         if let Some(mode) = self.detect_dark_mode() {
             self.tile_map_texture.sprites.set_dark_mode(&self.queue, mode);
         }
@@ -478,34 +484,48 @@ impl State {
         for rect in rects {
             if rect.area() == 0 { continue }
             self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect.clone());
-            for chunk in self.world.world().query_chunks(&rect) {
-                self.tile_map_texture.write_chunk(&self.queue, chunk);
+            self.chunk_update_queue.add_chunk_ids(self.world.world().query_chunks(&rect));
+        }
+        
+        let mut chunks_transferred = 0;
+        while let Some(chunk_id) = self.chunk_update_queue.pop() {
+            let chunk = &self.world.world().chunks[chunk_id];
+            self.tile_map_texture.write_chunk(&self.queue, chunk);
+            chunks_transferred += 1;
+            if chunks_transferred > 50 {
+                break;
+            }
+        }
+        if chunks_transferred > 0 {
+            info!("{} chunks written to GPU", chunks_transferred);
+            let waiting = self.chunk_update_queue.chunks_waiting();
+            if waiting != 0 {
+                info!("{} chunks left in queue", self.chunk_update_queue.chunks_waiting());
             }
         }
 
         while let Some(message) = self.world.next_message() {
             match message {
                 ServerMessage::Event(event) => {
-                    self.world.world().apply_updated_tiles(event.tiles_updated());
+                    self.chunk_update_queue.add_chunk_ids(
+                        self.world.world().apply_updated_tiles(event.tiles_updated())
+                    );
                     let player_id = event.player_id();
                     match event {
                         Event::Clicked { updated, at, .. }
                         | Event::DoubleClicked { updated, at, .. } => {
-                            self.tile_map_texture.write_updated_rect(&self.queue, &updated);
                             self.cursors.update_player(&Player {
                                 player_id,
                                 position: at,
                             }, &self.queue);
                         }
                         Event::Flag { at, .. } => {
-                            self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_flag(), at.clone());
                             self.cursors.update_player(&Player {
                                 player_id,
                                 position: at,
                             }, &self.queue);
                         }
                         Event::Unflag { at, .. } => {
-                            self.tile_map_texture.write_tile(&self.queue, Tile::empty(), at.clone());
                             self.cursors.update_player(&Player {
                                 player_id,
                                 position: at,
@@ -514,8 +534,9 @@ impl State {
                     }
                 }
                 ServerMessage::Chunk(chunk) => {
-                    self.world.world().insert_chunk(chunk.clone());
-                    self.tile_map_texture.write_chunk(&self.queue, &chunk);
+                    self.chunk_update_queue.add_chunk_ids(
+                        vec![self.world.world().insert_chunk(chunk.clone())]
+                    );
                 }
                 ServerMessage::Player(player) => {
                     self.world.world().players.insert(player.player_id.clone(), player.clone());
@@ -530,7 +551,9 @@ impl State {
                     self.cursors.delete_player(&player_id, &self.queue);
                 }
                 ServerMessage::Rect(rect) => {
-                    self.world.world().apply_updated_tiles(rect.tiles_updated());
+                    self.chunk_update_queue.add_chunk_ids(
+                        self.world.world().apply_updated_tiles(rect.tiles_updated())
+                    );
                 }
                 ServerMessage::Connected => {}
             }
