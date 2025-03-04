@@ -505,30 +505,9 @@ impl State {
             match message {
                 ServerMessage::Event(event) => {
                     self.chunk_update_queue.add_chunk_ids(
-                        self.world.world().apply_updated_tiles(event.tiles_updated())
+                        self.world.world().apply_updated_rect(event.updated_rect())
                     );
-                    let player_id = event.player_id();
-                    match event {
-                        Event::Clicked { updated, at, .. }
-                        | Event::DoubleClicked { updated, at, .. } => {
-                            self.cursors.update_player(&Player {
-                                player_id,
-                                position: at,
-                            }, &self.queue);
-                        }
-                        Event::Flag { at, .. } => {
-                            self.cursors.update_player(&Player {
-                                player_id,
-                                position: at,
-                            }, &self.queue);
-                        }
-                        Event::Unflag { at, .. } => {
-                            self.cursors.update_player(&Player {
-                                player_id,
-                                position: at,
-                            }, &self.queue);
-                        }
-                    }
+                    self.cursors.update_player(&event.player(), &self.queue);
                 }
                 ServerMessage::Chunk(chunk) => {
                     self.chunk_update_queue.add_chunk_ids(
@@ -549,7 +528,7 @@ impl State {
                 }
                 ServerMessage::Rect(rect) => {
                     self.chunk_update_queue.add_chunk_ids(
-                        self.world.world().apply_updated_tiles(rect.tiles_updated())
+                        self.world.world().apply_updated_rect(rect)
                     );
                 }
                 ServerMessage::Connected => {}

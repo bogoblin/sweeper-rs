@@ -133,7 +133,8 @@ impl Client {
         let sm_clone = server_message.clone();
         match &server_message {
             ServerMessage::Event(event) => {
-                if Some(event.player_id()) == self.player_id {
+                let player = event.player();
+                if Some(player.player_id) == self.player_id {
                     // it was a message we sent, so find it:
                     let corresponding_client_message = match event {
                         Event::Clicked { at, .. } => ClientMessage::Click(at.clone()),

@@ -1,6 +1,7 @@
 use crate::{Position, Tile, UpdatedRect, UpdatedTile};
 use serde::{Deserialize, Serialize};
 use std::i32;
+use crate::player::Player;
 
 #[derive(Debug, Clone)]
 #[derive(Serialize, Deserialize)]
@@ -26,34 +27,37 @@ pub enum Event {
 }
 
 impl Event {
-    pub fn tiles_updated(&self) -> Vec<UpdatedTile> {
+    pub fn updated_rect(&self) -> UpdatedRect {
         match self {
             Event::Clicked { updated, .. } |
             Event::DoubleClicked { updated, .. } => {
-                updated.tiles_updated()
+                updated.clone()
             }
             Event::Flag { at, .. } => {
-                vec![UpdatedTile {
+                UpdatedRect::new(vec![UpdatedTile {
                     position: at.clone(),
                     tile: Tile::empty().with_flag()
-                }]
+                }])
             }
             Event::Unflag { at, .. } => {
-                vec![UpdatedTile {
+                UpdatedRect::new(vec![UpdatedTile {
                     position: at.clone(),
                     tile: Tile::empty()
-                }]
+                }])
             }
         }
     }
     
-    pub fn player_id(&self) -> String {
+    pub fn player(&self) -> Player {
         match self {
-            Event::Clicked { player_id, .. } |
-            Event::DoubleClicked { player_id, .. } |
-            Event::Flag { player_id, .. } |
-            Event::Unflag { player_id, .. } => {
-                player_id.clone()
+            Event::Clicked { player_id, at, .. } |
+            Event::DoubleClicked { player_id, at, .. } |
+            Event::Flag { player_id, at, .. } |
+            Event::Unflag { player_id, at, .. } => {
+                Player {
+                    player_id: player_id.clone(),
+                    position: at.clone()
+                }
             }
         }
     }

@@ -159,7 +159,6 @@ impl Camera {
         let modified_world_rect = self.rect() + world_offset_f64
             .extend(world_offset_f64.x).extend(world_offset_f64.y);
 
-        // TODO: this seems inefficient
         #[cfg(target_arch = "wasm32")]
         {
             self.url_info.set_f64("x", self.center.x);

@@ -59,11 +59,11 @@ impl World {
 }
 
 impl World {
-    pub fn apply_updated_tiles(&mut self, updated_tiles: Vec<UpdatedTile>) -> Vec<usize> {
+    pub fn apply_updated_rect(&mut self, updated_rect: UpdatedRect) -> Vec<usize> {
         // OPTIMIZATION: we are able to optimize this by doing smarter caching
         // on the chunk_ids so that we don't have to do the hash lookup each time
         let mut chunk_ids_updated = vec![];
-        for UpdatedTile {position, tile} in updated_tiles {
+        for UpdatedTile {position, tile} in updated_rect.tiles_updated() {
             let chunk_id = self.empty_or_existing_chunk(position.chunk_position());
             self.chunks[chunk_id].set_tile(position, tile);
             chunk_ids_updated.push(chunk_id);
@@ -72,12 +72,8 @@ impl World {
     }
 
     fn empty_or_existing_chunk(&mut self, position: ChunkPosition) -> usize {
-        match self.get_chunk_id(position.position()) {
-            None => {
-                self.insert_chunk(Chunk::empty(position))
-            }
-            Some(&chunk_id) => chunk_id
-        }
+        self.get_chunk_id(position.position()).copied()
+            .unwrap_or_else(|| self.insert_chunk(Chunk::empty(position)))
     }
 }
 
