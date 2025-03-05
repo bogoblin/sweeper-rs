@@ -17,7 +17,7 @@ use std::cmp::{max, min, PartialEq};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, AddAssign, Deref, DerefMut, Sub};
+use std::ops::{Add, AddAssign, Deref, DerefMut, Index, IndexMut, Sub};
 
 pub mod server_messages;
 pub mod events;
@@ -221,15 +221,11 @@ impl World {
                 Some(c) => c,
             };
             // It's okay to get unchecked here because we know that tile_index() always returns a number < 256
-            let tile = unsafe { current_chunk.tiles.0.get_unchecked_mut(position.tile_index()) };
+            let tile = &mut current_chunk.tiles[position.tile_index()];
             if !tile.is_revealed() {
                 *tile = tile.with_revealed();
                 if tile.adjacent() == 0 {
-                    for x in -1..=1 {
-                        for y in -1..=1 {
-                            to_reveal.push(Position(position.0 + x, position.1 + y));
-                        }
-                    }
+                    to_reveal.append(&mut position.neighbors());
                 }
                 updated_tiles.push(UpdatedTile {position, tile: tile.clone()});
                 updated_chunk_ids.insert(current_chunk_id);
@@ -246,21 +242,18 @@ impl World {
         }
         let mut surrounding_flags = 0;
         let mut to_reveal = vec![];
-        for x in -1..=1 {
-            for y in -1..=1 {
-                let pos = Position(position.0 + x, position.1 + y);
-                // TODO: speed up this part, it will be slow because it keeps getting the same chunk from the hashmap
-                if let Some(chunk) = self.get_chunk(pos) {
-                    let t = chunk.get_tile(pos);
-                    if !t.is_revealed() {
-                        if t.is_flag() {
-                            surrounding_flags += 1;
-                        } else {
-                            to_reveal.push(pos);
-                        }
-                    } else if t.is_mine() {
+        for pos in position.neighbors() {
+            // TODO: speed up this part, it will be slow because it keeps getting the same chunk from the hashmap
+            if let Some(chunk) = self.get_chunk(pos) {
+                let t = chunk.get_tile(pos);
+                if !t.is_revealed() {
+                    if t.is_flag() {
                         surrounding_flags += 1;
+                    } else {
+                        to_reveal.push(pos);
                     }
+                } else if t.is_mine() {
+                    surrounding_flags += 1;
                 }
             }
         }
@@ -287,27 +280,26 @@ impl World {
         self.set_player_position(by_player_id, position);
         if let Some(&chunk_id) = self.get_chunk_id(position) {
             if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
-                if let Some(&mut ref mut tile) = chunk.tiles.0.get_mut(position.position_in_chunk().index()) {
-                    if !tile.is_revealed() {
-                        return if tile.is_flag() {
-                            // Unflag
-                            *tile = tile.without_flag();
-                            Some(Event::Unflag {
-                                player_id: by_player_id.to_string(),
-                                at: position
-                            })
-                        } else {
-                            // Flag
-                            *tile = tile.with_flag();
-                            Some(Event::Flag {
-                                player_id: by_player_id.to_string(),
-                                at: position
-                            })
-                        }
+                let tile = &mut chunk.tiles[*position.position_in_chunk()];
+                if !tile.is_revealed() {
+                    return if tile.is_flag() {
+                        // Unflag
+                        *tile = tile.without_flag();
+                        Some(Event::Unflag {
+                            player_id: by_player_id.to_string(),
+                            at: position
+                        })
+                    } else {
+                        // Flag
+                        *tile = tile.with_flag();
+                        Some(Event::Flag {
+                            player_id: by_player_id.to_string(),
+                            at: position
+                        })
                     }
                 }
             }
-        } 
+        }
         None
     }
 }
@@ -401,7 +393,7 @@ impl ChunkPosition {
     pub fn position_iter(&self) -> ChunkPositionIter {
         ChunkPositionIter {
             position: self.clone(),
-            position_in_chunk_index: 0,
+            in_chunk: PositionInChunk(0).into()
         }
     }
 }
@@ -422,9 +414,23 @@ impl PositionInChunk {
     pub fn y(&self) -> u8 {
         (self.0 >> 4) & 0b1111
     }
+    
+    pub fn next(&self) -> Option<Self> {
+        Self(self.checked_add(1)?).into()
+    }
+}
 
-    pub fn index(&self) -> usize {
-        self.0 as usize
+impl Deref for PositionInChunk {
+    type Target = u8;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for PositionInChunk {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -468,7 +474,7 @@ impl Position {
 
     pub fn position_in_chunk(&self) -> PositionInChunk { PositionInChunk::new(self.0, self.1) }
 
-    pub fn tile_index(&self) -> usize { self.position_in_chunk().index() }
+    pub fn tile_index(&self) -> u8 { *self.position_in_chunk() }
     
     pub fn from_chunk_positions(chunk_position: &ChunkPosition, position_in_chunk: &PositionInChunk) -> Self {
         Self(chunk_position.0 + position_in_chunk.x() as i32, chunk_position.1 + position_in_chunk.y() as i32)
@@ -578,6 +584,21 @@ impl ChunkTiles {
     }
 }
 
+impl Index<u8> for ChunkTiles {
+    type Output = Tile;
+
+    fn index(&self, index: u8) -> &Self::Output {
+        // This is safe because u8 is an int from 0-255, which is always in bounds
+        unsafe { self.0.get_unchecked(index as usize) }
+    }
+}
+
+impl IndexMut<u8> for ChunkTiles {
+    fn index_mut(&mut self, index: u8) -> &mut Self::Output {
+        unsafe { self.0.get_unchecked_mut(index as usize) }
+    }
+}
+
 impl Serialize for ChunkTiles {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -636,12 +657,7 @@ impl Chunk {
 
 impl Chunk {
     pub fn rect(&self) -> Rect {
-        Rect {
-            left: self.position.0,
-            top: self.position.1,
-            right: self.position.0 + 16,
-            bottom: self.position.1 + 16,
-        }
+        Rect::from_corners(self.position.position(), self.position.bottom_right().position())
     }
 }
 
@@ -657,59 +673,55 @@ impl Chunk {
     }
 
     pub fn get_tile(&self, position: Position) -> Tile {
-        self.tiles.0[position.position_in_chunk().index()]
+        self.tiles[*position.position_in_chunk()]
     }
     pub fn set_tile(&mut self, position: Position, tile: Tile) -> Tile {
-        self.tiles.0[position.position_in_chunk().index()] = tile;
+        self.tiles[*position.position_in_chunk()] = tile;
         tile
     }
 
     pub fn fill_adjacent_mines(surrounding_chunks: [&Chunk; 9]) -> Chunk {
         let is_mine = |position: Position| {
-            let (x, y) = (position.0, position.1);
-            let tile_is_mine = |index: usize| -> bool {
-                return surrounding_chunks[index].get_tile(position).is_mine();
-            };
+            let Position(x, y) = position;
             // 0 3 6
             // 1 4 7
             // 2 5 8
-            if x < 0 {
+            let index = if x < 0 {
                 if y < 0 {
-                    return tile_is_mine(0);
+                    0
                 } else if y > 15 {
-                    return tile_is_mine(2);
+                    2
+                } else {
+                    1
                 }
-                return tile_is_mine(1);
             }
             else if x > 15 {
                 if y < 0 {
-                    return tile_is_mine(6);
+                    6
                 } else if y > 15 {
-                    return tile_is_mine(8);
+                    8
+                } else {
+                    7
                 }
-                return tile_is_mine(7);
             }
             else if y < 0 {
-                return tile_is_mine(3);
+                3
             }
             else if y > 15 {
-                return tile_is_mine(5);
-            }
-            tile_is_mine(4)
+                5
+            } else {
+                4
+            };
+            surrounding_chunks[index].get_tile(position).is_mine()
         };
 
         let mut new_tiles = surrounding_chunks[4].tiles.clone();
 
-        for x in 0..16 {
-            for y in 0..16 {
-                let tile_index = PositionInChunk::new(x, y).index();
-                for xo in -1..=1 {
-                    for yo in -1..=1 {
-                        if is_mine(Position(x+xo, y+yo)) {
-                            new_tiles.0[tile_index] += 1;
-                        }
-                    }
-                }
+        let zero = ChunkPosition::new(0, 0);
+        for index in 0..=255 {
+            for neighbor in Position::from_chunk_positions(&zero, &PositionInChunk(index))
+                .neighbors() {
+                if is_mine(neighbor) { new_tiles[index] += 1; }
             }
         }
 
@@ -738,9 +750,9 @@ pub struct UpdatedRect {
 impl Debug for UpdatedRect {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "UpdatedRect: {:?} with tiles:\n", self.top_left)?;
-        for row in &self.updated {
-            for tile in row {
-                write!(f, "{}", tile)?;
+        for y in 0..self.height() {
+            for x in 0..self.width() {
+                write!(f, "{}", self.updated[x][y])?;
             }
             write!(f, "\n")?;
         }
@@ -828,6 +840,14 @@ impl UpdatedRect {
         }
         result
     }
+    
+    pub fn width(&self) -> usize {
+        self.updated.get(0).map_or(0, |col| col.len())
+    }
+    
+    pub fn height(&self) -> usize {
+        self.updated.len()
+    }
 }
 
 impl From<&UpdatedRect> for Vec<u8> {
@@ -848,20 +868,17 @@ impl From<&UpdatedRect> for Vec<u8> {
 
 pub struct ChunkPositionIter {
     position: ChunkPosition,
-    position_in_chunk_index: usize,
+    in_chunk: Option<PositionInChunk>,
 }
 
 impl Iterator for ChunkPositionIter {
     type Item = Position;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.position_in_chunk_index < 256 {
-            let result = Some(Position::from_chunk_positions(&self.position, &PositionInChunk(self.position_in_chunk_index as u8)));
-            self.position_in_chunk_index += 1;
-            result
-        } else {
-            None
-        }
+        let in_chunk = self.in_chunk?;
+        let result = Some(Position::from_chunk_positions(&self.position, &in_chunk));
+        self.in_chunk = in_chunk.next();
+        result
     }
 }
 
@@ -887,12 +904,8 @@ impl Rect {
 
 impl Rect {
     pub fn from_top_left_and_size(top_left: Position, width: i32, height: i32) -> Rect {
-        let Position(left, top) = top_left;
-        Self {
-            left, top,
-            right: left + width,
-            bottom: top + height,
-        }
+        let bottom_right = &top_left + (width, height);
+        Self::from_corners(top_left, bottom_right)
     }
 }
 
