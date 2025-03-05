@@ -277,30 +277,29 @@ impl World {
     }
 
     pub fn flag(&mut self, position: Position, by_player_id: &str) -> Option<Event> {
+        let chunk_id = *self.get_chunk_id(position)?;
         self.set_player_position(by_player_id, position);
-        if let Some(&chunk_id) = self.get_chunk_id(position) {
-            if let Some(&mut ref mut chunk) = self.chunks.get_mut(chunk_id) {
-                let tile = &mut chunk.tiles[*position.position_in_chunk()];
-                if !tile.is_revealed() {
-                    return if tile.is_flag() {
-                        // Unflag
-                        *tile = tile.without_flag();
-                        Some(Event::Unflag {
-                            player_id: by_player_id.to_string(),
-                            at: position
-                        })
-                    } else {
-                        // Flag
-                        *tile = tile.with_flag();
-                        Some(Event::Flag {
-                            player_id: by_player_id.to_string(),
-                            at: position
-                        })
-                    }
-                }
+        let chunk = self.chunks.get_mut(chunk_id)?;
+        let tile = &mut chunk.tiles[*position.position_in_chunk()];
+        if !tile.is_revealed() {
+            if tile.is_flag() {
+                // Unflag
+                *tile = tile.without_flag();
+                Some(Event::Unflag {
+                    player_id: by_player_id.to_string(),
+                    at: position
+                })
+            } else {
+                // Flag
+                *tile = tile.with_flag();
+                Some(Event::Flag {
+                    player_id: by_player_id.to_string(),
+                    at: position
+                })
             }
+        } else {
+            None
         }
-        None
     }
 }
 
@@ -840,11 +839,11 @@ impl UpdatedRect {
         }
         result
     }
-    
+
     pub fn width(&self) -> usize {
         self.updated.get(0).map_or(0, |col| col.len())
     }
-    
+
     pub fn height(&self) -> usize {
         self.updated.len()
     }
