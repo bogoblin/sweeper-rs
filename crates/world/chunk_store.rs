@@ -20,7 +20,7 @@ impl ChunkStore {
         }
     }
     
-    pub fn insert_chunks(&mut self, chunks: &Vec<Chunk>) {
+    pub fn insert_chunks(&mut self, chunks: &[Chunk]) {
         for (chunk_id, chunk) in chunks.iter().enumerate() {
             self.insert(chunk.position, chunk_id);
         }
