@@ -87,7 +87,7 @@ async fn main() {
                 EventReadResult::Invalid(text) => {
                     error!("Skipping invalid event: {}", text)
                 }
-                EventReadResult::EOF => {}
+                EventReadResult::Eof => {}
             }
         }
         info!("{} events read in {:?}", events_read, Instant::now() - start_time);
@@ -100,17 +100,17 @@ async fn main() {
         .expect("Unable to create event log writer");
 
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
-    tokio::spawn((|| async move {
+    tokio::spawn(async move {
         let mut events = vec![];
         while event_rx.recv_many(&mut events, 1024).await != 0 {
-            let events = std::mem::replace(&mut events, vec![]);
+            let events = std::mem::take(&mut events);
             for event in events {
                 event_log_writer.write(event).await.unwrap()
             }
             event_log_writer.flush().await.unwrap();
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
-    })());
+    });
     
     let (broadcast_tx, _) = broadcast::channel(1024);
     
@@ -175,7 +175,7 @@ async fn send_client_messages(
 ) {
     let mut messages = vec![];
     while client_rx.recv_many(&mut messages, 1024).await != 0 {
-        let messages = std::mem::replace(&mut messages, vec![]);
+        let messages = std::mem::take(&mut messages);
         // TODO: find a way to bundle messages together
         for message in messages {
             if client_tx.feed(message).await.is_err() {
@@ -235,7 +235,7 @@ async fn recv_from_client(
                                 }
                             }
                             Connected => {
-                                for (_player_id, player) in &world.players {
+                                for player in world.players.values() {
                                     to_client.push(ServerMessage::Player(player.clone()))
                                 }
                                 let player = Player::new(player_id.to_string());

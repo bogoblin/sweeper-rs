@@ -171,12 +171,10 @@ impl SpriteMipmaps {
         let mut scale = 0;
         while 16 >> scale >= 1 {
             let mut scale_vec = vec![];
-            for image_index in 0..sprite_images.len() {
-                let sprite = &sprite_images[image_index];
+            for sprite in &mut sprite_images {
                 scale_vec.push(sprite.as_bytes().to_vec());
                 if sprite.width() > 1 {
-                    let scaled = sprite.resize(sprite.width() / 2, sprite.height() / 2, filter_type);
-                    sprite_images[image_index] = scaled;
+                    *sprite = sprite.resize(sprite.width() / 2, sprite.height() / 2, filter_type);
                 }
             }
             sprite_bytes.push(scale_vec);

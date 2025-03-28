@@ -21,18 +21,18 @@ pub struct Finger {
 impl Finger {
     fn new(position: &Vector2<f64>) -> Self {
         Self {
-            touched_position: position.clone(),
-            position_at_begin_transform: position.clone(),
-            current_position: position.clone(),
+            touched_position: *position,
+            position_at_begin_transform: *position,
+            current_position: *position,
         }
     }
     
     fn update_position(&mut self, position: &Vector2<f64>) {
-        self.current_position = position.clone();
+        self.current_position = *position;
     }
     
     fn reset(&mut self) {
-        self.position_at_begin_transform = self.current_position.clone();
+        self.position_at_begin_transform = self.current_position;
     }
 
     pub fn distance_moved(&self) -> f64 {
@@ -55,7 +55,7 @@ impl Fingers {
     
     fn reset(&mut self, view_matrix: Matrix3<f64>) {
         self.view_matrix_before_transform = view_matrix;
-        for (_, finger) in &mut self.fingers {
+        for finger in &mut self.fingers.values_mut() {
             finger.reset()
         }
     }
@@ -93,7 +93,7 @@ impl Fingers {
                     finger.update_position(&position);
                 } else {
                     self.reset(view_matrix);
-                    self.fingers.insert(finger_id.clone(), Finger::new(&position));
+                    self.fingers.insert(*finger_id, Finger::new(&position));
                 }
                 Some(self.view_matrix())
             }
@@ -108,9 +108,7 @@ impl Fingers {
                 self.reset(view_matrix);
                 if let Some(removed) = self.fingers.remove(finger_id) {
                     self.released.push_back(removed);
-                } else {
-                    
-                }
+                } 
                 Some(self.view_matrix())
             }
             _ => None
@@ -125,7 +123,7 @@ impl Fingers {
     fn pan_and_zoom_matrix(&self) -> Matrix3<f64> {
         let scale = self.pinch_size_increase().unwrap_or(1.0);
         
-        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.position_at_begin_transform }).collect();
+        let start_points: Vec<_> = self.fingers.values().map(|finger| { finger.position_at_begin_transform }).collect();
         let start_bb = BoundingBox::from_points(start_points).unwrap_or_default();
         let start_center = start_bb.center();
         // Start with the matrix that translates the start center to (0,0,1)
@@ -142,7 +140,7 @@ impl Fingers {
             0.0, 0.0, 1.0,
         ).transpose() * matrix;
 
-        let current_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.current_position }).collect();
+        let current_points: Vec<_> = self.fingers.values().map(|finger| { finger.current_position }).collect();
         let current_bb = BoundingBox::from_points(current_points).unwrap_or_default();
         let current_center = current_bb.center();
         // Then translate so that the center is where the new center is:
@@ -156,8 +154,8 @@ impl Fingers {
     }
     
     fn pinch_size_increase(&self) -> Option<f64> {
-        let start_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.position_at_begin_transform }).collect();
-        let current_points: Vec<_> = self.fingers.iter().map(|(_, finger)| { finger.current_position }).collect();
+        let start_points: Vec<_> = self.fingers.values().map(|finger| { finger.position_at_begin_transform }).collect();
+        let current_points: Vec<_> = self.fingers.values().map(|finger| { finger.current_position }).collect();
         let start_bb = BoundingBox::from_points(start_points)?;
         let current_bb = BoundingBox::from_points(current_points)?;
         if start_bb.size() < 0.01 {
@@ -184,8 +182,8 @@ impl Default for BoundingBox {
 impl BoundingBox {
     fn from_points(points: Vec<Vector2<f64>>) -> Option<Self> {
         let first = points.first()?;
-        let mut minimum = first.clone();
-        let mut maximum = first.clone();
+        let mut minimum = *first;
+        let mut maximum = *first;
         for point in points {
             if point.x < minimum.x { minimum.x = point.x }
             if point.y < minimum.y { minimum.y = point.y }

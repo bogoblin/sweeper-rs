@@ -28,7 +28,6 @@ pub mod player;
 
 pub struct World {
     pub chunk_ids: HashMap<ChunkPosition, usize>,
-    pub positions: Vec<ChunkPosition>,
     pub chunks: Vec<Chunk>,
     pub seed: u64,
 
@@ -39,8 +38,8 @@ pub struct World {
 
 impl World {
     pub fn get_tile(&self, position: &Position) -> Tile {
-        if let Some(&chunk_id) = self.get_chunk_id(position.clone()) {
-            self.chunks[chunk_id].get_tile(position.clone())
+        if let Some(&chunk_id) = self.get_chunk_id(*position) {
+            self.chunks[chunk_id].get_tile(*position)
         } else {
             Tile::empty()
         }
@@ -77,11 +76,16 @@ impl World {
     }
 }
 
+impl Default for World {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl World {
     pub fn new() -> World {
         let mut world = World {
             chunk_ids: Default::default(),
-            positions: vec![],
             chunks: vec![],
             seed: 0,
             generated_chunks: Default::default(),
@@ -113,7 +117,7 @@ impl World {
     }
     
     pub fn query_chunks(&self, rect: &Rect) -> Vec<usize> {
-        self.chunk_store.get_chunks(rect).unwrap_or(vec![])
+        self.chunk_store.get_chunks(rect).unwrap_or_default()
     }
     
     pub fn insert_chunk(&mut self, chunk: Chunk) -> usize {
@@ -128,7 +132,6 @@ impl World {
             }
             Entry::Vacant(entry) => {
                 entry.insert(new_id);
-                self.positions.push(position);
                 self.chunks.push(chunk);
                 self.chunk_store.insert(position, new_id);
                 new_id
@@ -142,12 +145,11 @@ impl World {
         match existing {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
-                let position = entry.key().clone();
+                let position = *entry.key();
                 let rng = StdRng::seed_from_u64(position.seed(0));
                 let mines = ChunkMines::random(40, rng);
                 let new_chunk = mines.to_chunk(position);
                 entry.insert(new_id);
-                self.positions.push(position);
                 self.chunks.push(new_chunk);
                 self.chunk_store.insert(position, new_id);
                 self.generated_chunks.push_back((position, mines));
@@ -227,7 +229,7 @@ impl World {
                 if tile.adjacent() == 0 {
                     to_reveal.append(&mut position.neighbors());
                 }
-                updated_tiles.push(UpdatedTile {position, tile: tile.clone()});
+                updated_tiles.push(UpdatedTile {position, tile: *tile});
                 updated_chunk_ids.insert(current_chunk_id);
             }
         }
@@ -391,7 +393,7 @@ impl ChunkPosition {
     
     pub fn position_iter(&self) -> ChunkPositionIter {
         ChunkPositionIter {
-            position: self.clone(),
+            position: *self,
             in_chunk: PositionInChunk(0).into()
         }
     }
@@ -514,15 +516,13 @@ impl Display for Tile {
                     "*"
                 } else {
                     &unsafe {
-                        String::from_utf8_unchecked(vec![self.adjacent() + '0' as u8])
+                        String::from_utf8_unchecked(vec![self.adjacent() + b'0'])
                     }
                 }
+            } else if self.is_flag() {
+                "F"
             } else {
-                if self.is_flag() {
-                    "F"
-                } else {
-                    " "
-                }
+                " "
             }
         };
         write!(f, "{}", char)
@@ -537,13 +537,13 @@ impl Tile {
         Tile::empty().with_mine()
     }
     pub fn with_mine(&self) -> Tile {
-        Tile(self.0 | 1<<4)
+        Tile(self.0 | (1<<4))
     }
     pub fn is_mine(&self) -> bool {
         self.0 == self.with_mine().0
     }
     pub fn with_flag(&self) -> Tile {
-        Tile(self.0 | 1<<5)
+        Tile(self.0 | (1<<5))
     }
     pub fn without_flag(&self) -> Tile {
         Tile(self.0 & !(1<<5))
@@ -552,7 +552,7 @@ impl Tile {
         self.0 == self.with_flag().0
     }
     pub fn with_revealed(&self) -> Tile {
-        Tile(self.0 | 1<<6)
+        Tile(self.0 | (1<<6))
     }
     pub fn is_revealed(&self) -> bool {
         self.0 == self.with_revealed().0
@@ -563,9 +563,9 @@ impl Tile {
     }
 }
 
-impl Into<u8> for Tile {
-    fn into(self) -> u8 {
-        self.0
+impl From<Tile> for u8 {
+    fn from(value: Tile) -> Self {
+        value.0
     }
 }
 
@@ -575,7 +575,7 @@ pub struct ChunkTiles(pub [Tile; 256]);
 
 impl ChunkTiles {
     pub fn from(bytes: [u8; 256]) -> Self {
-        Self(bytes.map(|b| Tile(b)))
+        Self(bytes.map(Tile))
     }
     
     pub fn bytes(&self) -> &[u8] {
@@ -608,7 +608,7 @@ impl Serialize for ChunkTiles {
 }
 
 struct ChunkTileVisitor;
-impl<'de> Visitor<'de> for ChunkTileVisitor {
+impl Visitor<'_> for ChunkTileVisitor {
     type Value = ChunkTiles;
 
     fn expecting(&self, _formatter: &mut Formatter) -> std::fmt::Result {
@@ -714,7 +714,7 @@ impl Chunk {
             surrounding_chunks[index].get_tile(position).is_mine()
         };
 
-        let mut new_tiles = surrounding_chunks[4].tiles.clone();
+        let mut new_tiles = surrounding_chunks[4].tiles;
 
         let zero = ChunkPosition::new(0, 0);
         for index in 0..=255 {
@@ -748,12 +748,12 @@ pub struct UpdatedRect {
 
 impl Debug for UpdatedRect {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UpdatedRect: {:?} with tiles:\n", self.top_left)?;
+        writeln!(f, "UpdatedRect: {:?} with tiles:", self.top_left)?;
         for y in 0..self.height() {
             for x in 0..self.width() {
                 write!(f, "{}", self.updated[x][y])?;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
         Ok(())
         
@@ -765,7 +765,7 @@ impl UpdatedRect {
         Self {top_left: Position::origin(), updated: vec![]}
     }
     pub fn new(updated_tiles: Vec<UpdatedTile>) -> Self {
-        let first_tile = match updated_tiles.get(0) {
+        let first_tile = match updated_tiles.first() {
             None => return Self::empty(),
             Some(t) => t,
         };
@@ -833,7 +833,7 @@ impl UpdatedRect {
                 let position = self.top_left + Position(x as i32, y as i32);
                 result.push(UpdatedTile {
                     position,
-                    tile: tile.clone()
+                    tile: *tile
                 });
             }
         }
@@ -841,7 +841,7 @@ impl UpdatedRect {
     }
 
     pub fn width(&self) -> usize {
-        self.updated.get(0).map_or(0, |col| col.len())
+        self.updated.first().map_or(0, |col| col.len())
     }
 
     pub fn height(&self) -> usize {
@@ -935,25 +935,25 @@ impl Rect {
 impl Rect {
     pub fn split_x(&self, split: i32) -> Vec<Rect> {
         if split > self.left && split < self.right {
-            let mut r1 = self.clone();
-            let mut r2 = self.clone();
+            let mut r1 = *self;
+            let mut r2 = *self;
             r1.right = split;
             r2.left = split;
             vec![r1, r2]
         } else {
-            vec![self.clone()]
+            vec![*self]
         }
     }
     
     pub fn split_y(&self, split: i32) -> Vec<Rect> {
         if split > self.top && split < self.bottom {
-            let mut r1 = self.clone();
-            let mut r2 = self.clone();
+            let mut r1 = *self;
+            let mut r2 = *self;
             r1.bottom = split;
             r2.top = split;
             vec![r1, r2]
         } else {
-            vec![self.clone()]
+            vec![*self]
         }       
     }
     
@@ -965,7 +965,7 @@ impl Rect {
     }
     
     pub fn modulo(&self, modulo: i32) -> Rect {
-        let mut result = self.clone();
+        let mut result = *self;
         result.left %= modulo;
         result.top %= modulo;
         result.right = result.left + self.width();
@@ -1053,7 +1053,7 @@ impl Rect {
     }
     
     pub fn chunks_containing(&self) -> Vec<ChunkPosition> {
-        let mut new_rect = self.clone();
+        let mut new_rect = *self;
         new_rect.left -= 15;
         new_rect.top -= 15;
         new_rect.right += 15;

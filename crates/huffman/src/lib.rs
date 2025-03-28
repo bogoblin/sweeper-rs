@@ -30,6 +30,12 @@ pub struct BitWriter {
     offset_within_byte: u8, // Should only be 0-7
 }
 
+impl Default for BitWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BitWriter {
     pub fn new() -> Self {
         Self {
@@ -65,12 +71,8 @@ pub trait HuffmanCode {
     fn from_huffman_bytes(bytes: Vec<u8>) -> Vec<Box<Self>> {
         let mut reader = BitReader::from(bytes);
         let mut decoded = vec![];
-        loop {
-            if let Some(thing) = Self::decode(&mut reader) {
-                decoded.push(thing)
-            } else {
-                break;
-            }
+        while let Some(thing) = Self::decode(&mut reader) {
+            decoded.push(thing)
         }
         decoded
     }
