@@ -1,7 +1,6 @@
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
-use std::mem;
 use log::info;
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
@@ -44,9 +43,9 @@ impl Cursors {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Cursors Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &camera.bind_group_layout(),
-                    &cursor_texture.bind_group_layout(),
-                    &colors_texture.bind_group_layout(),
+                    camera.bind_group_layout(),
+                    cursor_texture.bind_group_layout(),
+                    colors_texture.bind_group_layout(),
                 ],
                 push_constant_ranges: &[],
             });
@@ -93,7 +92,7 @@ impl Cursors {
         let instance_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: None,
-                size: (Self::N_CURSORS * mem::size_of::<CursorInstance>()) as BufferAddress,
+                size: (Self::N_CURSORS * size_of::<CursorInstance>()) as BufferAddress,
                 usage: wgpu::BufferUsages::VERTEX |
                     wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -172,7 +171,7 @@ impl Cursors {
         queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&self.cursors[index..index+1]));
     }
     
-    pub fn delete_player(&mut self, player_id: &String, queue: &wgpu::Queue) {
+    pub fn delete_player(&mut self, player_id: &str, queue: &wgpu::Queue) {
         let index = Player::numeric_hash(player_id, Self::N_CURSORS);
         let offset = (size_of::<CursorInstance>() * index) as BufferAddress;
         self.cursors[index] = CursorInstance::deleted();
@@ -226,26 +225,26 @@ impl CursorInstance {
 
     fn desc() -> VertexBufferLayout<'static> {
         VertexBufferLayout {
-            array_stride: mem::size_of::<CursorInstance>() as BufferAddress,
+            array_stride: size_of::<CursorInstance>() as BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
-                    shader_location: Self::SHADER_LOCATION_OFFSET + 0,
+                    shader_location: Self::SHADER_LOCATION_OFFSET,
                     format: Float32x2,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 2]>() as BufferAddress,
+                    offset: size_of::<[f32; 2]>() as BufferAddress,
                     shader_location: Self::SHADER_LOCATION_OFFSET + 1,
                     format: Float32x2,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 4]>() as BufferAddress,
+                    offset: size_of::<[f32; 4]>() as BufferAddress,
                     shader_location: Self::SHADER_LOCATION_OFFSET + 2,
                     format: Sint32,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 5]>() as BufferAddress,
+                    offset: size_of::<[f32; 5]>() as BufferAddress,
                     shader_location: Self::SHADER_LOCATION_OFFSET + 3,
                     format: Uint32,
                 },

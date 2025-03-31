@@ -15,7 +15,6 @@ use std::future::Future;
 use std::sync::Arc;
 use cgmath::Vector2;
 use chrono::prelude::*;
-use chrono::TimeDelta;
 use log::info;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -23,7 +22,6 @@ use winit::window::{Window, WindowAttributes, WindowId};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::{Position, Tile};
-use world::events::Event;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::sweeper_socket::{SweeperSocket};
@@ -33,7 +31,6 @@ use crate::tilerender_texture::{TileMapTexture};
 use wasm_bindgen::prelude::*;
 use winit::application::ApplicationHandler;
 use world::client_messages::ClientMessage;
-use world::player::Player;
 use world::server_messages::ServerMessage;
 use crate::chunk_loader::ChunkLoader;
 use crate::chunk_update_queue::ChunkUpdateQueue;
@@ -209,8 +206,8 @@ impl State {
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        &camera.bind_group_layout(),
-                        &tile_map_texture.bind_group_layout(),
+                        camera.bind_group_layout(),
+                        tile_map_texture.bind_group_layout(),
                     ],
                     push_constant_ranges: &[],
                 });
@@ -483,7 +480,7 @@ impl State {
         let rects = self.tile_map_texture.update_draw_area(&self.camera);
         for rect in rects {
             if rect.area() == 0 { continue }
-            self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect.clone());
+            self.tile_map_texture.blank_rect(&self.device, &self.queue, &self.camera, rect);
             self.chunk_update_queue.add_chunk_ids(self.world.world().query_chunks(&rect));
         }
         
@@ -620,7 +617,7 @@ impl State {
 
         let position_at_mouse = self.camera.screen_to_world(mouse_position);
         let position = as_world_position(position_at_mouse);
-        self.double_click_overlay = Some(position.clone());
+        self.double_click_overlay = Some(position);
         let tile = self.world.world().get_tile(&position);
         let tiles_to_overlay = if tile.is_revealed() {
             position.neighbors()
@@ -656,7 +653,7 @@ impl State {
             for position_to_reveal in &to_reveal {
                 self.tile_map_texture.write_tile(&self.queue, Tile::empty().with_revealed(), *position_to_reveal);
             }
-            if to_reveal.len() > 0 {
+            if !to_reveal.is_empty() {
                 self.world.send(ClientMessage::DoubleClick(position));
             }
         }

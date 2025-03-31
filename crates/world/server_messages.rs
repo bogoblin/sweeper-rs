@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 #[derive(Debug, Clone)]
 pub enum ServerMessage {
-    Event(Event) = 'e' as u8,
-    Chunk(Chunk) = 'h' as u8,
-    Rect(UpdatedRect) = 'r' as u8,
-    Player(Player) = 'p' as u8,
-    Welcome(Player) = 'w' as u8,
-    Disconnected(String) = 'x' as u8,
-    Connected = '+' as u8,
+    Event(Event) = b'e',
+    Chunk(Chunk) = b'h',
+    Rect(UpdatedRect) = b'r',
+    Player(Player) = b'p',
+    Welcome(Player) = b'w',
+    Disconnected(String) = b'x',
+    Connected = b'+',
 }
 
 impl ServerMessage {
@@ -67,7 +67,7 @@ pub enum ServerMessageError {
 
 impl ServerMessage {
     pub fn from_compressed(compressed: Vec<u8>) -> Result<ServerMessage, ServerMessageError> {
-        if compressed.len() == 0 {
+        if compressed.is_empty() {
             return Err(ServerMessageError::BadEvent)
         }
         let header = String::from_utf8_lossy(&compressed[0..=0]);
@@ -100,7 +100,7 @@ impl ServerMessage {
             Ok(ServerMessage::Disconnected(player_id.into()))
         }
         else {
-            match Event::from_compressed(&*compressed) {
+            match Event::from_compressed(&compressed) {
                 Some(event) => Ok(ServerMessage::Event(event)),
                 None => Err(ServerMessageError::BadEvent)
             }
@@ -129,9 +129,7 @@ mod tests {
                 assert_eq!(updated.top_left, rect.top_left);
                 assert_eq!(updated.updated, rect.updated);
             }
-            _ => {
-                assert!(false);
-            }
+            _ => assert!(false),
         }
     }
 }
@@ -183,9 +181,7 @@ impl Chunk {
 
 impl From<Vec<Box<PublicTile>>> for ChunkTiles {
     fn from(tiles: Vec<Box<PublicTile>>) -> Self {
-        let mut result = Self {
-            0: [Tile::empty(); 256]
-        };
+        let mut result = Self([Tile::empty(); 256]);
         for i in 0..256 {
             if let Some(tile) = tiles.get(i) {
                 result.0[i] = tile.as_ref().clone().into();
@@ -256,7 +252,7 @@ impl UpdatedRect {
                 },
                 tile => {
                     let tile: Tile = tile.into();
-                    current_line.push(tile.into());
+                    current_line.push(tile);
                 }
             }
         }

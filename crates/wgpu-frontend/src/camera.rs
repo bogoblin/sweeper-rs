@@ -237,8 +237,8 @@ impl Camera {
     pub fn start_drag(&mut self, drag_start: &PhysicalPosition<f64>) {
         if self.drag.is_none() {
             self.drag = Some(Drag {
-                center: self.center.clone(),
-                screen_start: position_to_vector(drag_start.clone()),
+                center: self.center,
+                screen_start: position_to_vector(*drag_start),
             });
         }
     }
@@ -253,7 +253,7 @@ impl Camera {
     }
 
     pub fn update_mouse_position(&mut self, mouse_position: &PhysicalPosition<f64>) {
-        self.mouse_position = mouse_position.clone();
+        self.mouse_position = *mouse_position;
         if let Some(drag) = &self.drag {
             let drag_vector = position_to_vector(mouse_position.clone()) - drag.screen_start;
             let drag_vector_in_world_space = drag_vector/self.tile_size();

@@ -92,13 +92,13 @@ impl EventLogReader {
 pub enum EventReadResult {
     Ok(SourcedEvent),
     Invalid(String),
-    EOF,
+    Eof,
 }
 
 impl EventReadResult {
     pub fn parse(line: Option<String>) -> Self {
         match line {
-            None => { EventReadResult::EOF }
+            None => { EventReadResult::Eof }
             Some(line) => {
                 match serde_json::from_str(&line) {
                     Ok(event) => {
