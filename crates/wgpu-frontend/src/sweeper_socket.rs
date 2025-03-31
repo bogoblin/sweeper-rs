@@ -1,5 +1,5 @@
-use world::client_messages::ClientMessage;
-use world::server_messages::ServerMessage;
+use world::ClientMessage;
+use world::ServerMessage;
 use world::World;
 
 cfg_if::cfg_if! {

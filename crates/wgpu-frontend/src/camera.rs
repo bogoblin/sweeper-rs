@@ -1,14 +1,15 @@
 use std::mem::size_of;
 use crate::shader::HasBindGroup;
-use crate::{as_world_position};
+use crate::as_world_position;
 use cgmath::{Matrix, Matrix3, MetricSpace, Vector2, Vector4, Zero};
 use cgmath::num_traits::ToPrimitive;
-use log::{trace};
+use log::trace;
 #[cfg(target_arch = "wasm32")]
 use web_sys::Performance;
 use wgpu::BufferAddress;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Position, Rect};
+use world::Position;
+use world::Rect;
 #[cfg(target_arch = "wasm32")]
 use crate::url::url::UrlInfo;
 

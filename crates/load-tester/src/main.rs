@@ -9,9 +9,9 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-use world::client_messages::ClientMessage;
-use world::events::Event;
-use world::server_messages::ServerMessage;
+use world::ClientMessage;
+use world::Event;
+use world::ServerMessage;
 use world::Position;
 
 static THREADS: usize = 500;

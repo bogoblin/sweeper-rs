@@ -21,17 +21,18 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::{Position, Tile};
+use world::Position;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
-use crate::sweeper_socket::{SweeperSocket};
-use crate::tilerender_texture::{TileMapTexture};
+use crate::sweeper_socket::SweeperSocket;
+use crate::tilerender_texture::TileMapTexture;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use winit::application::ApplicationHandler;
-use world::client_messages::ClientMessage;
-use world::server_messages::ServerMessage;
+use world::ClientMessage;
+use world::ServerMessage;
+use world::Tile;
 use crate::chunk_loader::ChunkLoader;
 use crate::chunk_update_queue::ChunkUpdateQueue;
 use crate::cursors::Cursors;

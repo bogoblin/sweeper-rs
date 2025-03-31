@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::events::Event;
+use crate::Event;
 use crate::Position;
 
 #[derive(Serialize, Deserialize)]

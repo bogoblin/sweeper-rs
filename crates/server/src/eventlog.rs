@@ -11,7 +11,7 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::io;
 use tokio_util::codec::{FramedRead, LinesCodec};
 use world::{ChunkMines, ChunkPosition, Position};
-use world::events::Event;
+use world::Event;
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use crate::sweeper_socket::SweeperSocket;
-use world::client_messages::ClientMessage;
-use world::server_messages::ServerMessage;
+use world::ClientMessage;
+use world::ServerMessage;
 use world::World;
 
 pub struct LocalWorld {

@@ -1,6 +1,6 @@
 use PublicTile::*;
 use huffman_derive::huffman_derive;
-use crate::Tile;
+use crate::tile::Tile;
 
 #[huffman_derive(
     Hidden => 40,

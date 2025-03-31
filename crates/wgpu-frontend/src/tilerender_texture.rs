@@ -1,4 +1,4 @@
-use log::{error};
+use log::error;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::texture::Texture;
@@ -534,7 +534,7 @@ impl HasBindGroup for BlankingRect {
     }
 }
 
-use derive_more::{Add, Sub, Mul, Div};
+use derive_more::{Add, Div, Mul, Sub};
 
 #[derive(Debug, Clone, Add, Sub, Mul, Div)]
 struct PixelRect {

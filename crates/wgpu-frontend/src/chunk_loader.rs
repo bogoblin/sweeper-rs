@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
-use world::{Position, Rect};
-use world::client_messages::ClientMessage;
+use world::Position;
+use world::ClientMessage;
+use world::Rect;
 
 #[derive(Debug)]
 pub struct ChunkLoader {

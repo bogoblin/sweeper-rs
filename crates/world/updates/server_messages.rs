@@ -1,7 +1,6 @@
-use crate::compression::PublicTile;
-use crate::events::Event;
+use crate::PublicTile;
 use crate::player::Player;
-use crate::{Chunk, ChunkPosition, ChunkTiles, Position, Tile, UpdatedRect};
+use crate::{Chunk, ChunkPosition, ChunkTiles, Event, Position, Tile, UpdatedRect};
 use huffman::{BitWriter, HuffmanCode};
 use serde::{Deserialize, Serialize};
 
@@ -154,7 +153,7 @@ impl Chunk {
     }
 
     /// ```
-    /// use world::{Chunk, ChunkPosition, Position, World};
+    /// use world::*;
     /// let mut world = World::new();
     /// let position = Position(16, 16);
     /// let chunk_id = world.generate_chunk(position.clone());
@@ -171,11 +170,7 @@ impl Chunk {
     pub fn from_compressed(compressed: Vec<u8>) -> Option<Self> {
         let position = ChunkPosition::from_bytes(compressed[1..8].to_vec())?;
         let tiles = PublicTile::from_huffman_bytes(compressed[8..].to_vec());
-        Some(Chunk {
-            tiles: tiles.into(),
-            position,
-            adjacent_mines_filled: true,
-        })
+        Some(Chunk::from_position_and_tiles(position, tiles.into()))
     }
 }
 
