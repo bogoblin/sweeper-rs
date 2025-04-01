@@ -1,4 +1,3 @@
-use std::cmp::min;
 use bytes_cast::BytesCast;
 use serde::{Deserialize, Serialize};
 use std::ops::AddAssign;
@@ -36,33 +35,33 @@ impl Tile {
     pub const fn empty() -> Tile {
         Tile(0)
     }
-    pub fn mine() -> Tile {
+    pub const fn mine() -> Tile {
         Tile::empty().with_mine()
     }
-    pub fn with_mine(&self) -> Tile {
+    pub const fn with_mine(&self) -> Tile {
         Tile(self.0 | (1<<4))
     }
-    pub fn is_mine(&self) -> bool {
+    pub const fn is_mine(&self) -> bool {
         self.0 == self.with_mine().0
     }
-    pub fn with_flag(&self) -> Tile {
+    pub const fn with_flag(&self) -> Tile {
         Tile(self.0 | (1<<5))
     }
-    pub fn without_flag(&self) -> Tile {
+    pub const fn without_flag(&self) -> Tile {
         Tile(self.0 & !(1<<5))
     }
-    pub fn is_flag(&self) -> bool {
+    pub const fn is_flag(&self) -> bool {
         self.0 == self.with_flag().0
     }
-    pub fn with_revealed(&self) -> Tile {
+    pub const fn with_revealed(&self) -> Tile {
         Tile(self.0 | (1<<6))
     }
-    pub fn is_revealed(&self) -> bool {
+    pub const fn is_revealed(&self) -> bool {
         self.0 == self.with_revealed().0
     }
-    pub fn adjacent(&self) -> u8 {
+    pub const fn adjacent(&self) -> u8 {
         let adjacent = self.0 & 0b1111;
-        min(adjacent, 8)
+        if adjacent > 8 { 8 } else { adjacent }
     }
 }
 
@@ -82,9 +81,5 @@ impl Arbitrary for Tile {
     /// You may want to use PublicTile::arbitrary(g).into() instead
     fn arbitrary(g: &mut Gen) -> Self {
         Tile(u8::arbitrary(g))
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item=Self>> {
-        todo!()
     }
 }
