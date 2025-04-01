@@ -242,10 +242,6 @@ async fn recv_from_client(
                                 to_client.push(ServerMessage::Welcome(player.clone()));
                                 broadcast(&ServerMessage::Player(player));
                             },
-                            Disconnected(player_id) => {
-                                world.players.remove(&player_id);
-                                broadcast(&ServerMessage::Disconnected(player_id));
-                            }
                             Query(rect) => {
                                 for chunk in world.query_chunks(&rect)
                                     .iter().map(|chunk_id| &world.chunks[*chunk_id]) {
@@ -263,7 +259,12 @@ async fn recv_from_client(
             Message::Binary(_) => {}
             Message::Ping(_) => {}
             Message::Pong(_) => {}
-            Message::Close(_) => return
+            Message::Close(_) => {
+                let mut world = world.lock().await;
+                world.players.remove(player_id);
+                broadcast(&ServerMessage::Disconnected(player_id.into()));
+                return;
+            }
         }
         
         if let Some(event) = event {

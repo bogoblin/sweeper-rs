@@ -10,7 +10,6 @@ pub enum ClientMessage {
     Flag(Position),
     DoubleClick(Position),
     Query(Rect),
-    Disconnected(String),
 }
 
 impl ClientMessage {
