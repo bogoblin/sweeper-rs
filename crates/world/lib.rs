@@ -188,7 +188,7 @@ impl World {
     pub fn click(&mut self, at: Position, by_player_id: &str) -> Option<Event> {
         self.set_player_position(by_player_id, at);
         let updated = self.reveal(vec![at]);
-        if !updated.updated.is_empty() {
+        if !updated.is_empty() {
             Some(Event::Clicked {
                 player_id: by_player_id.to_string(),
                 at,

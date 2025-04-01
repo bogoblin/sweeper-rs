@@ -1,3 +1,4 @@
+use quickcheck::{Arbitrary, Gen};
 use PublicTile::*;
 use huffman_derive::huffman_derive;
 use crate::tile::Tile;
@@ -34,13 +35,13 @@ pub enum PublicTile {
     Newline,
 }
 
-impl Into<PublicTile> for &Tile {
-    fn into(self) -> PublicTile {
-        if self.is_revealed() {
-            if self.is_mine() {
+impl From<&Tile> for PublicTile {
+    fn from(value: &Tile) -> Self {
+        if value.is_revealed() {
+            if value.is_mine() {
                 Exploded
             } else {
-                match self.adjacent() { 
+                match value.adjacent() {
                     0 => Adjacent0,
                     1 => Adjacent1,
                     2 => Adjacent2,
@@ -54,7 +55,7 @@ impl Into<PublicTile> for &Tile {
                 }
             }
         } else {
-            if self.is_flag() {
+            if value.is_flag() {
                 Flag
             } else {
                 Hidden
@@ -63,8 +64,15 @@ impl Into<PublicTile> for &Tile {
     }
 }
 
-impl From<PublicTile> for Tile {
-    fn from(value: PublicTile) -> Self {
+impl From<Tile> for PublicTile {
+    fn from(value: Tile) -> Self {
+        (&value).into()
+    }
+}
+
+
+impl From<&PublicTile> for Tile {
+    fn from(value: &PublicTile) -> Self {
         match value {
             Hidden => Tile::empty(),
             Flag => Tile::empty().with_flag(),
@@ -80,5 +88,18 @@ impl From<PublicTile> for Tile {
             Adjacent8 => Tile(8).with_revealed(),
             Newline => Tile::empty(),
         }
+    }
+}
+
+impl From<PublicTile> for Tile {
+    fn from(value: PublicTile) -> Self {
+        (&value).into()
+    }
+}
+
+impl Arbitrary for PublicTile {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let tile = Tile::arbitrary(g);
+        tile.into()
     }
 }

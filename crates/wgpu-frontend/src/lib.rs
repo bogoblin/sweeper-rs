@@ -636,7 +636,7 @@ impl State {
 
     pub fn end_double_click_overlay(&mut self) {
         if let Some(position) = self.double_click_overlay {
-            for position in position.neighbours_and_self() {
+            for position in position.neighbors_and_self() {
                 let tile = self.world.world().get_tile(&position);
                 if !tile.is_revealed() && !tile.is_flag() {
                     self.tile_map_texture.write_tile(&self.queue, tile, position);

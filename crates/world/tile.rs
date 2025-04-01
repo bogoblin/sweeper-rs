@@ -3,6 +3,7 @@ use bytes_cast::BytesCast;
 use serde::{Deserialize, Serialize};
 use std::ops::AddAssign;
 use std::fmt::{Display, Formatter};
+use quickcheck::{Arbitrary, Gen};
 
 #[repr(C)]
 #[derive(BytesCast)]
@@ -74,5 +75,16 @@ impl From<Tile> for u8 {
 impl AddAssign<u8> for Tile {
     fn add_assign(&mut self, rhs: u8) {
         self.0 += rhs;
+    }
+}
+
+impl Arbitrary for Tile {
+    /// You may want to use PublicTile::arbitrary(g).into() instead
+    fn arbitrary(g: &mut Gen) -> Self {
+        Tile(u8::arbitrary(g))
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item=Self>> {
+        todo!()
     }
 }

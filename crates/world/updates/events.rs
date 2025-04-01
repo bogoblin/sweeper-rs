@@ -1,9 +1,10 @@
 use crate::{Position, Tile, UpdatedRect, UpdatedTile};
 use serde::{Deserialize, Serialize};
 use std::i32;
+use quickcheck::{Arbitrary, Gen};
 use crate::player::Player;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[derive(Serialize, Deserialize)]
 pub enum Event {
     Clicked {
@@ -139,6 +140,40 @@ impl Event {
     }
 }
 
+impl Arbitrary for Event {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let player_id = String::from("alfie");
+        let at = Position::arbitrary(g);
+        match u8::arbitrary(g) % 4 {
+            0 => Event::Clicked {
+                player_id,
+                at,
+                updated: UpdatedRect::arbitrary(g)
+            },
+            1 => Event::DoubleClicked {
+                player_id,
+                at,
+                updated: UpdatedRect::arbitrary(g)
+            },
+            2 => Event::Flag { player_id, at },
+            _ => Event::Unflag { player_id, at }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use quickcheck::quickcheck;
+    use crate::Event;
+
+    quickcheck! {
+        fn event_compression_then_decompression(event: Event) -> bool {
+            let compressed = event.compress();
+            let decompressed = Event::from_compressed(&*compressed);
+            event.updated_rect() == decompressed.unwrap().updated_rect()
+        }
+    }
+}
 
 #[test]
 fn compression_test() -> Result<(), String> {

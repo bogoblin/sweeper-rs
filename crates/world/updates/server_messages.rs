@@ -107,32 +107,6 @@ impl ServerMessage {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::server_messages::ServerMessage;
-    use crate::{Position, Tile, UpdatedRect, UpdatedTile};
-
-    #[test]
-    fn rect_compress_and_decompress() {
-        let mut updated = vec![];
-        for i in 0..50 {
-            updated.push(UpdatedTile {
-                position: Position(i+5, -i-3),
-                tile: Tile::empty().with_revealed(),
-            });
-        }
-        let rect = UpdatedRect::new(updated);
-        let compressed: Vec<u8> = (&ServerMessage::Rect(rect.clone())).into();
-        match ServerMessage::from_compressed(compressed) {
-            Ok(ServerMessage::Rect(updated)) => {
-                assert_eq!(updated.top_left, rect.top_left);
-                assert_eq!(updated.updated, rect.updated);
-            }
-            _ => assert!(false),
-        }
-    }
-}
-
 impl Chunk {
     pub fn compress(&self) -> Vec<u8> {
         let mut result = vec![];
@@ -232,23 +206,15 @@ impl ChunkPosition {
 impl UpdatedRect {
     pub fn from_compressed(compressed: &[u8]) -> Option<Self> {
         let top_left = Position::from_compressed(compressed)?;
-        let mut updated = UpdatedRect::empty();
-        updated.top_left = top_left;
+        let mut updated = UpdatedRect::empty_at(top_left);
 
         let index = 8;
         let tiles = PublicTile::from_huffman_bytes(compressed[index..].to_vec());
 
-        let mut current_line: Vec<Tile> = vec![];
         for tile in tiles {
             match *tile {
-                PublicTile::Newline => {
-                    updated.updated.push(current_line);
-                    current_line = vec![];
-                },
-                tile => {
-                    let tile: Tile = tile.into();
-                    current_line.push(tile);
-                }
+                PublicTile::Newline => updated.push_newline(),
+                tile => updated.push(tile.into()),
             }
         }
         
