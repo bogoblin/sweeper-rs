@@ -10,6 +10,7 @@ pub struct ChunkLoader {
 }
 
 impl ChunkLoader {
+    const MAX_VISIBLE: i32 = 8192;
     pub fn new(visible_area: Rect) -> Self {
         let top_left = visible_area.top_left().chunk_position().position();
         let bottom_right = visible_area.bottom_right().chunk_position().bottom_right().position();
@@ -27,6 +28,9 @@ impl ChunkLoader {
             self.loaded.height()
         ));
         self.loaded.right += columns;
+        if self.loaded.width() > Self::MAX_VISIBLE {
+            self.loaded.left = self.loaded.right - Self::MAX_VISIBLE;
+        }
     }
     fn grow_bottom(&mut self, rows: u32) {
         let rows = (rows * 16) as i32;
@@ -36,6 +40,9 @@ impl ChunkLoader {
             rows,
         ));
         self.loaded.bottom += rows;
+        if self.loaded.height() > Self::MAX_VISIBLE {
+            self.loaded.top = self.loaded.bottom - Self::MAX_VISIBLE;
+        }
     }
     fn grow_left(&mut self, columns: u32) {
         let columns = (columns * 16) as i32;
@@ -45,6 +52,9 @@ impl ChunkLoader {
             self.loaded.height()
         ));
         self.loaded.left -= columns;
+        if self.loaded.width() > Self::MAX_VISIBLE {
+            self.loaded.right = self.loaded.left + Self::MAX_VISIBLE;
+        }
     }
     fn grow_top(&mut self, rows: u32) {
         let rows = (rows * 16) as i32;
@@ -54,10 +64,19 @@ impl ChunkLoader {
             rows,
         ));
         self.loaded.top -= rows;
+        if self.loaded.height() > Self::MAX_VISIBLE {
+            self.loaded.bottom = self.loaded.top + Self::MAX_VISIBLE;
+        }
     }
 
     const GROW_AMOUNT: u32 = 4;
     pub fn query(&mut self, target_area: Rect) {
+        if target_area.width() > Self::MAX_VISIBLE
+            || target_area.height() > Self::MAX_VISIBLE
+        {
+            return;
+        }
+
         if target_area.right > self.loaded.right {
             self.grow_right(Self::GROW_AMOUNT);
         }
