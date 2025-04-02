@@ -144,6 +144,10 @@ impl Cursors {
         self.your_player_id = Some(your_player_id);
         self.update_player(player, queue);
     }
+
+    pub fn your_player_id(&self) -> Option<String> {
+        self.your_player_id.clone()
+    }
     
     pub fn update_player(&mut self, player: &Player, queue: &wgpu::Queue) {
         let index = Player::numeric_hash(&player.player_id, Self::N_CURSORS);

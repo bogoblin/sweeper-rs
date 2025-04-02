@@ -5,12 +5,18 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 pub struct OverlayCanvas {
     canvas: HtmlCanvasElement,
-    context: CanvasRenderingContext2d,
+    pub context: CanvasRenderingContext2d,
 }
 
 pub enum CapturePointerEvents {
     Capture,
     PassThrough
+}
+
+impl Default for OverlayCanvas {
+    fn default() -> Self {
+        Self::new(web_sys::window().unwrap().document().unwrap())
+    }
 }
 
 impl OverlayCanvas {

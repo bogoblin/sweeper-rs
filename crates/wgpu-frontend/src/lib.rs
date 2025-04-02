@@ -15,6 +15,7 @@ use std::default::Default;
 use std::future::Future;
 use std::sync::Arc;
 use cgmath::Vector2;
+use chrono::Duration;
 use chrono::prelude::*;
 use log::info;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, PointerSource, WindowEvent};
@@ -22,7 +23,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 use wgpu::{CompositeAlphaMode, PresentMode, ShaderSource};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use world::Position;
+use world::{Position, PublicTile};
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
 use crate::sweeper_socket::SweeperSocket;
@@ -512,6 +513,10 @@ impl State {
                         self.world.world().apply_updated_rect(event.updated_rect())
                     );
                     self.cursors.update_player(&event.player(), &self.queue);
+                    let is_you = if let Some(your_player_id) = self.cursors.your_player_id() {
+                        event.player().player_id == your_player_id
+                    } else { false };
+                    self.overlay.process_event(event, is_you);
                 }
                 ServerMessage::Chunk(chunk) => {
                     self.chunk_update_queue.add_chunk_ids(
@@ -581,6 +586,8 @@ impl State {
         self.cursors.render(&self.device, &self.queue, &view, &self.camera);
 
         output.present();
+
+        self.overlay.update();
 
         Ok(())
     }
