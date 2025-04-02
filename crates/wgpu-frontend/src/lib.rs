@@ -9,6 +9,7 @@ mod fingers;
 mod url;
 mod chunk_loader;
 mod chunk_update_queue;
+mod canvas2d_overlay;
 
 use std::default::Default;
 use std::future::Future;
@@ -37,6 +38,7 @@ use crate::chunk_loader::ChunkLoader;
 use crate::chunk_update_queue::ChunkUpdateQueue;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
+use crate::canvas2d_overlay::OverlayController;
 use crate::tile_sprites::DarkMode;
 
 #[derive(Default)]
@@ -122,6 +124,7 @@ struct State {
     double_click_overlay: Option<Position>,
     chunk_loader: ChunkLoader,
     chunk_update_queue: ChunkUpdateQueue,
+    overlay: OverlayController,
 }
 
 impl State {
@@ -268,7 +271,7 @@ impl State {
                 web_sys::window()
                     .and_then(|win| win.document())
                     .and_then(|doc| {
-                        let dst = doc.get_element_by_id("wasm-example").unwrap();
+                        let dst = doc.body().unwrap();
                         let canvas = web_sys::Element::from(window.canvas().unwrap().clone());
                         dst.append_child(&canvas).unwrap();
                         Some(())
@@ -300,6 +303,7 @@ impl State {
                 double_click_overlay: None,
                 chunk_loader,
                 chunk_update_queue: ChunkUpdateQueue::new(),
+                overlay: OverlayController::new(),
             }
         }
     }
@@ -331,6 +335,8 @@ impl State {
             let height = win.inner_height().unwrap().as_f64().unwrap() as u32;
             PhysicalSize::new(width, height)
         };
+
+        self.overlay.set_size(new_size);
 
         #[cfg(not(target_arch="wasm32"))]
         let new_size = self.size;
