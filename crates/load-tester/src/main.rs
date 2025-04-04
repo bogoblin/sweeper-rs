@@ -113,13 +113,10 @@ impl Client {
             match message {
                 Ok(data) => {
                     println!("got data {:?}", data);
-                    match ServerMessage::from_compressed(data.into_data().to_vec()) {
-                        Ok(message) => {
-                            println!("got message {:?}", message);
-                            let mut client = client.lock().await;
-                            client.match_server_message(message);
-                        }
-                        Err(_) => {}
+                    if let Ok(message) = ServerMessage::from_compressed(data.into_data().to_vec()) {
+                        println!("got message {:?}", message);
+                        let mut client = client.lock().await;
+                        client.match_server_message(message);
                     }
                 }
                 Err(err) => {
@@ -137,19 +134,17 @@ impl Client {
                 if Some(player.player_id) == self.player_id {
                     // it was a message we sent, so find it:
                     let corresponding_client_message = match event {
-                        Event::Clicked { at, .. } => ClientMessage::Click(at.clone()),
-                        Event::DoubleClicked { at, .. } => ClientMessage::DoubleClick(at.clone()),
+                        Event::Clicked { at, .. } => ClientMessage::Click(*at),
+                        Event::DoubleClicked { at, .. } => ClientMessage::DoubleClick(*at),
                         Event::Flag { at, .. } |
-                        Event::Unflag { at, .. } => ClientMessage::Flag(at.clone()),
+                        Event::Unflag { at, .. } => ClientMessage::Flag(*at),
                     };
                     for sent in &mut self.sent_messages {
-                        if sent.response.is_none() {
-                            if sent.request.message == corresponding_client_message {
-                                sent.response = Some(Response {
-                                    message: sm_clone.clone(),
-                                    received_at: Instant::now(),
-                                })
-                            }
+                        if sent.response.is_none() && sent.request.message == corresponding_client_message {
+                            sent.response = Some(Response {
+                                message: sm_clone.clone(),
+                                received_at: Instant::now(),
+                            })
                         }
                     }
                 }

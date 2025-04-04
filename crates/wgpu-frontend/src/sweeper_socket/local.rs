@@ -1,5 +1,5 @@
+use crate::sweeper_socket::interface::SweeperSocket;
 use std::collections::VecDeque;
-use crate::sweeper_socket::SweeperSocket;
 use world::ClientMessage;
 use world::ServerMessage;
 use world::World;
@@ -26,7 +26,6 @@ impl SweeperSocket for LocalWorld {
             ClientMessage::Flag(position) => { self.world.flag(position, "") }
             ClientMessage::DoubleClick(position) => { self.world.double_click(position, "") }
             ClientMessage::Query(_) => { None }
-            ClientMessage::Disconnected(player_id) => { self.world.players.remove(&player_id); None }
         };
         if let Some(event) = event {
             self.message_queue.push_back(ServerMessage::Event(event));

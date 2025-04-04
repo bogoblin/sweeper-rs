@@ -3,13 +3,13 @@ pub mod camera;
 mod tilerender_texture;
 mod shader;
 mod tile_sprites;
-mod sweeper_socket;
 mod cursors;
 mod fingers;
 mod url;
 mod chunk_loader;
 mod chunk_update_queue;
 mod canvas2d_overlay;
+mod sweeper_socket;
 
 use std::default::Default;
 use std::future::Future;
@@ -25,7 +25,6 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use world::Position;
 use crate::camera::Camera;
 use crate::shader::HasBindGroup;
-use crate::sweeper_socket::SweeperSocket;
 use crate::tilerender_texture::TileMapTexture;
 
 #[cfg(target_arch = "wasm32")]
@@ -39,6 +38,8 @@ use crate::chunk_update_queue::ChunkUpdateQueue;
 use crate::cursors::Cursors;
 use crate::fingers::Fingers;
 use crate::canvas2d_overlay::OverlayController;
+use crate::sweeper_socket::interface::SweeperSocket;
+use crate::sweeper_socket::SocketWorld;
 use crate::tile_sprites::DarkMode;
 
 #[derive(Default)]
@@ -116,7 +117,7 @@ struct State {
     camera: Camera,
     last_frame_time: DateTime<Utc>,
     tile_map_texture: TileMapTexture,
-    world: Box<dyn SweeperSocket>,
+    world: SocketWorld,
     cursors: Cursors,
     surface_configured: bool,
     right_mouse_button_down: bool,
@@ -253,14 +254,7 @@ impl State {
                 cache: None,
             });
 
-            let world;
-            cfg_if::cfg_if! {
-                if #[cfg(target_arch = "wasm32")] {
-                    world = Box::new(sweeper_socket::js_websocket::WebSocketWorld::new())
-                } else {
-                    world = Box::new(sweeper_socket::local::LocalWorld::new())
-                }
-            }
+            let world = SocketWorld::new();
             let cursors = Cursors::new(&device, &queue, surface_format, &camera);
 
             #[cfg(target_arch = "wasm32")]
@@ -336,6 +330,7 @@ impl State {
             PhysicalSize::new(width, height)
         };
 
+        #[cfg(target_arch = "wasm32")]
         self.overlay.set_size(new_size);
 
         #[cfg(not(target_arch="wasm32"))]
@@ -480,7 +475,7 @@ impl State {
         self.chunk_loader.query(self.camera.visible_world_rect());
         match self.chunk_loader.next_query_message() {
             None => {}
-            Some(query) => self.world.send(query),
+            Some(query) => { self.world.send(query); }
         }
 
         // Load in any new chunks

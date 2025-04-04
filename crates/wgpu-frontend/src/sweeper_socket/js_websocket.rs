@@ -7,7 +7,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen::__rt::IntoJsResult;
 use web_sys::{js_sys, BinaryType, ErrorEvent, MessageEvent, WebSocket};
 use world::{World, ClientMessage, ServerMessage};
-use crate::sweeper_socket::SweeperSocket;
+use crate::sweeper_socket::interface::SweeperSocket;
 
 pub struct WebSocketWorld {
     world: World,
@@ -52,8 +52,8 @@ impl Connection {
 
         let tx_clone = tx.clone();
         let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
-            if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
-                let array = js_sys::Uint8Array::new(&abuf);
+            if let Ok(buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
+                let array = js_sys::Uint8Array::new(&buffer);
                 match ServerMessage::from_compressed(array.to_vec()) {
                     Ok(message) => {
                         let _ = tx_clone.send(WebSocketMessage::Message(message));
