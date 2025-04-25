@@ -72,12 +72,12 @@ impl Connection {
         onmessage_callback.forget();
 
         let tx_clone = tx.clone();
-        let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: ErrorEvent| {
+        let onclose_callback = Closure::<dyn FnMut(_)>::new(move |e: ErrorEvent| {
             info!("error event: {:?}", e);
             tx_clone.send(WebSocketMessage::Disconnect).unwrap();
         });
-        ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
-        onerror_callback.forget();
+        ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
+        onclose_callback.forget();
 
         let tx_clone = tx.clone();
         let onopen_callback = Closure::<dyn FnMut()>::new(move || {

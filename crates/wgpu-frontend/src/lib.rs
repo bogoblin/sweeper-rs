@@ -487,7 +487,7 @@ impl State {
         }
         
         let mut chunks_transferred = 0;
-        for chunk_id in self.chunk_update_queue.by_ref().take(50) {
+        for chunk_id in self.chunk_update_queue.by_ref().take(2000) {
             let chunk = &self.world.world().chunks[chunk_id];
             self.tile_map_texture.write_chunk(&self.queue, chunk);
             chunks_transferred += 1;
