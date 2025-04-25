@@ -155,7 +155,13 @@ async fn handle_socket(ws: WebSocket, app: AppState) {
         });
     }
     
-    recv_from_client(ws_rx, client_tx, app.broadcast_tx, app.event_log_writer, app.world, &player_id).await;
+    recv_from_client(ws_rx, client_tx, app.broadcast_tx.clone(), app.event_log_writer, app.world.clone(), &player_id).await;
+
+    {
+        let mut world = app.world.lock().await;
+        world.players.remove(&player_id);
+    }
+    let _ = app.broadcast_tx.send(Message::Binary(ServerMessageBundle(vec![ServerMessage::Disconnected(player_id)]).to_bytes()));
 }
 
 async fn recv_broadcast(
@@ -176,7 +182,6 @@ async fn send_client_messages(
     let mut messages = vec![];
     while client_rx.recv_many(&mut messages, 1024).await != 0 {
         let messages = std::mem::take(&mut messages);
-        // TODO: find a way to bundle messages together
         for message in messages {
             if client_tx.feed(message).await.is_err() {
                 return; // Disconnected
@@ -255,12 +260,7 @@ async fn recv_from_client(
             Message::Binary(_) => {}
             Message::Ping(_) => {}
             Message::Pong(_) => {}
-            Message::Close(_) => {
-                let mut world = world.lock().await;
-                world.players.remove(player_id);
-                to_broadcast.push(ServerMessage::Disconnected(player_id.into()));
-                return;
-            }
+            Message::Close(_) => return
         }
         
         if let Some(event) = event {
