@@ -159,14 +159,13 @@ impl Arbitrary for Event {
 
 #[cfg(test)]
 mod tests {
-    use quickcheck::quickcheck;
+    use quickcheck_macros::quickcheck;
     use crate::Event;
 
-    quickcheck! {
-        fn event_compression_then_decompression(event: Event) -> bool {
-            let compressed = event.compress();
-            let decompressed = Event::from_compressed(&*compressed).unwrap();
-            event == decompressed
-        }
+    #[quickcheck]
+    fn event_compression_then_decompression(event: Event) -> bool {
+        let compressed = event.compress();
+        let decompressed = Event::from_compressed(&*compressed).unwrap();
+        event == decompressed
     }
 }

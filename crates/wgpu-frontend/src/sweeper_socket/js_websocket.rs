@@ -54,7 +54,7 @@ impl Connection {
         let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
             if let Ok(buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
                 let array = js_sys::Uint8Array::new(&buffer);
-                match ServerMessage::from_compressed(array.to_vec()) {
+                match ServerMessage::from_compressed(&*array.to_vec()) {
                     Ok(message) => {
                         let _ = tx_clone.send(WebSocketMessage::Message(message));
                     }

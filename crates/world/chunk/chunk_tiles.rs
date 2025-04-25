@@ -3,11 +3,20 @@ use std::ops::{Index, IndexMut};
 use serde::de::{Error, Visitor};
 use std::fmt::Formatter;
 use bytes_cast::BytesCast;
+use quickcheck::{Arbitrary, Gen};
+use crate::PublicTile;
 use crate::tile::Tile;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(PartialEq)]
 pub struct ChunkTiles(pub [Tile; 256]);
+
+impl Default for ChunkTiles {
+    fn default() -> Self {
+        Self([Tile::empty(); 256])
+    }
+}
 
 impl ChunkTiles {
     pub fn from(bytes: [u8; 256]) -> Self {
@@ -71,5 +80,11 @@ impl<'de> Deserialize<'de> for ChunkTiles {
     {
         let visitor = ChunkTileVisitor{};
         deserializer.deserialize_bytes(visitor)
+    }
+}
+
+impl Arbitrary for ChunkTiles {
+    fn arbitrary(g: &mut Gen) -> Self {
+        Self::from(*(0..256).map(|_| PublicTile::arbitrary(g).into()).collect::<Vec<Tile>>().as_bytes().first_chunk().unwrap())
     }
 }

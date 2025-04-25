@@ -4,6 +4,7 @@ use crate::Position;
 
 #[derive(Serialize, Deserialize)]
 #[derive(Debug, Clone)]
+#[derive(PartialEq)]
 pub struct Player {
     pub player_id: String,
     pub position: Position,
@@ -47,7 +48,7 @@ impl Player {
         binary
     }
 
-    pub fn from_compressed(compressed: Vec<u8>) -> Option<Player> {
+    pub fn from_compressed(compressed: &[u8]) -> Option<Player> {
         let header = String::from_utf8_lossy(&compressed[0..=0]);
         if header != "p" && header != "w" {
             return None;

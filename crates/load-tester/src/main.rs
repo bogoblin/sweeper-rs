@@ -113,7 +113,7 @@ impl Client {
             match message {
                 Ok(data) => {
                     println!("got data {:?}", data);
-                    if let Ok(message) = ServerMessage::from_compressed(data.into_data().to_vec()) {
+                    if let Ok(message) = ServerMessage::from_compressed(&*data.into_data()) {
                         println!("got message {:?}", message);
                         let mut client = client.lock().await;
                         client.match_server_message(message);

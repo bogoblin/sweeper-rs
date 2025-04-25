@@ -176,7 +176,7 @@ impl Arbitrary for UpdatedRect {
                     }
                 }
             }
-            if queue.len() > 1000 {
+            if queue.len() > 100 {
                 break;
             }
         }

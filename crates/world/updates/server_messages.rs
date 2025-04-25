@@ -1,3 +1,4 @@
+use quickcheck::{Arbitrary, Gen};
 use crate::PublicTile;
 use crate::player::Player;
 use crate::{Chunk, ChunkPosition, ChunkTiles, Event, Position, Tile, UpdatedRect};
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[repr(u8)]
 #[derive(Serialize, Deserialize)]
 #[derive(Debug, Clone)]
+#[derive(PartialEq)]
 pub enum ServerMessage {
     Event(Event) = b'e',
     Chunk(Chunk) = b'h',
@@ -65,7 +67,7 @@ pub enum ServerMessageError {
 }
 
 impl ServerMessage {
-    pub fn from_compressed(compressed: Vec<u8>) -> Result<ServerMessage, ServerMessageError> {
+    pub fn from_compressed(compressed: &[u8]) -> Result<ServerMessage, ServerMessageError> {
         if compressed.is_empty() {
             return Err(ServerMessageError::BadEvent)
         }
@@ -107,6 +109,17 @@ impl ServerMessage {
     }
 }
 
+impl Arbitrary for ServerMessage {
+    fn arbitrary(g: &mut Gen) -> Self {
+        match u32::arbitrary(g)%5 {
+            1 => Self::Disconnected(String::arbitrary(g)),
+            2 => Self::Rect(UpdatedRect::arbitrary(g)),
+            3 => Self::Connected,
+            _ => Self::Chunk(Chunk::arbitrary(g))
+        }
+    }
+}
+
 impl Chunk {
     pub fn compress(&self) -> Vec<u8> {
         let mut result = vec![];
@@ -135,13 +148,13 @@ impl Chunk {
     /// world.click(Position(17, 17), "player");
     /// let chunk = world.get_chunk(position).unwrap();
     /// let compressed = chunk.compress();
-    /// let decompressed = Chunk::from_compressed(compressed.clone()).unwrap();
+    /// let decompressed = Chunk::from_compressed(&compressed.clone()).unwrap();
     /// assert_eq!(decompressed.public_tiles().len(), 256);
     /// for (decompressed_tile, tile) in decompressed.public_tiles().iter().zip(chunk.public_tiles()) {
     ///     assert_eq!(decompressed_tile.clone(), tile);
     /// }
     /// ```
-    pub fn from_compressed(compressed: Vec<u8>) -> Option<Self> {
+    pub fn from_compressed(compressed: &[u8]) -> Option<Self> {
         let position = ChunkPosition::from_bytes(compressed[1..8].to_vec())?;
         let tiles = PublicTile::from_huffman_bytes(compressed[8..].to_vec());
         Some(Chunk::from_position_and_tiles(position, tiles.into()))
@@ -219,5 +232,21 @@ impl UpdatedRect {
         }
         
         Some(updated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use quickcheck::quickcheck;
+    use crate::ServerMessage;
+
+    quickcheck! {
+        fn compression_then_decompression(message: ServerMessage) -> bool {
+            let compressed: Vec<u8> = (&message).into();
+            if let Ok(decompressed) = ServerMessage::from_compressed(&compressed) {
+                return decompressed == message;
+            }
+            false
+        }
     }
 }

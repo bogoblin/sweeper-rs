@@ -1,3 +1,4 @@
+use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 use crate::{ChunkPosition, Position, PositionInChunk, Rect};
 use crate::chunk::chunk_tiles::ChunkTiles;
@@ -5,6 +6,7 @@ use crate::tile::Tile;
 
 #[derive(Serialize, Deserialize)]
 #[derive(Debug, Clone)]
+#[derive(PartialEq)]
 pub struct Chunk {
     pub tiles: ChunkTiles,
     pub position: ChunkPosition,
@@ -101,5 +103,11 @@ impl Chunk {
 
     pub fn adjacent_mines_filled(&self) -> bool {
         self.adjacent_mines_filled
+    }
+}
+
+impl Arbitrary for Chunk {
+    fn arbitrary(g: &mut Gen) -> Self {
+        Self::from_position_and_tiles(Position::arbitrary(g).chunk_position(), ChunkTiles::arbitrary(g))
     }
 }
