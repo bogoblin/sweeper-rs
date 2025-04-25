@@ -1,7 +1,7 @@
 use crate::ServerMessage;
 use std::usize;
 
-pub struct ServerMessageBundle(Vec<ServerMessage>);
+pub struct ServerMessageBundle(pub Vec<ServerMessage>);
 
 struct MessageLength(usize);
 

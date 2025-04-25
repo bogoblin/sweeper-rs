@@ -24,7 +24,7 @@ use tokio::sync::{broadcast, Mutex};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use world::ClientMessage::{self, *};
 use world::player::Player;
-use world::ServerMessage;
+use world::{ServerMessage, ServerMessageBundle};
 use world::World;
 use world::Rect;
 use crate::eventlog::{EventLogReader, EventLogWriter, EventReadResult, SourcedEvent};
@@ -196,12 +196,8 @@ async fn recv_from_client(
     world: Arc<Mutex<World>>,
     player_id: &str,
 ) {
-    let broadcast = move |message: &ServerMessage| {
-        if broadcast_tx.send(Message::Binary(message.into())).is_err() {
-            error!("Unable to broadcast message");
-        }
-    };
     while let Some(Ok(msg)) = client_rx.next().await {
+        let mut to_broadcast = vec![];
         let mut to_client = vec![];
         let mut new_chunks = VecDeque::new();
         let mut event = None;
@@ -240,7 +236,7 @@ async fn recv_from_client(
                                 }
                                 let player = Player::new(player_id.to_string());
                                 to_client.push(ServerMessage::Welcome(player.clone()));
-                                broadcast(&ServerMessage::Player(player));
+                                to_broadcast.push(ServerMessage::Player(player));
                             },
                             Query(rect) => {
                                 for chunk in world.query_chunks(&rect)
@@ -262,7 +258,7 @@ async fn recv_from_client(
             Message::Close(_) => {
                 let mut world = world.lock().await;
                 world.players.remove(player_id);
-                broadcast(&ServerMessage::Disconnected(player_id.into()));
+                to_broadcast.push(ServerMessage::Disconnected(player_id.into()));
                 return;
             }
         }
@@ -270,12 +266,19 @@ async fn recv_from_client(
         if let Some(event) = event {
             event_log_writer.send(SourcedEvent::from_event(&event))
                 .unwrap_or_default();
-            broadcast(&ServerMessage::Event(event));
+            to_broadcast.push(ServerMessage::Event(event));
         }
 
-        for message in to_client {
-            let message = Message::Binary(Vec::<u8>::from(&message));
-            client_tx.send(message).unwrap_or_default();
+        if !to_broadcast.is_empty() {
+            let message = ServerMessageBundle(to_broadcast).to_bytes();
+            if broadcast_tx.send(Message::Binary(message)).is_err() {
+                error!("Unable to broadcast message");
+            }
+        }
+
+        if !to_client.is_empty() {
+            let message = ServerMessageBundle(to_client).to_bytes();
+            client_tx.send(Message::Binary(message)).unwrap_or_default();
         }
         
         for (position, mines) in new_chunks {

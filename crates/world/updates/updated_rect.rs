@@ -25,7 +25,11 @@ impl Debug for UpdatedRect {
         writeln!(f, "UpdatedRect: {:?} ({}x{}) with tiles:", self.top_left, self.width(), self.height())?;
         for y in 0..self.height() {
             for x in 0..self.width() {
-                write!(f, "{}", self.updated[x][y])?;
+                if let Some(col) = self.updated.get(x) {
+                    if let Some(tile) = col.get(y) {
+                        write!(f, "{}", tile)?;
+                    }
+                }
             }
             writeln!(f)?;
         }

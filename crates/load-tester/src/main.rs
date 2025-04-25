@@ -9,12 +9,12 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-use world::ClientMessage;
+use world::{ClientMessage, ServerMessageBundle};
 use world::Event;
 use world::ServerMessage;
 use world::Position;
 
-static THREADS: usize = 500;
+static THREADS: usize = 200;
 static TEST_DURATION: Duration = Duration::from_secs(600);
 static TIME_BETWEEN_MESSAGES: Duration = Duration::from_millis(1000);
 
@@ -50,7 +50,7 @@ struct Client {
 
 impl Client {
     pub async fn spawn() {
-        let (stream, _response) = connect_async("ws://localhost/ws")
+        let (stream, _response) = connect_async("ws://infinitesweeper.online/ws")
             .await.expect("couldn't connect");
 
         let (write, read) = stream.split();
@@ -113,10 +113,12 @@ impl Client {
             match message {
                 Ok(data) => {
                     println!("got data {:?}", data);
-                    if let Ok(message) = ServerMessage::from_compressed(&*data.into_data()) {
-                        println!("got message {:?}", message);
-                        let mut client = client.lock().await;
-                        client.match_server_message(message);
+                    if let Ok(ServerMessageBundle(messages)) = ServerMessageBundle::from_compressed(&*data.into_data()) {
+                        for message in messages {
+                            println!("got message {:?}", message);
+                            let mut client = client.lock().await;
+                            client.match_server_message(message);
+                        }
                     }
                 }
                 Err(err) => {
