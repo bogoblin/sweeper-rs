@@ -1,8 +1,8 @@
-use quickcheck::{Arbitrary, Gen};
-use crate::PublicTile;
 use crate::player::Player;
+use crate::PublicTile;
 use crate::{Chunk, ChunkPosition, ChunkTiles, Event, Position, Tile, UpdatedRect};
-use huffman::{BitWriter, HuffmanCode};
+use huffman::HuffmanCode;
+use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
 // ServerMessage is anything the server sends that gets compressed to bytes
@@ -125,11 +125,7 @@ impl Chunk {
         let mut result = vec![];
         result.append(&mut "h".as_bytes().to_vec());
         result.append(&mut self.position.to_bytes());
-        let mut bw = BitWriter::new();
-        for tile in self.public_tiles() {
-            tile.encode(&mut bw);
-        }
-        result.append(&mut bw.to_bytes());
+        result.append(&mut PublicTile::compress_tiles(&self.public_tiles()));
         result
     }
 
@@ -156,7 +152,7 @@ impl Chunk {
     /// ```
     pub fn from_compressed(compressed: &[u8]) -> Option<Self> {
         let position = ChunkPosition::from_bytes(compressed[1..8].to_vec())?;
-        let tiles = PublicTile::from_huffman_bytes(compressed[8..].to_vec());
+        let tiles = PublicTile::from_compressed_bytes(compressed[8..].to_vec());
         Some(Chunk::from_position_and_tiles(position, tiles.into()))
     }
 }
@@ -222,7 +218,7 @@ impl UpdatedRect {
         let mut updated = UpdatedRect::empty_at(top_left);
 
         let index = 8;
-        let tiles = PublicTile::from_huffman_bytes(compressed[index..].to_vec());
+        let tiles = PublicTile::from_compressed_bytes(compressed[index..].to_vec());
 
         for tile in tiles {
             match *tile {
@@ -237,16 +233,14 @@ impl UpdatedRect {
 
 #[cfg(test)]
 mod tests {
-    use quickcheck::quickcheck;
     use crate::ServerMessage;
+    use quickcheck_macros::quickcheck;
 
-    quickcheck! {
-        fn compression_then_decompression(message: ServerMessage) -> bool {
-            let compressed: Vec<u8> = (&message).into();
-            if let Ok(decompressed) = ServerMessage::from_compressed(&compressed) {
-                return decompressed == message;
-            }
-            false
+    #[quickcheck]
+    fn compression_then_decompression(message: ServerMessage) {
+        let compressed: Vec<u8> = (&message).into();
+        if let Ok(decompressed) = ServerMessage::from_compressed(&compressed) {
+            assert_eq!(message, decompressed);
         }
     }
 }

@@ -37,6 +37,20 @@ pub enum PublicTile {
     Newline = u8::MAX,
 }
 
+impl PublicTile {
+    pub fn from_compressed_bytes(bytes: Vec<u8>) -> Vec<Box<Self>> {
+        Self::from_huffman_bytes(bytes)
+    }
+    
+    pub fn compress_tiles(public_tiles: &[PublicTile]) -> Vec<u8> {
+        let mut bw = BitWriter::new();
+        for tile in public_tiles {
+            tile.encode(&mut bw);
+        }
+        bw.to_bytes()
+    }
+}
+
 impl From<&Tile> for PublicTile {
     fn from(value: &Tile) -> Self {
         if value.is_revealed() {

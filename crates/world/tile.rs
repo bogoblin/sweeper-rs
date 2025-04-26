@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 use quickcheck::{Arbitrary, Gen};
 
 #[repr(C)]
-#[derive(BytesCast)]
+#[derive(BytesCast, Ord, PartialOrd)]
 #[derive(Default, Eq, PartialEq, Clone, Copy)]
 #[derive(Serialize, Deserialize, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Tile (pub u8);

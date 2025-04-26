@@ -2,12 +2,11 @@ use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Formatter};
 use quickcheck::{Arbitrary, Gen};
-use huffman::{BitWriter, HuffmanCode};
 use serde::{Deserialize, Serialize};
 use crate::{Position, Tile};
 use crate::PublicTile;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct UpdatedTile {
     pub position: Position,
     pub tile: Tile,
@@ -158,12 +157,7 @@ impl From<&UpdatedRect> for Vec<u8> {
         let Position(x, y) = updated.top_left;
         binary.append(&mut x.to_be_bytes().to_vec());
         binary.append(&mut y.to_be_bytes().to_vec());
-        let mut bw = BitWriter::new();
-        let public_tiles = updated.public_tiles();
-        for tile in public_tiles {
-            tile.encode(&mut bw);
-        }
-        binary.append(&mut bw.to_bytes());
+        binary.append(&mut PublicTile::compress_tiles(&updated.public_tiles()));
         binary
     }
 }
@@ -206,19 +200,10 @@ impl Arbitrary for UpdatedRect {
 
 impl PartialEq for UpdatedRect {
     fn eq(&self, other: &Self) -> bool {
-        (|| {
-            for (x, col) in self.updated.iter().enumerate() {
-                let other_col = other.updated.get(x)?;
-                let shortest = min(col.len(), other_col.len());
-                for y in 0..shortest {
-                    let pub_tile = PublicTile::from(col[y]);
-                    let other_pub_tile = PublicTile::from(other_col[y]);
-                    if pub_tile != other_pub_tile {
-                        return None
-                    }
-                }
-            }
-            Some(())
-        })().is_some()
+        let mut my_tiles = self.tiles_updated();
+        let mut other_tiles = other.tiles_updated();
+        my_tiles.sort();
+        other_tiles.sort();
+        my_tiles == other_tiles
     }
 }

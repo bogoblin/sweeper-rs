@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::ChunkPosition;
 use crate::position::position_in_chunk::PositionInChunk;
 
-#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Default)]
+#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Default, Ord, PartialOrd)]
 #[derive(Serialize, Deserialize)]
 #[derive(derive_more::Mul, derive_more::Div)]
 pub struct Position(pub i32, pub i32);
