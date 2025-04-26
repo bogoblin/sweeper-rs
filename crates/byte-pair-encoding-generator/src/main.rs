@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::Read;
+use world::{PublicTile, Tile};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chunk_file = OpenOptions::new()
@@ -33,10 +34,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // MaybeTODO: speed up the implementation by avoiding this step
         counts = PairCounts::from_bytes(&bytes[..]);
     }
-
+    
+    let mut final_pairs = [const { None }; 256];
     let mut lookup_table: [Option<Vec<u8>>; 256] = [const { None }; 256];
     for i in 0..replacements.len() {
         let ((a, b), replaced_with) = replacements[i];
+        final_pairs[replaced_with as usize] = Some((a, b));
         let mut full_replacement = vec![];
         for i in [a,b] {
             match &lookup_table[i as usize] {
@@ -52,25 +55,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     for i in 0..=255 {
-        if lookup_table[i].is_none() {
-            lookup_table[i] = Some(vec![i as u8]);
-        }
-    }
-
-    for i in 0..=255 {
-        match &lookup_table[i as usize] {
+        // match &lookup_table[i as usize] {
+        //     None => {
+        //         println!("{i} => {i}")
+        //     }
+        //     Some(row) => {
+        //         println!("{i} => {row:?}")
+        //     }
+        // }
+        match &final_pairs[i as usize] {
             None => {
-                println!("{i} => {i}")
+                println!("None,")
             }
-            Some(row) => {
-                println!("{i} => {row:?}")
+            Some((a, b)) => {
+                println!("Some({a}, {b}),")
             }
         }
     }
 
     let mut check_bytes = vec![];
     for byte in bytes {
-        check_bytes.append(&mut lookup_table[byte as usize].clone().unwrap());
+        check_bytes.append(&mut lookup_table[byte as usize].clone().unwrap_or_else(|| vec![byte]));
     }
     
     assert_eq!(check_bytes, original_bytes);
@@ -89,6 +94,11 @@ impl PairCounts {
             pairs: Default::default(),
             used_bytes: [false; 256],
         };
+        for i in 0..=255 {
+            // We always want to be able to represent any PublicTile, so never replace those even if
+            // there aren't any of them in the training data:
+            result.used_bytes[Tile::from(PublicTile::from(Tile(i))).0 as usize] = true;
+        }
         
         let mut last_byte = None;
         for &byte in bytes {
