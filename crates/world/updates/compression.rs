@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use quickcheck::{Arbitrary, Gen};
 use PublicTile::*;
 use huffman_derive::huffman_derive;
@@ -18,7 +19,7 @@ use crate::tile::Tile;
     Adjacent8 => 0.0001,
     Newline => 15
 )]
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, Hash)]
 #[repr(u8)]
 pub enum PublicTile {
     Hidden = 0,
@@ -88,5 +89,12 @@ impl Arbitrary for PublicTile {
     fn arbitrary(g: &mut Gen) -> Self {
         let tile = Tile::arbitrary(g);
         tile.into()
+    }
+}
+
+impl Display for PublicTile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let tile = Tile::from(self);
+        write!(f, "{tile}")
     }
 }
