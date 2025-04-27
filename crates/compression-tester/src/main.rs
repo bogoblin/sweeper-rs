@@ -33,7 +33,7 @@ struct Client {
 
 impl Client {
     pub async fn spawn() {
-        let (stream, _response) = connect_async("ws://localhost/ws")
+        let (stream, _response) = connect_async("ws://infinitesweeper.online/ws")
             .await.expect("couldn't connect");
 
         let (write, read) = stream.split();

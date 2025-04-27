@@ -1,7 +1,7 @@
 use crate::player::Player;
 use crate::PublicTile;
 use crate::{Chunk, ChunkPosition, ChunkTiles, Event, Position, Tile, UpdatedRect};
-// use huffman::HuffmanCode;
+use huffman::HuffmanCode;
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 
@@ -153,7 +153,7 @@ impl Chunk {
     pub fn from_compressed(compressed: &[u8]) -> Option<Self> {
         let position = ChunkPosition::from_bytes(compressed[1..8].to_vec())?;
         let tiles = PublicTile::from_compressed_bytes(compressed[8..].to_vec());
-        Some(Chunk::from_position_and_tiles(position, ChunkTiles::from(*bytemuck::cast_slice(&tiles).first_chunk::<256>()?)))
+        Some(Chunk::from_position_and_tiles(position, tiles.into()))
     }
 }
 
@@ -221,7 +221,7 @@ impl UpdatedRect {
         let tiles = PublicTile::from_compressed_bytes(compressed[index..].to_vec());
 
         for tile in tiles {
-            match tile {
+            match *tile {
                 PublicTile::Newline => updated.push_newline(),
                 tile => updated.push(tile.into()),
             }
@@ -233,39 +233,8 @@ impl UpdatedRect {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Chunk, ServerMessage, UpdatedRect};
+    use crate::ServerMessage;
     use quickcheck_macros::quickcheck;
-    
-    #[quickcheck]
-    fn chunk_compression(chunk: Chunk) {
-        let compressed: Vec<u8> = (&ServerMessage::Chunk(chunk.clone())).into();
-        if let Ok(decompressed) = ServerMessage::from_compressed(&compressed) {
-            match decompressed {
-                ServerMessage::Chunk(matched_chunk) => {
-                    assert_eq!(chunk, matched_chunk);
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-        }
-    }
-    
-    #[quickcheck]
-    fn updated_rect_compression(updated_rect: UpdatedRect) {
-        let compressed: Vec<u8> = (&ServerMessage::Rect(updated_rect.clone())).into();
-        if let Ok(decompressed) = ServerMessage::from_compressed(&compressed) {
-            match decompressed {
-                ServerMessage::Rect(matched) => {
-                    assert_eq!(updated_rect, matched);
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-        }
-    }
-
 
     #[quickcheck]
     fn compression_then_decompression(message: ServerMessage) {
