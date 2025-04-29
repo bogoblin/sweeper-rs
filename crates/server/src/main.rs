@@ -95,6 +95,7 @@ async fn main() {
         info!("No event log found, starting a new world.");
     }
     world.players.clear();
+    world.generated_chunks.clear();
 
     let mut event_log_writer = EventLogWriter::new("eventlog".into()).await
         .expect("Unable to create event log writer");
@@ -262,6 +263,10 @@ async fn recv_from_client(
             Message::Pong(_) => {}
             Message::Close(_) => return
         }
+
+        for (position, mines) in new_chunks {
+            event_log_writer.send(SourcedEvent::ChunkGenerated(position, mines)).unwrap_or_default();
+        }
         
         if let Some(event) = event {
             event_log_writer.send(SourcedEvent::from_event(&event))
@@ -279,10 +284,6 @@ async fn recv_from_client(
         if !to_client.is_empty() {
             let message = ServerMessageBundle(to_client).to_bytes();
             client_tx.send(Message::Binary(message)).unwrap_or_default();
-        }
-        
-        for (position, mines) in new_chunks {
-            event_log_writer.send(SourcedEvent::ChunkGenerated(position, mines)).unwrap_or_default();
         }
     }
 }
