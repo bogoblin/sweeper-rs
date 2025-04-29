@@ -1,20 +1,14 @@
-use std::collections::HashMap;
-
 pub struct BytePairEncoding {
+    sorted_replacements: Vec<(u8, (u8, u8))>,
     expanded_replacements: [Option<Vec<u8>>; 256],
-    pairs: HashMap<(u8, u8), u8>,
 }
 
 impl BytePairEncoding {
-    pub fn from_replacements(replacements: [Option<(u8, u8)>; 256]) -> Self {
-        let mut pairs: HashMap<(u8, u8), u8> = Default::default();
-        for (i, &r) in replacements.iter().enumerate() {
-            match r {
-                None => {}
-                Some(pair) => {
-                    pairs.insert(pair, i as u8);
-                }
-            }
+    pub fn from_replacements(sorted_replacements: Vec<(u8, (u8, u8))>) -> Self {
+        let mut replacements: [Option<(u8, u8)>; 256] = [const { None }; 256];
+        
+        for &(replace_with, pair) in &sorted_replacements {
+            replacements[replace_with as usize] = Some(pair);
         }
         
         let mut expanded_replacements: [Option<Vec<u8>>; 256] = [const { None }; 256];
@@ -39,25 +33,39 @@ impl BytePairEncoding {
         }
         
         Self {
+            sorted_replacements,
             expanded_replacements,
-            pairs
         }
     }
     
     pub fn encode(&self, to_encode: &[u8]) -> Vec<u8> {
-        let mut encoded = vec![];
+        // MaybeTODO: Do this without copying
+        let mut to_replace = Vec::from(to_encode);
+        let mut replaced = Vec::with_capacity(to_replace.len());
 
-        for &byte in to_encode {
-            if let Some(last) = encoded.last_mut() {
-                if let Some(&replace_with) = self.pairs.get(&(*last, byte)) {
-                    *last = replace_with;
+        for &(replace_with, pair) in &self.sorted_replacements {
+            let mut skip_next = false;
+            for right_index in 1..to_replace.len() {
+                if skip_next {
+                    skip_next = false;
                     continue;
                 }
+                let peek_pair = (to_replace[right_index-1], to_replace[right_index]);
+                if peek_pair == pair {
+                    replaced.push(replace_with);
+                    skip_next = true;
+                } else {
+                    replaced.push(peek_pair.0);
+                }
             }
-            encoded.push(byte);
+            if !skip_next {
+                replaced.push(*to_replace.last().unwrap());
+            }
+            std::mem::swap(&mut to_replace, &mut replaced);
+            replaced.clear();
         }
-
-        encoded
+        
+        to_replace
     }
     
     fn decode_byte(&self, to_decode: u8) -> Vec<u8> {

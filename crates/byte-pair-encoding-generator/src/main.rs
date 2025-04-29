@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
@@ -25,62 +26,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if replace_with == 255 { break }
         
         // println!("{counts}");
-        let (best_pair, _count) = counts.best_pair();
+        let (best_pair, count) = counts.best_pair();
         let (a, b) = best_pair;
         println!("Replacing ({a}, {b}) with {replace_with}");
-        replacements.push(((a, b), replace_with));
+        replacements.push(PairEncoding {
+            pair: best_pair,
+            replace_with,
+            count,
+        });
         bytes = counts.replace(bytes, best_pair, replace_with);
         
         // MaybeTODO: speed up the implementation by avoiding this step
         counts = PairCounts::from_bytes(&bytes[..]);
     }
-    
-    let mut final_pairs = [const { None }; 256];
-    let mut lookup_table: [Option<Vec<u8>>; 256] = [const { None }; 256];
-    for i in 0..replacements.len() {
-        let ((a, b), replaced_with) = replacements[i];
-        final_pairs[replaced_with as usize] = Some((a, b));
-        let mut full_replacement = vec![];
-        for i in [a,b] {
-            match &lookup_table[i as usize] {
-                None => full_replacement.push(i),
-                Some(sequence) => {
-                    for &byte in sequence {
-                        full_replacement.push(byte);
-                    }
-                }
-            }
-        }
-        lookup_table[replaced_with as usize] = Some(full_replacement);
+
+    for x in replacements {
+        let (a, b) = x.pair;
+        let r = x.replace_with;
+        println!("({r}, ({a}, {b}))");
     }
 
-    for i in 0..=255 {
-        // match &lookup_table[i as usize] {
-        //     None => {
-        //         println!("{i} => {i}")
-        //     }
-        //     Some(row) => {
-        //         println!("{i} => {row:?}")
-        //     }
-        // }
-        match &final_pairs[i as usize] {
-            None => {
-                println!("None,")
-            }
-            Some((a, b)) => {
-                println!("Some({a}, {b}),")
-            }
-        }
-    }
-
-    let mut check_bytes = vec![];
-    for byte in bytes {
-        check_bytes.append(&mut lookup_table[byte as usize].clone().unwrap_or_else(|| vec![byte]));
-    }
+    // let mut check_bytes = vec![];
+    // for byte in bytes {
+    //     check_bytes.append(&mut lookup_table[byte as usize].clone().unwrap_or_else(|| vec![byte]));
+    // }
     
-    assert_eq!(check_bytes, original_bytes);
+    // assert_eq!(check_bytes, original_bytes);
     
     Ok(())
+}
+
+#[derive(Eq, PartialEq)]
+struct PairEncoding {
+    pair: (u8, u8),
+    replace_with: u8,
+    count: usize,
+}
+
+impl PartialOrd for PairEncoding {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl Ord for PairEncoding {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.count.partial_cmp(&other.count)
+            .unwrap_or_else(|| self.replace_with.cmp(&other.replace_with))
+    }
 }
 
 struct PairCounts {
