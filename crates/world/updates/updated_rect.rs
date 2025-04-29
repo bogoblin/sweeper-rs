@@ -1,10 +1,9 @@
-use std::cmp::min;
-use std::collections::{HashMap, VecDeque};
-use std::fmt::{Debug, Formatter};
+use crate::PublicTile;
+use crate::{Position, Tile};
 use quickcheck::{Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
-use crate::{Position, Tile};
-use crate::PublicTile;
+use std::collections::{HashMap, VecDeque};
+use std::fmt::{Debug, Formatter};
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct UpdatedTile {
