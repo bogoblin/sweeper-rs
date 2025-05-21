@@ -178,6 +178,8 @@ impl Camera {
                 texture_size as i32,
                 texture_size as i32,
             ),
+            texture_size: [texture_size as i32, texture_size as i32],
+            texture_size_f32: [texture_size as f32, texture_size as f32],
             ..Default::default()
         };
 
@@ -306,6 +308,8 @@ struct CameraUniform {
     tile_map_rect: [f32; 4],
     tile_map_size: [f32; 4],
     full_tile_map_rect: Rect,
+    texture_size: [i32; 2],
+    texture_size_f32: [f32; 2],
     time: i32,
     _pad: [f32; 3]
 }

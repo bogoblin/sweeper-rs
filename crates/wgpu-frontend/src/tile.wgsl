@@ -5,34 +5,10 @@ struct VertexOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
+    var vertex = six_vertex_square(idx);
     var out: VertexOut;
-    switch (idx % 6) {
-        case 0u: {
-            out.position = vec4(-1.0, 1.0, 0.0, 1.0);
-            out.world_coords = vec4(camera.world_rect.xy, 0.0, 0.0);
-        }
-        case 1u: {
-            out.position = vec4(-1.0, -1.0, 0.0, 1.0);
-            out.world_coords = vec4(camera.world_rect.xw, 0.0, 0.0);
-        }
-        case 2u: {
-            out.position = vec4(1.0, 1.0, 0.0, 1.0);
-            out.world_coords = vec4(camera.world_rect.zy, 0.0, 0.0);
-        }
-        case 3u: {
-            out.position = vec4(1.0, 1.0, 0.0, 1.0);
-            out.world_coords = vec4(camera.world_rect.zy, 0.0, 0.0);
-        }
-        case 4u: {
-            out.position = vec4(-1.0, -1.0, 0.0, 1.0);
-            out.world_coords = vec4(camera.world_rect.xw, 0.0, 0.0);
-        }
-        case 5u: {
-            out.position = vec4(1.0, -1.0, 0.0, 1.0);
-            out.world_coords = vec4(camera.world_rect.zw, 0.0, 0.0);
-        }
-        default: {}
-    }
+    out.position = vertex.position;
+    out.world_coords = vertex.world_coords;
     return out;
 }
 

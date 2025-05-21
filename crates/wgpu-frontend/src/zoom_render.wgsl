@@ -8,33 +8,12 @@ var world_tiles: texture_2d<u32>;
 
 struct VertexOut {
     @builtin(position) position: vec4<f32>,
-    @location(0) world_coords: vec4<f32>,
 }
 
 @vertex
 fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
     var out: VertexOut;
-    switch (idx % 6) {
-        case 0u: {
-            out.position = vec4(-1.0, 1.0, 0.0, 1.0);
-        }
-        case 1u: {
-            out.position = vec4(-1.0, -1.0, 0.0, 1.0);
-        }
-        case 2u: {
-            out.position = vec4(1.0, 1.0, 0.0, 1.0);
-        }
-        case 3u: {
-            out.position = vec4(1.0, 1.0, 0.0, 1.0);
-        }
-        case 4u: {
-            out.position = vec4(-1.0, -1.0, 0.0, 1.0);
-        }
-        case 5u: {
-            out.position = vec4(1.0, -1.0, 0.0, 1.0);
-        }
-        default: {}
-    }
+    out.position = six_vertex_square(idx).position;
     return out;
 }
 
