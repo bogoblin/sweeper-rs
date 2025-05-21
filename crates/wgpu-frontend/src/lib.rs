@@ -200,7 +200,7 @@ impl State {
 
             let common_shader = include_str!("common.wgsl");
             let mut wgsl_source = String::from(common_shader);
-            wgsl_source.push_str(include_str!("tile.wgsl"));
+            wgsl_source.push_str(include_str!("draw_texture_to_screen.wgsl"));
             let shader = device.create_shader_module(
                 wgpu::ShaderModuleDescriptor {
                     label: None,

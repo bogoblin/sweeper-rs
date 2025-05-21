@@ -48,6 +48,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         color = textureSample(zoom_render, zoom_sampler, uv);
     }
 
+    // We can see this if we zoom so far out that the render no longer covers the screen:
     if (
         in.world_coords.x < camera.tile_map_rect.x
         || in.world_coords.y < camera.tile_map_rect.y

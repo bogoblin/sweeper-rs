@@ -106,7 +106,7 @@ impl TileMapTexture {
 
         let common_shader = include_str!("common.wgsl");
         let mut wgsl_source = String::from(common_shader);
-        wgsl_source.push_str(include_str!("zoom_render.wgsl"));
+        wgsl_source.push_str(include_str!("draw_tiles_to_texture.wgsl"));
         let shader = device.create_shader_module(
             wgpu::ShaderModuleDescriptor {
                 label: None,

@@ -1,8 +1,10 @@
+// Mipmapped sprites for drawing to the texture
 @group(1) @binding(0)
 var tile_sprites: texture_2d<f32>;
 @group(1) @binding(1)
 var sprite_sampler: sampler;
 
+// Representation of the tiles in the world, as a texture in the GPU
 @group(2) @binding(0)
 var world_tiles: texture_2d<u32>;
 
@@ -17,6 +19,8 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
     return out;
 }
 
+// The fragment shader is called when rendering the tiles to the internal texture,
+// which will then be scaled and drawn to the screen.
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let texture_size = textureDimensions(world_tiles);
