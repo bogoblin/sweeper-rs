@@ -17,6 +17,19 @@ fn world_to_clip(world_coords: vec2<f32>) -> vec2<f32> {
     return coords;
 }
 
+fn render_texture_world_position(position: vec2<f32>) -> vec2<f32> {
+    let tiles_in_texture = camera.texture_size_f32.x / camera.tile_map_size.x;
+    let origin = ceil(camera.tile_map_rect.xy / tiles_in_texture) * tiles_in_texture;
+    var world_position = origin + (position.xy / camera.tile_map_size.xy);
+    if (world_position.x >= camera.tile_map_rect.z) {
+        world_position.x -= (camera.tile_map_rect.z - camera.tile_map_rect.x);
+    }
+    if (world_position.y >= camera.tile_map_rect.w) {
+        world_position.y -= (camera.tile_map_rect.w - camera.tile_map_rect.y);
+    }
+    return world_position;
+}
+
 struct ViewBorderVertex {
     @location(0) position: vec4<f32>,
     @location(1) world_coords: vec4<f32>,

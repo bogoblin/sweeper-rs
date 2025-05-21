@@ -14,19 +14,7 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<u32> {
-    let texture_size = camera.full_tile_map_rect.z - camera.full_tile_map_rect.x;
-    let texture_size_f32 = vec2<f32>(f32(texture_size), f32(texture_size));
-
-    let tiles_in_texture = texture_size_f32.x;
-    let origin = ceil(vec2<f32>(camera.full_tile_map_rect.xy) / tiles_in_texture) * tiles_in_texture;
-    var world_position = vec2<i32>(origin + in.position.xy);
-    if (world_position.x >= camera.full_tile_map_rect.z) {
-        world_position.x -= (camera.full_tile_map_rect.z - camera.full_tile_map_rect.x);
-    }
-    if (world_position.y >= camera.full_tile_map_rect.w) {
-        world_position.y -= (camera.full_tile_map_rect.w - camera.full_tile_map_rect.y);
-    }
-    
+    let world_position = vec2<i32>(render_texture_world_position(in.position.xy));
     if (
         world_position.x >= blanking_rect.x &&
         world_position.y >= blanking_rect.y &&

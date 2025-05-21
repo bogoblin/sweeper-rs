@@ -23,20 +23,9 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
 // which will then be scaled and drawn to the screen.
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let texture_size = textureDimensions(world_tiles);
-    let texture_size_f32 = vec2<f32>(texture_size);
+    let world_position = render_texture_world_position(in.position.xy);
 
-    let tiles_in_texture = texture_size_f32.x / camera.tile_map_size.x;
-    let origin = ceil(camera.tile_map_rect.xy / tiles_in_texture) * tiles_in_texture;
-    var world_position = origin + (in.position.xy / camera.tile_map_size.xy);
-    if (world_position.x >= camera.tile_map_rect.z) {
-        world_position.x -= (camera.tile_map_rect.z - camera.tile_map_rect.x);
-    }
-    if (world_position.y >= camera.tile_map_rect.w) {
-        world_position.y -= (camera.tile_map_rect.w - camera.tile_map_rect.y);
-    }
-
-    let tiles_origin = floor(world_position / texture_size_f32) * texture_size_f32;
+    let tiles_origin = floor(world_position / camera.texture_size_f32) * camera.texture_size_f32;
 
     let position_in_tile = world_position - floor(world_position);
 
