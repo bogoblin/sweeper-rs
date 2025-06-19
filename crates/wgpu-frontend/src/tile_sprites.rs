@@ -1,4 +1,4 @@
-use image::DynamicImage;
+use image::{DynamicImage, GenericImage};
 use image::imageops::FilterType;
 use log::info;
 use wgpu::{BindGroup, BindGroupLayout, Queue};
@@ -174,7 +174,19 @@ impl SpriteMipmaps {
             for sprite in &mut sprite_images {
                 scale_vec.push(sprite.as_bytes().to_vec());
                 if sprite.width() > 1 {
-                    *sprite = sprite.resize(sprite.width() / 2, sprite.height() / 2, filter_type);
+                    // We make a 3x3 tiling of the sprite, scale it down to 50%,
+                    // then take the middle part as the scaled down sprite.
+                    // This stops the tiles from being darker at the edges than they should be.
+                    let w = sprite.width();
+                    let h = sprite.height();
+                    let mut surrounded3 = DynamicImage::new(w*3, h*3, sprite.color());
+                    for ix in 0..3 {
+                        for iy in 0..3 {
+                            surrounded3.copy_from(sprite, ix*w, iy*h).unwrap();
+                        }
+                    }
+                    surrounded3 = surrounded3.resize((w*3)/2, (h*3)/2, filter_type);
+                    *sprite = surrounded3.crop(w/2, h/2, w/2, h/2);
                 }
             }
             sprite_bytes.push(scale_vec);
