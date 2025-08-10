@@ -6,6 +6,7 @@ use rand::rngs::StdRng;
 use rand::{thread_rng, RngCore, SeedableRng};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
+use append_only_vec::AppendOnlyVec;
 
 pub mod chunk_store;
 pub mod player;
@@ -24,7 +25,7 @@ pub use updates::*;
 
 pub struct World {
     pub chunk_ids: HashMap<ChunkPosition, usize>,
-    pub chunks: Vec<Chunk>,
+    pub chunks: AppendOnlyVec<Chunk>,
     pub seed: u64,
 
     pub generated_chunks: VecDeque<(ChunkPosition, ChunkMines)>,
@@ -78,7 +79,7 @@ impl World {
     pub fn new() -> World {
         let mut world = World {
             chunk_ids: Default::default(),
-            chunks: vec![],
+            chunks: Default::default(),
             seed: 0,
             generated_chunks: Default::default(),
             chunk_store: ChunkStore::new(),
@@ -103,7 +104,7 @@ impl World {
 
     pub fn get_chunk(&self, position: Position) -> Option<&Chunk> {
         if let Some(&chunk_id) = self.get_chunk_id(position) {
-            return self.chunks.get(chunk_id);
+            return Some(&self.chunks[chunk_id]);
         }
         None
     }
@@ -167,17 +168,13 @@ impl World {
     pub fn fill_adjacent_mines(&mut self, position: Position) {
         let surrounding_chunk_ids = self.generate_surrounding_chunks(position);
         let chunk_id = surrounding_chunk_ids[4];
-        if let Some(chunk) = self.chunks.get(chunk_id) {
-            if chunk.adjacent_mines_filled() {
-                return;
-            }
+        if self.chunks[chunk_id].adjacent_mines_filled() {
+            return;
         }
-        let surrounding_chunks = surrounding_chunk_ids.map(|chunk_id| unsafe {
-            self.chunks.get_unchecked(chunk_id)
-        });
+        let surrounding_chunks = surrounding_chunk_ids.map(|chunk_id| &self.chunks[chunk_id]);
         self.chunks[surrounding_chunk_ids[4]] = Chunk::fill_adjacent_mines(surrounding_chunks)
     }
-    
+
     fn set_player_position(&mut self, player_id: &str, position: Position) {
         self.players.insert(player_id.to_string(), Player {
             player_id: player_id.to_string(),
@@ -210,10 +207,7 @@ impl World {
         while let Some(position) = to_reveal.pop() {
             let current_chunk_id = self.generate_chunk(position);
             self.fill_adjacent_mines(position);
-            let current_chunk = match self.chunks.get_mut(current_chunk_id) {
-                None => continue,
-                Some(c) => c,
-            };
+            let current_chunk = &mut self.chunks[current_chunk_id];
             // It's okay to get unchecked here because we know that tile_index() always returns a number < 256
             let tile = &mut current_chunk.tiles[position.tile_index()];
             if !tile.is_revealed() {
@@ -273,7 +267,7 @@ impl World {
     pub fn flag(&mut self, position: Position, by_player_id: &str) -> Option<Event> {
         let chunk_id = *self.get_chunk_id(position)?;
         self.set_player_position(by_player_id, position);
-        let chunk = self.chunks.get_mut(chunk_id)?;
+        let chunk = &mut self.chunks[chunk_id];
         let tile = &mut chunk.tiles[*position.position_in_chunk()];
         if !tile.is_revealed() {
             if tile.is_flag() {
